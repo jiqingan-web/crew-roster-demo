@@ -97,8 +97,14 @@
 
   function defaultSettings() {
     return { minRestH: 12, minHours: 30, maxHours: 70, maxOffCapt: 4, maxOffFO: 7,
-      testerAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
       maxFreeRun: 3, standbyCapt: 2, standbyFO: 3, gapWeight: 0.35 };
+  }
+
+  // 旧版字段迁移：testerAirports（误称“酒测/血压测试员”）→ bpTesterAirports（始发站须配备血压测试仪）
+  function migrateSettings(S) {
+    if (S && S.testerAirports) { S.bpTesterAirports = S.testerAirports; delete S.testerAirports; }
+    return S;
   }
 
   function generateSample(seed, opt) {
@@ -484,8 +490,8 @@
         const iss = crewIssue(pr, crew, st);
         if (iss) { const t = iss.includes('新机长') ? '新机长无教员' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则'; add(t, 'hard', `${pr.id} ${iss}`, pr); }
       }
-      const tl = pr.legs.filter(l => (S.testerAirports || []).includes(l.from));
-      if (tl.length && crew.some(Boolean)) add('需酒测/血压测试员', 'info', `${pr.id} 自 ${[...new Set(tl.map(l => apName(l.from, st)))].join('、')} 出港（${tl.map(l => 'D' + l.d + ' ' + l.flt).join('，')}），须安排测试员到场`, pr);
+      const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
+      if (tl.length && crew.some(Boolean)) add('需血压测试仪', 'info', `${pr.id} 自 ${[...new Set(tl.map(l => apName(l.from, st)))].join('、')} 出港（${tl.map(l => 'D' + l.d + ' ' + l.flt).join('，')}），始发站须配备血压测试仪`, pr);
     }
     // 时间重叠会被两边各报一次，去重
     const seen = new Set(); const ded = out.filter(v => { if (v.type !== '时间重叠' && v.type !== '休息不足') return true;
@@ -580,7 +586,7 @@
     return { pilot: p, days, affected: affected.map(x => x.id), changes, unresolved, before };
   }
 
-  return { YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+  return { migrateSettings, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, minHoursFor, SLOT_NAME, slotRankOK, blockMin };

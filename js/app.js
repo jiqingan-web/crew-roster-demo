@@ -8,9 +8,10 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => new Date(C.YEAR, C.MONTH - 1, d).getDay();
   let st, sum, tab = 'gantt', lastSolveMs = null, leaveResult = null, leaveUndo = null;
-  const ui = { gq: '', gg: '全部', tf: '全部', tq: '' };
+  const ui = { gq: '', gg: '全部', tf: '全部', tq: '', cw: 150, fit: false };
+  const CW_MIN = 6, CW_MAX = 240;
 
-  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); return; } } catch (e) {} reset(false); }
+  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); return; } } catch (e) {} reset(false); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
   function refresh() { sum = C.summarize(st); renderKpis(); render(); save(); }
@@ -35,38 +36,62 @@
   }
 
   // ---------------- 人员视图 ----------------
+  function fitCw(days, nw) { const w = ($('#main').clientWidth || innerWidth) - 40 - (nw || 250); return Math.max(CW_MIN, Math.min(CW_MAX, Math.floor(w / days))); }
+  const NW = () => ui.fit || ui.cw < 40 ? 170 : 250;
+  function setZoom(cw, anchorX, fit) {
+    ui.fit = !!fit;
+    const g = $('.gwrap'); cw = Math.max(CW_MIN, Math.min(CW_MAX, Math.round(cw)));
+    let frac = 0, ax = 0, top = 0;
+    if (g) { ax = anchorX == null ? (g.clientWidth - NW()) / 2 : Math.max(0, anchorX - NW()); frac = (g.scrollLeft + ax) / (ui.cw * C.DAYS); top = g.scrollTop / Math.max(1, g.scrollHeight); }
+    ui.cw = cw; rGantt();
+    const g2 = $('.gwrap'); if (g2) { g2.scrollLeft = frac * ui.cw * C.DAYS - ax; g2.scrollTop = top * g2.scrollHeight; }
+  }
   function rGantt() {
-    const cw = 150; const m = pm(); const V = violByPairing();
+    const cw = ui.cw, nw = NW(); let lvl = cw >= 110 ? 'full' : cw >= 40 ? 'mid' : cw >= 16 ? 'small' : 'tiny';
+    let rh = { full: 66, mid: 40, small: 18, tiny: 9 }[lvl]; const m = pm(); const V = violByPairing();
     const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
     let ps = st.pilots.slice().sort((a, b) => order[C.rankGroup(a.rank)] - order[C.rankGroup(b.rank)] || C.RANK_VAL[b.rank] - C.RANK_VAL[a.rank] || a.id.localeCompare(b.id));
     if (ui.gg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.gg);
     if (ui.gq) ps = ps.filter(p => (p.name + p.id + p.rank).includes(ui.gq));
+    if (ui.fit) { const avail = Math.max(200, innerHeight - (($('#main').getBoundingClientRect().top || 100) + 140)); rh = Math.max(6, Math.min(40, Math.floor(avail / Math.max(1, ps.length))));
+      lvl = rh >= 40 && cw >= 40 ? 'mid' : rh >= 16 ? 'small' : 'tiny'; }
     const idx = C.buildIndex(st); const S = st.settings;
     let h = `<div class="toolbar"><input id="gq" placeholder="搜索 姓名/员工号/级别" value="${esc(ui.gq)}"> <select id="gg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.gg ? 'selected' : ''}>${g}</option>`).join('')}</select>
       <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>第三人(三)</span>
       <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
-      <div class="gwrap" style="--cw:${cw}px"><div class="gt" style="width:${250 + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>员工号 / 姓名 / 级别</b><span style="margin-left:auto">本月小时</span></div>`;
-    for (let d = 1; d <= C.DAYS; d++) h += `<div class="gday ${[0, 6].includes(dow(d)) ? 'we' : ''}">${dateOf(d)} 周${WK[dow(d)]}</div>`;
+      <div class="toolbar zoombar"><span class="mut">缩放</span><button class="btn sm" id="zOut" title="缩小 (Ctrl+滚轮)">－</button>
+      <input type="range" id="zR" min="${CW_MIN}" max="${CW_MAX}" value="${cw}" style="width:180px"><button class="btn sm" id="zIn" title="放大 (Ctrl+滚轮)">＋</button>
+      <span class="mut" id="zLab">${cw}px/天${ui.fit ? ' · 全局适配' : ''}</span>${[['日', 'd'], ['3日', '3'], ['周', 'w'], ['半月', 'h'], ['整月', 'm']].map(([n, k]) => `<button class="btn sm zp" data-z="${k}">${n}</button>`).join('')}
+      <span class="note">提示：Ctrl/⌘ + 滚轮或触控板捏合可缩放；整月视图为全局概览，点击任务条仍可编辑</span></div>
+      <div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
+    for (let d = 1; d <= C.DAYS; d++) h += `<div class="gday ${[0, 6].includes(dow(d)) ? 'we' : ''}" title="${dateOf(d)} 周${WK[dow(d)]}">${cw >= 70 ? `${dateOf(d)} 周${WK[dow(d)]}` : cw >= 26 ? `${d}<br>${WK[dow(d)]}` : cw >= 12 ? d : (d % 5 === 0 || d === 1 ? d : '')}</div>`;
     h += '</div>';
     for (const p of ps) {
       const hr = idx.hours[p.id]; const bad = hr > S.maxHours || hr < C.minHoursFor(p, st);
-      h += `<div class="grow"><div class="gcell0"><span class="mut">${p.id}</span><span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? 'red' : ''}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
+      h += `<div class="grow"><div class="gcell0" title="${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? 'red' : ''}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
-      for (let d = 1; d <= C.DAYS; d++) h += (p.leave || []).includes(d) ? '<div class="lv" title="请假"></div>' : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? '<div class="sb" title="备份（Standby）"><span>备份</span></div>' : '<div></div>';
+      for (let d = 1; d <= C.DAYS; d++) h += (p.leave || []).includes(d) ? '<div class="lv" title="请假"></div>' : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="备份（Standby）">${cw >= 30 && rh >= 18 ? '<span>备份</span>' : ''}</div>` : '<div></div>';
       h += '</div>';
       for (const pr of idx.sched[p.id]) {
         const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id);
-        const left = 250 + (pr.start - 1) * cw + 2, w = pr.ndays * cw - 4;
-        const ch = dayChains(pr);
-        h += `<div class="bar slot${slot} ${V[pr.id] ? 'viol' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">
-          <div class="bh">${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div></div>`;
+        const gap = cw >= 20 ? 2 : 0.5; const left = nw + (pr.start - 1) * cw + gap, w = Math.max(1, pr.ndays * cw - 2 * gap);
+        let inner = '';
+        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
+        else if (lvl === 'mid') inner = `<div class="bh">${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
+        else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${pr.id}</span>`;
+        h += `<div class="bar slot${slot} ${V[pr.id] ? 'viol' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
       }
       h += '</div>';
     }
     $('#main').innerHTML = h + '</div></div>';
     $('#gq').oninput = e => { ui.gq = e.target.value; const pos = e.target.selectionStart; rGantt(); $('#gq').focus(); $('#gq').setSelectionRange(pos, pos); };
     $('#gg').onchange = e => { ui.gg = e.target.value; rGantt(); };
+    $('#zIn').onclick = () => setZoom(ui.cw * 1.4); $('#zOut').onclick = () => setZoom(ui.cw / 1.4);
+    $('#zR').oninput = e => { $('#zLab').textContent = e.target.value + 'px/天'; }; $('#zR').onchange = e => setZoom(+e.target.value);
+    document.querySelectorAll('.zp').forEach(b => b.onclick = () => { const k = b.dataset.z; k === 'm' ? setZoom(fitCw(C.DAYS, 170), null, true) : setZoom(k === 'd' ? 150 : fitCw({ '3': 3, w: 7, h: 15 }[k])); const g = $('.gwrap'); if (k === 'm' && g) g.scrollLeft = 0; });
+    const gw = $('.gwrap'); gw.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault();
+      setZoom(ui.cw * Math.exp(-e.deltaY * 0.003), e.clientX - gw.getBoundingClientRect().left); }, { passive: false });
     bindBars();
   }
   function bindBars() {
@@ -88,11 +113,11 @@
   function openEdit(id) {
     $('#tip').classList.add('hidden');
     const pr = st.pairings.find(x => x.id === id); const m = pm();
-    const sp = C.specialAirportsOf(pr, st); const tester = pr.legs.filter(l => (st.settings.testerAirports || []).includes(l.from));
+    const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
     let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
-      <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.testerAirports || []).includes(l.from) ? '<span class="warnc">需酒测/血压测试员</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
+      <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
-      ${tester.length ? `<div class="note warnc">提醒：自 ${[...new Set(tester.map(l => C.apName(l.from, st)))].join('、')} 出港须安排酒精/血压测试员到场</div>` : ''}
+      ${bpt.length ? `<div class="note warnc">提醒：自 ${[...new Set(bpt.map(l => C.apName(l.from, st)))].join('、')} 出港，始发站须配备血压测试仪</div>` : ''}
       <h3 style="margin-top:14px">机组</h3><div id="slots"></div><div id="crewChk" class="note"></div>`;
     $('#modalBox').innerHTML = h; $('#modal').classList.remove('hidden');
     $('#mClose').onclick = closeModal;
@@ -128,10 +153,10 @@
       <span class="mut">共 ${st.pairings.length} 个任务，已满员 ${st.pairings.length - unf}，未满员 <b class="${unf ? 'red' : 'okc'}">${unf}</b>；显示 ${ps.length}</span></div>
       <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>状态</th><th></th></tr>`;
     for (const pr of ps) {
-      const full = pr.crew.C && pr.crew.F && pr.crew.T; const tester = pr.legs.some(l => (st.settings.testerAirports || []).includes(l.from));
+      const full = pr.crew.C && pr.crew.F && pr.crew.T; const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
       h += `<tr><td><b>${pr.id}</b></td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
         <td>${dayChains(pr).map(c => c.html).join('<br>')}</td><td>${crewTxt(pr, m)}</td>
-        <td>${V[pr.id] ? `<span class="red" title="${esc(V[pr.id].join('\n'))}">✖ ${V[pr.id].length}项违规</span>` : full ? '<span class="okc">✔ 合规</span>' : '<span class="warnc">待填</span>'}${tester ? '<br><span class="warnc">需测试员</span>' : ''}</td>
+        <td>${V[pr.id] ? `<span class="red" title="${esc(V[pr.id].join('\n'))}">✖ ${V[pr.id].length}项违规</span>` : full ? '<span class="okc">✔ 合规</span>' : '<span class="warnc">待填</span>'}${bpt ? '<br><span class="warnc">需血压测试仪</span>' : ''}</td>
         <td><button class="btn sm" data-ed="${pr.id}">调整</button></td></tr>`;
     }
     $('#main').innerHTML = h + '</table></div>';
@@ -154,7 +179,7 @@
       ${card('意向休息日满足率', (s.prefRate * 100).toFixed(1) + '%', `${s.prefOK}/${s.prefT} 个意向休息日得到保障`, s.prefRate > 0.95 ? 'ok' : '')}</div>
       <div class="grid g2"><div class="panel"><h3>合规性 <small>硬性规则逐项计数${lastSolveMs ? ' · 自动排班用时 ' + lastSolveMs + ' ms' : ''}</small></h3><table><tr><th>规则</th><th>违规数</th></tr>
       ${hardTypes.map(t => { const n = (s.byType[t] || {}).n || 0; return `<tr><td>${t}</td><td class="${n ? 'red' : 'okc'}">${n ? n : '0 ✔'}</td></tr>`; }).join('')}
-      <tr><td>连续空闲超 ${S.maxFreeRun} 天无备份（软性）</td><td class="warnc">${(s.byType['连续空闲超限'] || {}).n || 0}</td></tr><tr><td>每日备份人数不足（软性）</td><td class="warnc">${(s.byType['备份人数不足'] || {}).n || 0}</td></tr><tr><td>意向休息日未满足（软性）</td><td class="warnc">${(s.byType['意向休息日未满足'] || {}).n || 0}</td></tr><tr><td>需酒测/血压测试员提醒（信息）</td><td class="warnc">${(s.byType['需酒测/血压测试员'] || {}).n || 0}</td></tr></table></div>
+      <tr><td>连续空闲超 ${S.maxFreeRun} 天无备份（软性）</td><td class="warnc">${(s.byType['连续空闲超限'] || {}).n || 0}</td></tr><tr><td>每日备份人数不足（软性）</td><td class="warnc">${(s.byType['备份人数不足'] || {}).n || 0}</td></tr><tr><td>意向休息日未满足（软性）</td><td class="warnc">${(s.byType['意向休息日未满足'] || {}).n || 0}</td></tr><tr><td>始发站需血压测试仪提醒（信息）</td><td class="warnc">${(s.byType['需血压测试仪'] || {}).n || 0}</td></tr></table></div>
       <div class="panel"><h3>公平性 · 各级别组月飞行小时分布 <small>圆点=均值，阴影=±1σ，线=最小–最大；虚线=${S.minHours}/${S.maxHours}h 边界</small></h3><div class="chart">${CH.ranges(C.GROUPS.map(g => Object.assign({ label: g, color: GCOL[g] }, s.groups[g].hours)), { range: [20, 80], marks: [{ v: S.minHours, color: '#ffb020' }, { v: S.maxHours, color: '#ff5a6a' }] })}</div>
       <table><tr><th>组别</th><th>人数</th><th>均值</th><th>标准差</th><th>最小</th><th>最大</th><th>基尼</th></tr>${C.GROUPS.map(g => { const x = s.groups[g].hours; return `<tr><td>${g}</td><td>${x.n}</td><td>${x.mean.toFixed(1)}</td><td>${x.std.toFixed(2)}</td><td>${x.min.toFixed(1)}</td><td>${x.max.toFixed(1)}</td><td>${x.gini.toFixed(3)}</td></tr>`; }).join('')}</table></div></div>
       <div class="panel"><h3>每人本月飞行小时 <small>按组别、小时排序；颜色=组别</small></h3><div class="chart">${CH.bars(s.per.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.minHours, label: '下限 ' + S.minHours + 'h', color: '#ffb020' }, { v: S.maxHours, label: '上限 ' + S.maxHours + 'h', color: '#ff5a6a' }], max: 80 })}</div>
@@ -245,10 +270,10 @@
       <label class="btn">导入人员 CSV<input type="file" id="imPil" accept=".csv" hidden></label><label class="btn">导入任务 CSV<input type="file" id="imPr" accept=".csv" hidden></label><label class="btn">恢复备份 JSON<input type="file" id="imJson" accept=".json" hidden></label></div><div id="imMsg" class="note"></div></div></div>
       <div class="panel"><h3>格式说明</h3><div class="note" style="line-height:1.9">人员 CSV 列：${PIL_H.join('，')}；级别取值：${C.RANKS.join(' / ')}<br>任务 CSV 列：${PR_H.join('，')}；同一任务号的多行即该任务的各航段（按日序、时间排列），任务须从 ZUUU 出发并回到 ZUUU。机场使用 ICAO 四字码，须在“设置”机场表内。</div></div>`;
     const m = pm();
-    $('#exRoster').onclick = () => dl('排班表_2026-11.csv', csv([['任务号', '日序', '日期', '航班号', '起飞', '落地', '起飞时间', '落地时间', '机型', '特殊机场', '需测试员', '机长(机)', '级别', '副驾驶(副)', '级别', '第三人(三)', '级别'],
+    $('#exRoster').onclick = () => dl('排班表_2026-11.csv', csv([['任务号', '日序', '日期', '航班号', '起飞', '落地', '起飞时间', '落地时间', '机型', '特殊机场', '需血压测试仪', '机长(机)', '级别', '副驾驶(副)', '级别', '第三人(三)', '级别'],
       ...st.pairings.flatMap(pr => pr.legs.map(l => { const day = Math.floor(l.dep / C.DAY); const c = s => pr.crew[s] && m[pr.crew[s]];
         return [pr.id, 'D' + l.d, '2026-11-' + String(day + 1).padStart(2, '0'), l.flt, `${l.from} ${C.apName(l.from, st)}`, `${l.to} ${C.apName(l.to, st)}`, C.fmtT(l.dep), tm(l.arr, day), l.ac,
-          [l.from, l.to].filter(x => C.isSpecial(x, st)).map(x => C.apName(x, st)).join(';'), (st.settings.testerAirports || []).includes(l.from) ? '是' : '',
+          [l.from, l.to].filter(x => C.isSpecial(x, st)).map(x => C.apName(x, st)).join(';'), (st.settings.bpTesterAirports || []).includes(l.from) ? '是' : '',
           ...['C', 'F', 'T'].flatMap(s => c(s) ? [c(s).name + '(' + c(s).id + ')', c(s).rank] : ['空缺', ''])]; }))]));
     $('#exHours').onclick = () => dl('人员工时_2026-11.csv', csv([['员工号', '姓名', '级别', '组别', '本月飞行小时', '任务数', '执勤天数', '过夜次数', '特殊机场任务', '夜航段', '意向休息日满足', '备份天数', '备份日期', '任务间休息天数'], ...sum.per.map(x => [x.id, x.name, x.rank, x.group, x.hours.toFixed(2), x.pairings, x.dutyDays, x.overnights, x.special, x.night, x.prefOK + '/' + x.prefTotal, x.standby, ((st.standby || {})[x.id] || []).join(';'), x.gaps.join(';')])]));
     $('#exViol').onclick = () => dl('校验问题_2026-11.csv', csv([['级别', '类型', '任务', '说明'], ...sum.violations.map(v => [v.level, v.type, v.pairing || '', v.msg])]));
@@ -269,7 +294,7 @@
         return { id, start, ndays: Math.floor(legs[legs.length - 1].arr / C.DAY) + 1 - start + (legs[legs.length - 1].arr % C.DAY === 0 ? 0 : 0), ac: legs.some(l => l.ac === 'A321') ? 'A321' : 'A320', legs, crew: { C: null, F: null, T: null } }; })
         .map(p => (p.ndays = Math.max(p.ndays, ...p.legs.map(l => l.d)), p)).sort((a, b) => a.legs[0].dep - b.legs[0].dep);
       st.sample = false; refresh(); toast(`已导入 ${st.pairings.length} 个任务`); });
-    read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; refresh(); toast('备份已恢复'); });
+    read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings)); refresh(); toast('备份已恢复'); });
   }
 
   // ---------------- 设置 ----------------
@@ -282,14 +307,14 @@
       ${num('maxOffCapt', '同日最多休息/请假（机长类）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('maxFreeRun', '最多连续空闲天数（超出排备份）', '天')}${num('standbyCapt', '每日备份人数（机长类）', '人')}${num('standbyFO', '每日备份人数（副驾驶）', '人')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到', '分钟')}${num('releaseMin', '末段落地后退场', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
       <div class="note" style="margin-top:8px">下限按可用天数折算：有请假者下限 = 下限 × (30-请假天数)/30。</div>
-      <h3 style="margin-top:16px">酒精/血压测试员机场 <small>勾选的机场作为始发站时，任务将标记“须安排测试员”</small></h3>
-      <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-tester="${c}" ${(S.testerAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
+      <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
+      <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <div style="margin-top:12px"><button class="btn primary" id="saveS">保存设置并重新校验</button></div></div>
       <div class="panel"><h3>机场与特殊机场类别</h3><div class="note">类别：${cats.map(c => c + '=' + (C.CAT_DESC[c] || '')).join('；')}。需授权类别：${C.AUTH_CATS.join('/')}</div>
       <div class="scroll"><table><tr><th>ICAO</th><th>名称</th><th>类别</th></tr>${Object.keys(aps).map(c => `<tr><td>${c}</td><td class="${aps[c][3] ? 'red' : ''}">${aps[c][0]}</td><td><select data-cat="${c}" ${c === 'ZUUU' ? 'disabled' : ''}>${cats.map(k => `<option value="${k}" ${(aps[c][3] || 'NONE') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></td></tr>`).join('')}</table></div></div></div>`;
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);
-      S.honorPrefs = $('#hp').checked; S.testerAirports = [...document.querySelectorAll('[data-tester]:checked')].map(i => i.dataset.tester);
+      S.honorPrefs = $('#hp').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
       st.airports = {}; document.querySelectorAll('[data-cat]').forEach(s => { const a = C.AIRPORTS[s.dataset.cat].slice(0, 3); if (s.value !== 'NONE') a[3] = s.value; st.airports[s.dataset.cat] = a; });
       refresh(); toast('设置已保存，校验结果已更新');
     };
