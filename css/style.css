@@ -84,3 +84,20 @@ details summary{cursor:pointer;color:var(--mut)}
 .gwrap.z-tiny .bar{top:1px;height:calc(var(--rh) - 2px);padding:0;border-radius:1px;border-width:0}.gwrap.z-tiny .bar.viol{border-width:1px}
 .gwrap.z-small .gday,.gwrap.z-tiny .gday{font-size:9px;overflow:hidden}
 .gwrap.z-tiny .gbg div{border-left-color:#13223f}
+/* 甘特：常显横向滚动条（macOS 覆盖式滚动条默认隐藏）+ 右下角缩放 */
+.gbox{position:relative}
+.gwrap{height:calc(100vh - 150px);max-height:none}
+@supports not selector(::-webkit-scrollbar){.gwrap{scrollbar-color:#4a6aa0 #0b1a33}}
+.gwrap::-webkit-scrollbar{width:14px;height:14px;-webkit-appearance:none;background:#0b1a33}
+.gwrap::-webkit-scrollbar-thumb{background:#4a6aa0;border-radius:7px;border:3px solid #0b1a33;min-width:40px}
+.gwrap::-webkit-scrollbar-thumb:hover{background:#6c8fcc}
+.gwrap::-webkit-scrollbar-track{background:#0b1a33;border-top:1px solid var(--line)}
+.gwrap::-webkit-scrollbar-corner{background:#0b1a33}
+.zoomw{position:absolute;right:26px;bottom:26px;z-index:20;display:flex;align-items:center;background:rgba(15,32,61,.94);border:1px solid #3a5a8c;border-radius:16px;box-shadow:0 4px 14px rgba(0,0,0,.45);padding:2px;font-size:12px}
+.zoomw>button{background:none;border:none;color:var(--txt);cursor:pointer;height:26px;min-width:26px;border-radius:13px;font-size:15px;line-height:1}
+.zoomw>button:hover{background:#22406f}
+.zoomw #zPct{min-width:52px;font-size:12px;font-variant-numeric:tabular-nums}
+.zoomw #zMenuB{font-size:11px;min-width:20px;color:var(--mut)}
+.zmenu{position:absolute;right:0;bottom:34px;background:#0f203d;border:1px solid #3a5a8c;border-radius:8px;padding:4px;min-width:150px;box-shadow:0 6px 18px rgba(0,0,0,.5)}
+.zmenu .zp{display:flex;justify-content:space-between;padding:5px 10px;border-radius:5px;cursor:pointer}.zmenu .zp:hover{background:#22406f}
+.toast{right:auto;left:50%;transform:translateX(-50%);bottom:40px}

@@ -98,12 +98,14 @@
   function defaultSettings() {
     return { minRestH: 12, minHours: 30, maxHours: 70, maxOffCapt: 4, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
-      maxFreeRun: 3, standbyCapt: 2, standbyFO: 3, gapWeight: 0.35 };
+      standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.35 };
   }
 
   // 旧版字段迁移：testerAirports（误称“酒测/血压测试员”）→ bpTesterAirports（始发站须配备血压测试仪）
   function migrateSettings(S) {
     if (S && S.testerAirports) { S.bpTesterAirports = S.testerAirports; delete S.testerAirports; }
+    // 旧版备份参数（连续空闲插备份 + 每日 2+3 人池）→ 每日 1 人、每人每月至多 1 天
+    if (S && ('standbyCapt' in S || 'standbyFO' in S || 'maxFreeRun' in S)) { delete S.standbyCapt; delete S.standbyFO; delete S.maxFreeRun; S.standbyPerDay = 1; S.maxStandbyPerPilot = 1; }
     return S;
   }
 
@@ -451,22 +453,15 @@
   function freeRuns(a) { const r = []; let s = 0; for (let d = 1; d <= DAYS + 1; d++) { if (d <= DAYS && a[d] === '') { if (!s) s = d; } else if (s) { r.push([s, d - 1]); s = 0; } } return r; }
   function assignStandby(st) {
     const S = st.settings; const idx = buildIndex(st); st.standby = {}; st.pilots.forEach(p => st.standby[p.id] = []);
-    const ds = dayStatus(st, idx); const maxRun = S.maxFreeRun || 3;
+    const ds = dayStatus(st, idx);
     const put = (p, d) => { ds[p.id][d] = 'S'; st.standby[p.id].push(d); };
-    // 1) 连续空闲超过上限者插入备份
-    st.pilots.forEach(p => { const a = ds[p.id]; let guard = 0;
-      for (let runs = freeRuns(a).filter(r => r[1] - r[0] + 1 > maxRun); runs.length && guard++ < 20; runs = freeRuns(a).filter(r => r[1] - r[0] + 1 > maxRun)) {
-        const [s0, e0] = runs[0]; const len = e0 - s0 + 1; let d = s0 + Math.min(maxRun, len - 2);
-        if (!sbOK(a, d)) { const alt = []; for (let x = s0; x <= e0; x++) if (sbOK(a, x) && x - s0 <= maxRun) alt.push(x); if (alt.length) d = alt[alt.length - 1]; else { a[s0] = 'x'; continue; } }
-        put(p, d); }
-      for (let d = 1; d <= DAYS; d++) if (a[d] === 'x') a[d] = ''; });
-    // 2) 每日备份池
-    const cnt = id => st.standby[id].length;
-    for (let d = 1; d <= DAYS; d++) for (const [isC, need] of [[true, S.standbyCapt || 0], [false, S.standbyFO || 0]]) {
-      const grp = st.pilots.filter(p => isCaptClass(p.rank) === isC);
-      let have = grp.filter(p => ds[p.id][d] === 'S').length;
-      const cands = grp.filter(p => sbOK(ds[p.id], d) && !(isC && (isNew(p.rank)))).sort((a, b) => cnt(a.id) - cnt(b.id) || idx.hours[a.id] - idx.hours[b.id]);
-      while (have < need && cands.length) { put(cands.shift(), d); have++; }
+    // 每日备份：每天 standbyPerDay 人（机长类/副驾驶 交替），每人每月至多 maxStandbyPerPilot 天；其余空闲日均为正常休息
+    const cnt = id => st.standby[id].length; const per = S.standbyPerDay == null ? 1 : S.standbyPerDay, cap = S.maxStandbyPerPilot == null ? 1 : S.maxStandbyPerPilot;
+    for (let d = 1; d <= DAYS; d++) for (let k = 0; k < per; k++) {
+      const isC = (d + k) % 2 === 1;
+      const pick = c => st.pilots.filter(p => isCaptClass(p.rank) === c && !(c && isNew(p.rank)) && cnt(p.id) < cap && sbOK(ds[p.id], d))
+        .sort((a, b) => cnt(a.id) - cnt(b.id) || idx.hours[a.id] - idx.hours[b.id] || a.id.localeCompare(b.id))[0];
+      const p = pick(isC) || pick(!isC); if (p) put(p, d);
     }
     st.pilots.forEach(p => st.standby[p.id].sort((a, b) => a - b));
   }
@@ -498,9 +493,9 @@
       const k = v.type + v.pilot + [v.pairing, (v.msg.match(/\((PR\d+)\)/) || [])[1]].sort().join(); if (seen.has(k)) return false; seen.add(k); return true; });
     const dsv = dayStatus(st, idx);
     st.pilots.forEach(p => { (st.standby && st.standby[p.id] || []).forEach(d => { if (dsv[p.id][d] === 'D') ded.push({ type: '备份冲突', level: 'hard', msg: `${p.name} ${d}日备份与飞行任务冲突`, pilot: p.id }); });
-      freeRuns(dsv[p.id]).forEach(([a, b]) => { if (b - a + 1 > (S.maxFreeRun || 3) && st.standby) ded.push({ type: '连续空闲超限', level: 'soft', msg: `${p.name} ${a}-${b}日连续空闲${b - a + 1}天无备份`, pilot: p.id }); }); });
-    if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = [true, false].map(c => st.pilots.filter(p => isCaptClass(p.rank) === c && (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length);
-      if (n[0] < (S.standbyCapt || 0) || n[1] < (S.standbyFO || 0)) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 机长类${n[0]}/${S.standbyCapt} 副驾驶${n[1]}/${S.standbyFO}` }); }
+      if (st.standby && (st.standby[p.id] || []).length > (S.maxStandbyPerPilot == null ? 1 : S.maxStandbyPerPilot)) ded.push({ type: '备份超限', level: 'soft', msg: `${p.name} 本月备份${st.standby[p.id].length}天，超过每人上限`, pilot: p.id }); });
+    if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay == null ? 1 : S.standbyPerDay;
+      if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 ${n}/${need} 人` }); }
     st.pilots.forEach(p => { const h = idx.hours[p.id];
       if (h > S.maxHours + 1e-9) ded.push({ type: '月小时超上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${S.maxHours}h`, pilot: p.id });
       if (h < minHoursFor(p, st) - 1e-9) ded.push({ type: '月小时低于下限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h < ${minHoursFor(p, st)}h`, pilot: p.id }); });
