@@ -7,7 +7,7 @@
   const GCOL = { '教员': '#e6a23c', '机长': '#3ea6ff', '新机长': '#a78bfa', '副驾驶': '#2ecc8f' };
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => new Date(C.YEAR, C.MONTH - 1, d).getDay();
-  let st, sum, tab = 'gantt', lastSolveMs = null, leaveResult = null, leaveUndo = null;
+  let st, sum, tab = 'gantt', lastSolveMs = null, leaveResult = null;
   const ui = { gq: '', gg: '全部', tf: '全部', tq: '', cw: 150, fit: false };
   const CW_MIN = 6, CW_MAX = 240, BASE_CW = 150;
   const ZSTEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 67, 80, 90, 100, 110, 125, 150, 160];
@@ -63,12 +63,14 @@
       <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>第三人(三)</span>
       <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
+      ${ui.hl ? `<div class="hlbar">已高亮刚应用的调配（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
       <div class="gbox"><div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
     for (let d = 1; d <= C.DAYS; d++) h += `<div class="gday ${[0, 6].includes(dow(d)) ? 'we' : ''}" title="${dateOf(d)} 周${WK[dow(d)]}">${cw >= 70 ? `${dateOf(d)} 周${WK[dow(d)]}` : cw >= 26 ? `${d}<br>${WK[dow(d)]}` : cw >= 12 ? d : (d % 5 === 0 || d === 1 ? d : '')}</div>`;
     h += '</div>';
     for (const p of ps) {
       const hr = idx.hours[p.id]; const bad = hr > S.maxHours || hr < C.minHoursFor(p, st);
-      h += `<div class="grow"><div class="gcell0" title="${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? 'red' : ''}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
+      const hlr = ui.hl && ui.hl.pilots.has(p.id);
+      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点击：为此人临时请假 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? 'red' : ''}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
       for (let d = 1; d <= C.DAYS; d++) h += (p.leave || []).includes(d) ? '<div class="lv" title="请假"></div>' : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="备份（Standby）">${cw >= 30 && rh >= 18 ? '<span>备份</span>' : ''}</div>` : '<div></div>';
       h += '</div>';
@@ -79,7 +81,7 @@
         if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
         else if (lvl === 'mid') inner = `<div class="bh">${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
         else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${pr.id}</span>`;
-        h += `<div class="bar slot${slot} ${V[pr.id] ? 'viol' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
+        h += `<div class="bar slot${slot} ${V[pr.id] ? 'viol' : ''} ${hlr && ui.hl.pairings.has(pr.id) ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
       }
       h += '</div>';
     }
@@ -88,6 +90,8 @@
       <div class="zmenu hidden" id="zMenu">${[['日', 'd', '100%'], ['3日', '3', ''], ['周', 'w', ''], ['半月', 'h', ''], ['整月 · 全局', 'm', '适配']].map(([n, k, t]) => `<div class="zp" data-z="${k}"><span>${n}</span><span class="mut">${t}</span></div>`).join('')}</div></div></div>`;
     const gw0 = $('.gwrap'); const sizeG = () => { gw0.style.height = Math.max(240, innerHeight - gw0.getBoundingClientRect().top - 14) + 'px'; }; sizeG();
     if (ui.fit) { const av = gw0.clientHeight - $('.ghead').offsetHeight - 2; if (Math.abs(av - (ui.fitAvail || 0)) > 4) { ui.fitAvail = av; return rGantt(); } }
+    document.querySelectorAll('.lvable').forEach(c => c.onclick = () => { const id = c.dataset.pid; const nx = C.buildIndex(st).sched[id].find(pr => pr.start + pr.ndays - 1 >= 1); goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1); });
+    if ($('#hlClr')) { $('#hlClr').onclick = () => { ui.hl = null; rGantt(); }; $('#hlUndo').onclick = undoLeave; }
     $('#gq').oninput = e => { ui.gq = e.target.value; const pos = e.target.selectionStart; rGantt(); $('#gq').focus(); $('#gq').setSelectionRange(pos, pos); };
     $('#gg').onchange = e => { ui.gg = e.target.value; rGantt(); };
     const curP = () => ui.cw / BASE_CW * 100;
@@ -116,11 +120,14 @@
   }
 
   // ---------------- 编辑弹窗 ----------------
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.mLeave'); if (!b) return; const pr = st.pairings.find(x => x.id === $('#modalBox').dataset.pr); closeModal(); goLeave(b.dataset.pid, pr.start, pr.start + pr.ndays - 1); });
   function openEdit(id) {
+    $('#modalBox').dataset.pr = id;
     $('#tip').classList.add('hidden');
     const pr = st.pairings.find(x => x.id === id); const m = pm();
     const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
     let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
+      <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
       <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
       ${bpt.length ? `<div class="note warnc">提醒：自 ${[...new Set(bpt.map(l => C.apName(l.from, st)))].join('、')} 出港，始发站须配备血压测试仪</div>` : ''}
@@ -203,35 +210,83 @@
     $('#main').innerHTML = h;
   }
 
-  // ---------------- 请假调配 ----------------
-  let leaveSel = { pid: null, days: [] };
+  // ---------------- 请假调配（多方案） ----------------
+  let leaveSel = { pid: null, from: null, to: null }, leaveOpts = null, leaveHover = null, leaveHist = [];
+  const TYPE_TXT = { standby: ['备份', 'sbt'], rest: ['休息人员', 'rst'], chain: ['链式调换', 'cht'], manual: ['人工处理', 'mnt'] };
+  function genLeave() { const days = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) days.push(d);
+    leaveOpts = C.leaveOptions(st, leaveSel.pid, days); leaveHover = leaveOpts.solutions.findIndex(x => x.recommended); if (leaveHover < 0) leaveHover = 0; }
+  function goLeave(pid, from, to) { leaveSel = { pid, from: from || 1, to: to || from || 1 }; tab = 'leave'; genLeave(); render(); }
+  function miniGantt(sol) {
+    const m = pm(); const ws = sol ? sol.state : st; const idxA = C.buildIndex(ws), idxB = C.buildIndex(st);
+    const ids = [leaveSel.pid, ...(sol ? sol.people.map(x => x.id) : [])]; const chg = new Set(sol ? sol.steps.flatMap(x => [x.pairing, x.chain && x.chain.pairing]).filter(Boolean) : []);
+    const days = leaveOpts ? leaveOpts.days : []; const cw = 34, nw = 150;
+    let h = `<div class="mg" style="--cw:${cw}px"><div class="mgrow mghead"><div class="mgn">人员</div>${Array.from({ length: C.DAYS }, (_, i) => `<div class="mgd ${days.includes(i + 1) ? 'lvday' : ''} ${[0, 6].includes(dow(i + 1)) ? 'we' : ''}">${i + 1}</div>`).join('')}</div>`;
+    for (const id of [...new Set(ids)]) { const p = ws.pilots.find(x => x.id === id); const sb = (ws.standby || {})[id] || [];
+      h += `<div class="mgrow"><div class="mgn">${esc(p.name)} ${pill(p.rank)}<span class="mut">${idxB.hours[id].toFixed(0)}→${idxA.hours[id].toFixed(0)}h</span></div>`;
+      for (let d = 1; d <= C.DAYS; d++) h += `<div class="mgd ${(p.leave || []).includes(d) ? 'lv' : (p.prefs || []).includes(d) ? 'pref' : sb.includes(d) ? 'sb' : ''}"></div>`;
+      const cur = idxA.sched[id], old = idxB.sched[id];
+      old.filter(o => !cur.some(c => c.id === o.id)).forEach(pr => h += `<div class="mgbar gone" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${pr.id} 移出</div>`);
+      cur.forEach(pr => { const isNew = !old.some(o => o.id === pr.id); h += `<div class="mgbar ${isNew ? 'add' : chg.has(pr.id) ? 'chg' : ''}" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${pr.id}${isNew ? ' 新增' : ''}</div>`; });
+      h += '</div>'; }
+    return h + '</div>';
+  }
+  function solCard(sol, i) {
+    const m = {}; sol.state.pilots.forEach(p => m[p.id] = p); const nm = id => id && m[id] ? `${esc(m[id].name)} <span class="mut">${m[id].rank}</span>` : '<span class="red">空缺</span>';
+    const t = sol.manual || sol.unresolved ? TYPE_TXT.manual : null;
+    return `<div class="solc ${sol.recommended ? 'rec' : ''} ${i === leaveHover ? 'sel' : ''} ${sol.unresolved ? 'bad' : ''}" data-i="${i}">
+      <div class="solh"><b>方案 ${String.fromCharCode(65 + i)} · ${esc(sol.name)}</b>${sol.recommended ? '<span class="rtag">推荐</span>' : ''}${t ? `<span class="ttag ${t[1]}">${t[0]}</span>` : ''}<span class="score" title="综合评分（越低越好）：未解决×1000、新增硬违规×500、超工时范围×200、占意向休息×25、节奏扰动×4、基尼增量、链式层级、涉及人数；调用备份加分">评分 ${sol.score}</span></div>
+      <div class="note">${esc(sol.desc)}</div>
+      <table class="solt"><tr><th>任务</th><th>调整</th></tr>${sol.steps.map(x => `<tr><td>${x.pairing}<br><span class="mut">${C.SLOT_NAME[x.slot]}位</span></td><td>
+        <span class="diff-del">${esc(leaveOpts.pilot.name)}</span> → ${x.type === 'manual' ? '<span class="red">待人工</span>' : nm(x.to)} <span class="ttag ${TYPE_TXT[x.type][1]}">${TYPE_TXT[x.type][0]}</span>${x.prefWarn ? ` <span class="warnc">占${x.prefWarn}</span>` : ''}
+        ${x.chain ? `<div class="mut">↳ ${x.chain.pairing} ${C.SLOT_NAME[x.chain.slot]}位：<span class="diff-del">${nm(x.chain.from)}</span> → ${nm(x.chain.to)}${x.chain.fromStandby ? ' <span class="ttag sbt">备份</span>' : ''}</div>` : ''}
+        ${x.block ? `<div class="red" style="font-size:11px">受阻规则：${x.block.rules.map(esc).join('；') || '—'}<br>候选人主要不满足：${x.block.top.map(esc).join('，')}</div>` : ''}</td></tr>`).join('')}</table>
+      <div class="solk">
+        <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.inRange ? 'okc' : 'red'}">${x.ha.toFixed(1)}h</b> ${x.inRange ? '' : '<span class="red">超出范围</span>'}</div>`).join('') || '—'}</div>
+        <div><span class="lab">公平（基尼）</span>${sol.giniB.toFixed(4)}→${sol.giniA.toFixed(4)} <span class="${sol.giniD > 0.002 ? 'warnc' : 'okc'}">(${sol.giniD >= 0 ? '+' : ''}${sol.giniD.toFixed(4)})</span></div>
+        <div><span class="lab">意向休息 / 节奏</span>${sol.prefN ? `<span class="warnc">占用意向休息 ${sol.prefN} 天</span>` : '<span class="okc">不占意向休息</span>'} · ${sol.rhy ? `<span class="warnc">节奏扰动 +${sol.rhy}</span>` : '<span class="okc">节奏无扰动</span>'}</div>
+        <div><span class="lab">当日剩余备份</span>${sol.sbLeft.map(x => `<span class="${x.n ? '' : 'warnc'}">${x.d}日:${x.n}</span>`).join(' ')}</div>
+        <div><span class="lab">合规检查</span>${sol.unresolved ? `<span class="red">✖ ${sol.unresolved} 个岗位需人工处理</span>` : sol.hard ? `<span class="red">✖ 硬性违规 ${sol.hard}</span>` : '<span class="okc">✔ 座位搭配 ✔ 特殊机场 ✔ 休息/工时 · 硬性违规 0</span>'}${sol.bp.length ? `<br><span class="warnc">血压测试仪：${sol.bp.join('、')} 始发站须配备</span>` : ''}</div>
+      </div>
+      <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${sol.unresolved && !sol.steps.some(x => x.to) ? 'disabled' : ''}>${sol.unresolved ? '应用（空缺待人工）' : '一键应用'}</button></div>`;
+  }
   function rLeave() {
     const caps = st.pilots.filter(p => C.isCaptClass(p.rank)).concat(st.pilots.filter(p => C.isFO(p.rank)));
-    if (!leaveSel.pid) { const idx = C.buildIndex(st); const c = caps.slice().sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0]; leaveSel.pid = c.id; }
-    const idx = C.buildIndex(st); const p = st.pilots.find(x => x.id === leaveSel.pid);
-    let h = `<div class="grid g2"><div class="panel"><h3>1. 选择人员与请假日期 <small>默认列出机长，也可选副驾驶</small></h3>
-      <div class="flex"><select id="lvP">${caps.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select></div>
-      <div class="note" style="margin-top:8px">当前任务：${idx.sched[p.id].map(pr => `${pr.id}(${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''})`).join('，') || '无'}；已有请假：${(p.leave || []).join(',') || '无'}；意向休息：${(p.prefs || []).join(',') || '无'}</div>
-      <div class="daypick">${Array.from({ length: C.DAYS }, (_, i) => i + 1).map(d => { const busy = idx.sched[p.id].some(pr => C.daysTouched(pr, st).includes(d));
-        return `<span data-d="${d}" class="${leaveSel.days.includes(d) ? 'on' : ''}" style="${busy ? 'box-shadow:inset 0 -3px 0 #3ea6ff' : ''}">${d}${(p.leave || []).includes(d) ? '假' : ''}</span>`; }).join('')}</div>
-      <div class="note">蓝色下划线=当日有任务。点击日期选择/取消。</div>
-      <div style="margin-top:10px"><button class="btn primary" id="lvGo">执行请假调配</button>${leaveUndo ? '<button class="btn" id="lvUndo">撤销上次调配</button>' : ''}</div></div>
-      <div class="panel"><h3>2. 调配策略</h3><div class="note" style="line-height:1.9">• 仅移出与请假日期重叠的任务，其余机组成员<b>保持不变</b>（最小扰动）<br>• 替补候选须满足：级别岗位、全部航段座位搭配、特殊机场授权与搭配、新机长须有教员、无时间冲突、休息≥${st.settings.minRestH}h、不超过 ${st.settings.maxHours}h、不在请假期<br>• <b>首选当日备份（Standby）人员</b>，调用后自动撤销其相应备份日；其次选择本月小时较少、且不占用其意向休息日的人员<br>• 无法找到合规替补时列出原因，提示人工处理</div></div></div>`;
-    if (leaveResult) {
-      const r = leaveResult;
-      h += `<div class="panel"><h3>调配结果：${esc(r.pilot.name)}（${r.pilot.rank}）请假 ${r.days.join(',')} 日 <small>受影响任务 ${r.affected.length} 个 · 已替补 ${r.changes.length} · 未解决 <span class="${r.unresolved.length ? 'red' : 'okc'}">${r.unresolved.length}</span> · 其他任务变动 0</small></h3>
-        <table><tr><th>任务</th><th>岗位</th><th>调整前</th><th>调整后</th><th>说明</th></tr>
-        ${r.changes.map(c => `<tr><td>${c.pairing}</td><td>${C.SLOT_NAME[c.slot]}</td><td class="diff-del">${esc(c.from.name)} ${c.from.rank}</td><td class="diff-add">${esc(c.to.name)} ${c.to.rank}</td><td class="mut">${c.note || '合规替补，其余成员不变'}</td></tr>`).join('')}
-        ${r.unresolved.map(u => `<tr><td>${u.pairing}</td><td>${C.SLOT_NAME[u.slot]}</td><td class="diff-del">${esc(r.pilot.name)}</td><td class="red">空缺</td><td class="red">${esc(u.reason)}</td></tr>`).join('')}
-        ${!r.affected.length ? '<tr><td colspan=5 class="mut">所选日期内该人员无任务，仅登记请假</td></tr>' : ''}</table></div>`;
+    const idx = C.buildIndex(st);
+    if (!leaveSel.pid) { const c = caps.slice().sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0]; const pr = idx.sched[c.id][1] || idx.sched[c.id][0]; leaveSel = { pid: c.id, from: pr ? pr.start : 1, to: pr ? pr.start + pr.ndays - 1 : 1 }; }
+    const p = st.pilots.find(x => x.id === leaveSel.pid); const o = leaveOpts;
+    let h = `<div class="panel"><h3>临时请假 · 多方案调配 <small>选择人员与日期后即时生成 3–5 个方案；也可在人员视图点击姓名，或在任务弹窗点“临时请假”</small></h3>
+      <div class="flex" style="flex-wrap:wrap"><select id="lvP">${caps.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
+      <span>日期</span><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>至</span><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>日</span>
+      <button class="btn primary" id="lvGo">生成方案</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
+      <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'}</div></div>`;
+    if (o) {
+      h += `<div class="panel"><h3>${esc(o.pilot.name)}（${o.pilot.rank}）请假 ${o.days[0]}${o.days.length > 1 ? '–' + o.days[o.days.length - 1] : ''} 日 <small>受影响任务 ${o.affected.map(a => a.id + '·' + C.SLOT_NAME[a.slot] + '位').join('、') || '无'} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms${o.solutions.length < 3 && o.affected.length ? ' · 合规候选有限，仅找到这些不同方案' : ''}</small></h3>
+        ${o.solutions.some(x => x.manual) ? '<div class="note red">所有方案均有岗位无法合规补位，请人工处理（见各卡片“受阻规则”）</div>' : ''}
+        <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
+        <div class="panel"><h3>影响预览 <small>悬停/点选方案卡片高亮：<span class="okc">绿=新增任务</span> · <span class="warnc">橙=被调整任务</span> · <span class="red">红虚线=移出</span> · 紫底=请假日</small></h3><div id="mgBox">${miniGantt(o.solutions[leaveHover])}</div></div>`;
     }
+    h += `<div class="panel"><h3>调配历史 <small>可逐步撤销</small></h3>${leaveHist.length ? `<table>${leaveHist.slice().reverse().map(x => `<tr><td>${x.time}</td><td>${esc(x.label)}</td></tr>`).join('')}</table>` : '<div class="note">暂无</div>'}</div>`;
     $('#main').innerHTML = h;
-    $('#lvP').onchange = e => { leaveSel = { pid: e.target.value, days: [] }; leaveResult = null; rLeave(); };
-    document.querySelectorAll('.daypick span').forEach(s => s.onclick = () => { const d = +s.dataset.d; leaveSel.days = leaveSel.days.includes(d) ? leaveSel.days.filter(x => x !== d) : [...leaveSel.days, d]; rLeave(); });
-    $('#lvGo').onclick = () => { if (!leaveSel.days.length) return toast('请先选择请假日期');
-      leaveUndo = JSON.stringify(st); leaveResult = C.applyLeave(st, leaveSel.pid, leaveSel.days.slice().sort((a, b) => a - b)); leaveSel.days = []; refresh(); };
-    if ($('#lvUndo')) $('#lvUndo').onclick = () => { st = JSON.parse(leaveUndo); leaveUndo = null; leaveResult = null; refresh(); toast('已撤销'); };
+    const regen = () => { if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; genLeave(); rLeave(); };
+    $('#lvP').onchange = e => { leaveSel.pid = e.target.value; leaveOpts = null; rLeave(); };
+    $('#lvF').onchange = e => { leaveSel.from = +e.target.value; if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; leaveOpts = null; rLeave(); };
+    $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; rLeave(); };
+    document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });
+    $('#lvGo').onclick = regen;
+    document.querySelectorAll('.solc').forEach(c => { const i = +c.dataset.i;
+      c.onmouseenter = () => { $('#mgBox').innerHTML = miniGantt(o.solutions[i]); document.querySelectorAll('.solc').forEach(x => x.classList.toggle('hov', x === c)); };
+      c.onmouseleave = () => { $('#mgBox').innerHTML = miniGantt(o.solutions[leaveHover]); c.classList.remove('hov'); };
+      c.onclick = e => { if (e.target.closest('.solapply')) return; leaveHover = i; document.querySelectorAll('.solc').forEach(x => x.classList.toggle('sel', x === c)); $('#mgBox').innerHTML = miniGantt(o.solutions[i]); }; });
+    document.querySelectorAll('.solapply').forEach(b => b.onclick = () => { const sol = o.solutions[+b.dataset.i];
+      const label = `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${sol.steps.map(x => x.pairing + (x.to ? '→' + sol.state.pilots.find(p => p.id === x.to).name : '空缺') + (x.chain ? `（${x.chain.pairing}→${sol.state.pilots.find(p => p.id === x.chain.to).name}）` : '')).join('，')}`;
+      leaveHist.push({ snap: JSON.stringify(st), label, time: new Date().toTimeString().slice(0, 8) });
+      st = sol.state; ui.hl = { pairings: new Set(sol.steps.flatMap(x => [x.pairing, x.chain && x.chain.pairing]).filter(Boolean)), pilots: new Set([leaveSel.pid, ...sol.people.map(x => x.id)]), days: o.days };
+      leaveOpts = null; tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30); toast('✔ 已应用：' + esc(label) + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
+      const tu = $('#tUndo'); if (tu) tu.onclick = e => { e.preventDefault(); undoLeave(); }; });
+    if ($('#lvUndo')) $('#lvUndo').onclick = undoLeave;
   }
+  function scrollToHl() { const b = document.querySelector('.bar.hl'); const g = $('.gwrap'); if (b && g) { g.scrollTop = Math.max(0, b.parentElement.offsetTop - 140); g.scrollLeft = Math.max(0, b.offsetLeft - 420); } }
+  function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; refresh(); toast('已撤销：' + esc(x.label)); }
 
   // ---------------- 员工福利 ----------------
   function rWelfare() {
@@ -338,14 +393,14 @@
 
   // ---------------- 启动 ----------------
   load();
-  $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; location.hash = t; render(); } };
+  $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; location.hash = t; render(); } };
   $('#btnAuto').onclick = () => runAuto();
   $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; refresh(); } };
-  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveResult = null; leaveUndo = null; reset(true); toast('已重置示例数据'); } };
+  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; ui.hl = null; reset(true); toast('已重置示例数据'); } };
   $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
   const hp = location.hash.slice(1).split('&'); if (hp[0]) tab = hp[0];
   sum = C.summarize(st); renderKpis(); render();
   if (hp.includes('auto')) runAuto(() => { if (hp.includes('leave')) { const idx = C.buildIndex(st); const c = st.pilots.filter(p => p.rank === 'J3').sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0];
-    const ds = C.daysTouched(idx.sched[c.id][1], st); leaveSel = { pid: c.id, days: ds }; leaveUndo = JSON.stringify(st); leaveResult = C.applyLeave(st, c.id, ds); leaveSel.days = []; refresh(); }
+    const pr = idx.sched[c.id][1]; goLeave(c.id, pr.start, pr.start + pr.ndays - 1); }
     if (hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length); openEdit(pr.id); document.querySelectorAll('#modalBox details')[0].open = true; } document.title += ' ready'; });
 })();

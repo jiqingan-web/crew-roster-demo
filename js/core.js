@@ -581,7 +581,120 @@
     return { pilot: p, days, affected: affected.map(x => x.id), changes, unresolved, before };
   }
 
-  return { migrateSettings, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+
+  // ---------- 临时请假 · 多方案 ----------
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const prOf = (w, id) => w.pairings.find(x => x.id === id);
+  function rhythmCost(p, list, st) { return restGaps(p, list, st).reduce((s, g) => s + (g <= 1 ? 3 : g === 4 ? 1 : g >= 5 ? 2 : 0), 0); }
+  function addCost(w, p, pr, idx) { const sc = idx.sched[p.id]; return rhythmCost(p, sc.concat([pr]), w) - rhythmCost(p, sc, w); }
+  function takeStandby(w, pid, pr) { if (w.standby && w.standby[pid]) { const td = daysTouched(pr, w); w.standby[pid] = w.standby[pid].filter(d => !td.includes(d)); } }
+  // 链式调换：从另一任务 Q 调来 q 顶替 pr，再为 Q 找替补（最多 2 层）
+  function chainOpts(w, pr, slot, ban, max) {
+    const idx = buildIndex(w); const out = []; const td = daysTouched(pr, w); let tries = 0;
+    const qs = w.pilots.filter(q => slotRankOK(slot, q.rank) && !ban.has(q.id) && !Object.values(pr.crew).includes(q.id) && !td.some(d => (q.leave || []).includes(d) || (q.prefs || []).includes(d)))
+      .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+    for (const q of qs) {
+      if (out.length >= (max || 3) || tries > 80) break;
+      const [, rs] = personCheck(q, pr, w, idx, { ignorePrefs: true }); if (!rs.length) continue;
+      const ids = [...new Set(rs.map(r => (r.match(/\((PR\d+)\)/) || [])[1]))]; if (ids.length !== 1 || !ids[0] || rs.some(r => !/\(PR\d+\)/.test(r) && !/超出月上限/.test(r))) continue;
+      const Q = prOf(w, ids[0]); const sQ = ['C', 'F', 'T'].find(x => Q.crew[x] === q.id); if (!sQ || ban.has('PR:' + Q.id)) continue; tries++;
+      Q.crew[sQ] = null; const idx2 = buildIndex(w);
+      const [ok2] = personCheck(q, pr, w, idx2, { ignorePrefs: true }); const crew = ['C', 'F', 'T'].map(x => x === slot ? q : (pr.crew[x] && idx2.pm[pr.crew[x]]));
+      if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > w.settings.maxHours)) {
+        pr.crew[slot] = q.id;
+        const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id).sort((a, b) => (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
+        pr.crew[slot] = null;
+        if (bf) out.push({ q, Q, sQ, bf });
+      }
+      Q.crew[sQ] = q.id;
+    }
+    return out;
+  }
+  function blockReason(w, pr, slot) {
+    const all = candidates(w, pr, slot).filter(c => slotRankOK(slot, c.p.rank)); const cnt = {};
+    all.forEach(c => c.reasons.forEach(r => { const k = r.replace(/\(.*\)/, '').replace(/：.*/, ''); cnt[k] = (cnt[k] || 0) + 1; }));
+    const rules = []; const sp = specialAirportsOf(pr, w);
+    if (pr.legs.some(l => l.to === 'ZULS' || l.from === 'ZULS')) rules.push('拉萨航段须两名 J3 及以上');
+    if (sp.length) rules.push('特殊机场 ' + sp.map(c => apName(c, w)).join('、') + ' 须授权/级别搭配');
+    const crew = ['C', 'F', 'T'].map(x => pr.crew[x] && w.pilots.find(p => p.id === pr.crew[x])).filter(Boolean);
+    if (crew.some(x => isNew(x.rank)) && slot !== 'F') rules.push('新机长所在机组须有 TL 及以上教员');
+    const bp = pr.legs.filter(l => (w.settings.bpTesterAirports || []).includes(l.from)); if (bp.length) rules.push('始发站 ' + [...new Set(bp.map(l => apName(l.from, w)))].join('、') + ' 须配备血压测试仪（提醒）');
+    return { top: Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => k + '×' + n), rules };
+  }
+  const STRATS = {
+    standby: { name: '调用当日备份', desc: '优先使用备份（Standby）人员' },
+    rhythm: { name: '休息人员 · 节奏最优', desc: '空闲且合格，尽量不打乱 3–4 天飞 / 2–3 天休节奏' },
+    hours: { name: '休息人员 · 工时均衡', desc: '空闲且合格，优先本月小时较少者' },
+    alt: { name: '休息人员 · 备选', desc: '与其他方案不同的另一批候选人' },
+    chain: { name: '链式调换', desc: '从其他任务调人顶替，再为该任务补位（≤2 层）' } };
+  function leaveOptions(st, pilotId, days, opt) {
+    opt = opt || {}; const t0 = Date.now();
+    const base = clone(st); const p = base.pilots.find(x => x.id === pilotId); if (!p) return null;
+    p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b); p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
+    if (base.standby && base.standby[pilotId]) base.standby[pilotId] = base.standby[pilotId].filter(d => !p.leave.includes(d));
+    const affected = base.pairings.filter(pr => Object.values(pr.crew).includes(pilotId) && daysTouched(pr, base).some(d => days.includes(d))).sort((a, b) => a.start - b.start);
+    const vac = affected.map(pr => { const slot = ['C', 'F', 'T'].find(x => pr.crew[x] === pilotId); pr.crew[slot] = null; return { id: pr.id, slot }; });
+    const before = summarize(st), bIdx = buildIndex(st);
+    if (!vac.length) { const sol = evaluate(st, base, [], 'none', before, bIdx); sol.name = '仅登记请假'; sol.desc = '所选日期内无任务，无需调配'; return { pilot: p, days, affected: [], solutions: [sol], ms: Date.now() - t0 }; }
+    const sols = []; const usedRest = new Set();
+    const keys = ['standby', 'rhythm', 'hours', 'chain', 'alt', 'alt', 'alt', 'alt']; let uniq = new Set();
+    for (let ki = 0; ki < keys.length; ki++) { const key = keys[ki]; if (ki >= 5 && uniq.size >= 3) break;
+      const w = clone(base); const steps = []; const ban = new Set([pilotId]);
+      for (const v of vac) {
+        const pr = prOf(w, v.id); const idx = buildIndex(w);
+        const cands = candidates(w, pr, v.slot).filter(c => c.ok && !ban.has(c.p.id));
+        const sb = cands.filter(c => c.standby.length).sort((a, b) => a.hours - b.hours);
+        let rest = cands.filter(c => !c.standby.length);
+        const noPref = rest.filter(c => !c.warn); if (noPref.length) rest = noPref;
+        rest.forEach(c => c.rc = addCost(w, c.p, pr, idx));
+        const byRhythm = rest.slice().sort((a, b) => a.rc - b.rc || a.hours - b.hours), byHours = rest.slice().sort((a, b) => a.hours - b.hours || a.rc - b.rc);
+        let pick = null, chain = null;
+        const restPick = list => list[0] && { c: list[0], type: 'rest' };
+        if (key === 'standby') pick = sb[0] ? { c: sb[0], type: 'standby' } : restPick(byRhythm);
+        else if (key === 'rhythm') pick = restPick(byRhythm);
+        else if (key === 'hours') pick = restPick(byHours);
+        else if (key === 'alt') pick = restPick(byRhythm.filter(c => !usedRest.has(c.p.id))) || restPick(byRhythm);
+        else if (key === 'chain') { chain = chainOpts(w, pr, v.slot, ban, 1)[0]; if (!chain) pick = sb[0] ? { c: sb[0], type: 'standby' } : restPick(byRhythm); }
+        if (!pick && !chain && key !== 'chain') chain = chainOpts(w, pr, v.slot, ban, 1)[0];
+        if (!pick && !chain && sb[0]) pick = { c: sb[0], type: 'standby' };
+        if (chain) { const { q, Q, sQ, bf } = chain; Q.crew[sQ] = bf.p.id; pr.crew[v.slot] = q.id; takeStandby(w, bf.p.id, Q); takeStandby(w, q.id, pr);
+          ban.add(q.id); ban.add(bf.p.id);
+          steps.push({ pairing: pr.id, slot: v.slot, type: 'chain', to: q.id, chain: { pairing: Q.id, slot: sQ, from: q.id, to: bf.p.id, fromStandby: bf.standby.length > 0 } });
+        } else if (pick) { const q = pick.c.p; pr.crew[v.slot] = q.id; takeStandby(w, q.id, pr); ban.add(q.id); if (pick.type === 'rest') usedRest.add(q.id);
+          steps.push({ pairing: pr.id, slot: v.slot, type: pick.type, to: q.id, prefWarn: pick.c.warn || '' });
+        } else steps.push({ pairing: pr.id, slot: v.slot, type: 'manual', block: blockReason(w, pr, v.slot) });
+      }
+      const sol = evaluate(st, w, steps, key, before, bIdx); sol.name = STRATS[key].name + (ki > 4 ? ' ' + (ki - 3) : ''); sol.desc = STRATS[key].desc; sols.push(sol); uniq.add(sol.sig);
+    }
+    const seen = new Set(); let out = sols.filter(x => { if (seen.has(x.sig)) return false; seen.add(x.sig); return true; });
+    out.sort((a, b) => a.score - b.score);
+    const ok = out.filter(x => !x.unresolved); if (ok.length) ok[0].recommended = true;
+    if (!ok.length) out.forEach(x => x.manual = true);
+    return { pilot: p, days, affected: vac, solutions: out.slice(0, opt.max || 5), ms: Date.now() - t0 };
+  }
+  function evaluate(st0, w, steps, key, before, bIdx) {
+    const s = summarize(w), idx = buildIndex(w); const pm = {}; w.pilots.forEach(p => pm[p.id] = p);
+    const ids = new Set(); steps.forEach(x => { if (x.to) ids.add(x.to); if (x.chain) { ids.add(x.chain.from); ids.add(x.chain.to); } });
+    const people = [...ids].map(id => { const p = pm[id], hb = bIdx.hours[id], ha = idx.hours[id];
+      const newPr = idx.sched[id].filter(pr => !bIdx.sched[id].some(o => o.id === pr.id));
+      const prefHit = [...new Set(newPr.flatMap(pr => daysTouched(pr, w)).filter(d => (p.prefs || []).includes(d)))];
+      const rb = rhythmCost(p, bIdx.sched[id], w), ra = rhythmCost(p, idx.sched[id], w);
+      return { id, name: p.name, rank: p.rank, hb, ha, inRange: ha <= w.settings.maxHours + 1e-9 && ha >= minHoursFor(p, w) - 1e-9, prefHit, rhythm: ra - rb }; });
+    const days = [...new Set(steps.flatMap(x => daysTouched(prOf(w, x.pairing), w)))].sort((a, b) => a - b);
+    const sbLeft = days.map(d => ({ d, n: w.pilots.filter(p => ((w.standby || {})[p.id] || []).includes(d)).length }));
+    const unresolved = steps.filter(x => x.type === 'manual').length;
+    const hardNew = s.hard - (unresolved ? steps.filter(x => x.type === 'manual').length : 0);
+    const bp = steps.filter(x => x.type !== 'manual').map(x => prOf(w, x.pairing)).filter(pr => pr.legs.some(l => (w.settings.bpTesterAirports || []).includes(l.from))).map(pr => pr.id);
+    const giniD = s.all.gini - before.all.gini; const prefN = people.reduce((a, x) => a + x.prefHit.length, 0); const rhy = people.reduce((a, x) => a + Math.max(0, x.rhythm), 0);
+    const nSb = steps.filter(x => x.type === 'standby' || (x.chain && x.chain.fromStandby)).length, nChain = steps.filter(x => x.type === 'chain').length;
+    const outR = people.filter(x => !x.inRange).length;
+    const score = unresolved * 1000 + Math.max(0, hardNew) * 500 + outR * 200 + prefN * 25 + rhy * 4 + Math.max(0, giniD) * 2000 + nChain * 6 + people.length * 2 - nSb * 5
+      + sbLeft.filter(x => x.n === 0).length * 3;
+    return { key, steps, state: w, people, giniB: before.all.gini, giniA: s.all.gini, giniD, sbLeft, unresolved, hard: s.hard, hardNew: Math.max(0, hardNew), bp, prefN, rhy, score: Math.round(score * 10) / 10,
+      gap23B: before.rhythm.gap23, gap23A: s.rhythm.gap23, sig: steps.map(x => x.pairing + x.slot + (x.to || 'x') + (x.chain ? x.chain.pairing + x.chain.to : '')).join('|') };
+  }
+
+  return { leaveOptions, migrateSettings, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, minHoursFor, SLOT_NAME, slotRankOK, blockMin };
