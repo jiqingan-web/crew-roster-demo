@@ -96,7 +96,7 @@
   const GIV = ['伟', '强', '磊', '军', '勇', '杰', '涛', '斌', '超', '明', '刚', '平', '辉', '鹏', '华', '飞', '鑫', '波', '宇', '浩', '凯', '健', '俊', '帆', '帅', '旭', '宁', '龙', '林', '阳', '洋', '翔', '峰', '晨', '博', '昊', '睿', '航', '子轩', '一鸣', '志强', '建国', '海涛', '天佑', '思远', '浩然', '俊杰', '晓东', '文博', '明轩', '雨辰', '嘉豪', '国栋', '振宇', '立新', '云飞', '少华', '春雷', '晓峰', '子豪', '静', '婷', '丹', '雪', '琳'];
 
   function defaultSettings() {
-    return { minRestH: 12, minHours: 30, maxHours: 70, maxOffCapt: 4, maxOffFO: 7,
+    return { minRestH: 12, minHours: 30, maxHours: 70, hardMaxHours: 90, maxOffCapt: 4, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
       standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.35 };
   }
@@ -235,6 +235,9 @@
   }
   function minHoursFor(p, st) { const avail = DAYS - (p.leave || []).length; return Math.round(st.settings.minHours * avail / DAYS * 10) / 10; }
 
+  // 请假调配期间允许突破目标上限（至法规硬上限）
+  let capOverride = null;
+  const hardCap = st => st.settings.hardMaxHours || 90;
   // 某人能否执行某任务（不含组合规则）。返回 [ok, reasons[] ]
   function personCheck(p, pr, st, idx, opt) {
     opt = opt || {}; const rs = []; const S = st.settings;
@@ -247,7 +250,7 @@
       if (oa < b && a < ob) { rs.push('时间冲突(' + o.id + ')'); continue; }
       if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) rs.push('休息不足' + S.minRestH + 'h(' + o.id + ')'); }
     const h = pairingHours(pr), already = idx.sched[p.id].includes(pr);
-    if (!already && idx.hours[p.id] + h > S.maxHours + 1e-9) rs.push('超出月上限' + S.maxHours + 'h');
+    const cap = capOverride || S.maxHours; if (!already && idx.hours[p.id] + h > cap + 1e-9) rs.push((capOverride ? '超出法规硬上限' : '超出目标上限') + cap + 'h');
     return [rs.length === 0, rs];
   }
 
@@ -497,8 +500,9 @@
     if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay == null ? 1 : S.standbyPerDay;
       if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 ${n}/${need} 人` }); }
     st.pilots.forEach(p => { const h = idx.hours[p.id];
-      if (h > S.maxHours + 1e-9) ded.push({ type: '月小时超上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${S.maxHours}h`, pilot: p.id });
-      if (h < minHoursFor(p, st) - 1e-9) ded.push({ type: '月小时低于下限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h < ${minHoursFor(p, st)}h`, pilot: p.id }); });
+      if (h > hardCap(st) + 1e-9) ded.push({ type: '月小时超法规上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${hardCap(st)}h（CAAC 月度硬上限）`, pilot: p.id });
+      else if (h > S.maxHours + 1e-9) ded.push({ type: '月小时超目标上限', level: 'soft', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > 目标 ${S.maxHours}h（未超 ${hardCap(st)}h 硬上限）`, pilot: p.id });
+      if (h < minHoursFor(p, st) - 1e-9) ded.push({ type: '月小时低于目标下限', level: 'soft', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h < ${minHoursFor(p, st)}h`, pilot: p.id }); });
     return ded;
   }
 
@@ -600,7 +604,7 @@
       const Q = prOf(w, ids[0]); const sQ = ['C', 'F', 'T'].find(x => Q.crew[x] === q.id); if (!sQ || ban.has('PR:' + Q.id)) continue; tries++;
       Q.crew[sQ] = null; const idx2 = buildIndex(w);
       const [ok2] = personCheck(q, pr, w, idx2, { ignorePrefs: true }); const crew = ['C', 'F', 'T'].map(x => x === slot ? q : (pr.crew[x] && idx2.pm[pr.crew[x]]));
-      if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > w.settings.maxHours)) {
+      if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > hardCap(w))) {
         pr.crew[slot] = q.id;
         const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id).sort((a, b) => (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
         pr.crew[slot] = null;
@@ -627,7 +631,8 @@
     hours: { name: '休息人员 · 工时均衡', desc: '空闲且合格，优先本月小时较少者' },
     alt: { name: '休息人员 · 备选', desc: '与其他方案不同的另一批候选人' },
     chain: { name: '链式调换', desc: '从其他任务调人顶替，再为该任务补位（≤2 层）' } };
-  function leaveOptions(st, pilotId, days, opt) {
+  function leaveOptions(st, pilotId, days, opt) { capOverride = hardCap(st); try { return leaveOptions0(st, pilotId, days, opt); } finally { capOverride = null; } }
+  function leaveOptions0(st, pilotId, days, opt) {
     opt = opt || {}; const t0 = Date.now();
     const base = clone(st); const p = base.pilots.find(x => x.id === pilotId); if (!p) return null;
     p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b); p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
@@ -679,7 +684,7 @@
       const newPr = idx.sched[id].filter(pr => !bIdx.sched[id].some(o => o.id === pr.id));
       const prefHit = [...new Set(newPr.flatMap(pr => daysTouched(pr, w)).filter(d => (p.prefs || []).includes(d)))];
       const rb = rhythmCost(p, bIdx.sched[id], w), ra = rhythmCost(p, idx.sched[id], w);
-      return { id, name: p.name, rank: p.rank, hb, ha, inRange: ha <= w.settings.maxHours + 1e-9 && ha >= minHoursFor(p, w) - 1e-9, prefHit, rhythm: ra - rb }; });
+      return { id, name: p.name, rank: p.rank, hb, ha, inRange: ha <= w.settings.maxHours + 1e-9 && ha >= minHoursFor(p, w) - 1e-9, overTarget: ha > w.settings.maxHours + 1e-9 && ha <= hardCap(w) + 1e-9, overHard: ha > hardCap(w) + 1e-9, prefHit, rhythm: ra - rb }; });
     const days = [...new Set(steps.flatMap(x => daysTouched(prOf(w, x.pairing), w)))].sort((a, b) => a - b);
     const sbLeft = days.map(d => ({ d, n: w.pilots.filter(p => ((w.standby || {})[p.id] || []).includes(d)).length }));
     const unresolved = steps.filter(x => x.type === 'manual').length;
@@ -687,10 +692,10 @@
     const bp = steps.filter(x => x.type !== 'manual').map(x => prOf(w, x.pairing)).filter(pr => pr.legs.some(l => (w.settings.bpTesterAirports || []).includes(l.from))).map(pr => pr.id);
     const giniD = s.all.gini - before.all.gini; const prefN = people.reduce((a, x) => a + x.prefHit.length, 0); const rhy = people.reduce((a, x) => a + Math.max(0, x.rhythm), 0);
     const nSb = steps.filter(x => x.type === 'standby' || (x.chain && x.chain.fromStandby)).length, nChain = steps.filter(x => x.type === 'chain').length;
-    const outR = people.filter(x => !x.inRange).length;
-    const score = unresolved * 1000 + Math.max(0, hardNew) * 500 + outR * 200 + prefN * 25 + rhy * 4 + Math.max(0, giniD) * 2000 + nChain * 6 + people.length * 2 - nSb * 5
+    const outR = people.filter(x => x.overHard).length; const overT = people.reduce((a, x) => a + (x.overTarget ? x.ha - w.settings.maxHours : 0), 0);
+    const score = unresolved * 1000 + Math.max(0, hardNew) * 500 + outR * 200 + overT * 8 + prefN * 25 + rhy * 4 + Math.max(0, giniD) * 2000 + nChain * 6 + people.length * 2 - nSb * 5
       + sbLeft.filter(x => x.n === 0).length * 3;
-    return { key, steps, state: w, people, giniB: before.all.gini, giniA: s.all.gini, giniD, sbLeft, unresolved, hard: s.hard, hardNew: Math.max(0, hardNew), bp, prefN, rhy, score: Math.round(score * 10) / 10,
+    return { key, steps, state: w, people, giniB: before.all.gini, giniA: s.all.gini, giniD, sbLeft, unresolved, overT: Math.round(overT * 10) / 10, hard: s.hard, hardNew: Math.max(0, hardNew), bp, prefN, rhy, score: Math.round(score * 10) / 10,
       gap23B: before.rhythm.gap23, gap23A: s.rhythm.gap23, sig: steps.map(x => x.pairing + x.slot + (x.to || 'x') + (x.chain ? x.chain.pairing + x.chain.to : '')).join('|') };
   }
 
