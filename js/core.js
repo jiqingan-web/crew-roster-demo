@@ -744,29 +744,48 @@
     const row = T.find(r => h >= r.from && h < r.to) || T[T.length - 1]; const c = nLegs <= 4 ? 0 : nLegs === 5 ? 1 : nLegs === 6 ? 2 : 3;
     return row.lim[c] * 60;
   }
-  // 逐日 FDP（含延误推算）。delays: { legKey: 分钟 }；pr.freshAt=legKey 表示该段起新机组按实际起飞前报到
-  function fdpDays(pr, st, delays) {
-    delays = delays || {}; const S = st.settings; const rep = S.reportMin || 60, rel = S.releaseMin || 30, turn = S.minTurnMin || 35;
-    const out = []; let prev = null;
-    pr.legs.forEach((l, i) => { const dly = Math.max(0, +delays[legKey(l)] || 0);
-      let dep = l.dep + dly;
-      if (prev && prev.leg.d === l.d) dep = Math.max(dep, prev.arr + Math.min(turn, l.dep - prev.leg.arr));
-      const x = { i, leg: l, dly, dep, arr: dep + (l.arr - l.dep), late: dep - l.dep };
+  // 逐日 FDP（按实际/预计时刻，不做延误级联）。
+  // acts: { legKey: { dep?:分钟, arr?:分钟, kind:'est'|'act' } }（分钟自 11/01 00:00，可跨午夜）。
+  // 未录入的航段按计划时刻；录入起飞未录落地时，落地 = 起飞 + 计划轮挡。pr.freshAt=legKey：新机组自该段（实际/预计）起飞前报到。
+  // 另算“若不追回”的级联推算（cascEnd/cascExceed），仅作提示，不计入超限。
+  function fdpDays(pr, st, acts) {
+    acts = acts || {}; const S = st.settings; const rep = S.reportMin || 60, rel = S.releaseMin || 30, turn = S.minTurnMin || 35;
+    const out = []; let prevC = null;
+    pr.legs.forEach((l, i) => { const a = acts[legKey(l)] || {}; const blk = l.arr - l.dep;
+      const dep = a.dep != null ? a.dep : l.dep; const arr = a.arr != null ? a.arr : (a.dep != null ? a.dep + blk : l.arr);
+      const known = a.dep != null || a.arr != null;
+      // 级联（不追回）推算：录入值优先，否则受前段级联落地 + 最短过站约束
+      let cdep = known ? dep : l.dep; if (!known && prevC && prevC.leg.d === l.d) cdep = Math.max(cdep, prevC.carr + Math.min(turn, l.dep - prevC.leg.arr));
+      const carr = known ? arr : cdep + blk;
+      const x = { i, leg: l, dep, arr, known, kind: known ? (a.kind || 'est') : 'plan', landed: a.arr != null && a.kind === 'act', departed: a.dep != null && a.kind === 'act',
+        late: dep - l.dep, lateArr: arr - l.arr, cdep, carr, conflict: prevC && prevC.leg.d === l.d && dep < prevC.arr && !known ? prevC.arr - dep : 0 };
+      x.dly = Math.max(0, x.late); // 兼容
       let day = out[out.length - 1]; if (!day || day.d !== l.d) { day = { d: l.d, legs: [] }; out.push(day); }
-      day.legs.push(x); prev = x; });
+      day.legs.push(x); prevC = x; });
     out.forEach((dy, k) => { const f = dy.legs[0];
       dy.date = Math.floor(f.leg.dep / DAY) + 1;
       dy.start = (pr.freshAt && pr.freshAt === legKey(f.leg)) ? f.dep - rep : f.leg.dep - rep;
-      dy.end = dy.legs[dy.legs.length - 1].arr; dy.planEnd = dy.legs[dy.legs.length - 1].leg.arr;
+      dy.end = Math.max(...dy.legs.map(x => x.arr)); dy.planEnd = dy.legs[dy.legs.length - 1].leg.arr;
+      dy.cascEnd = Math.max(...dy.legs.map(x => x.carr));
       dy.fdp = dy.end - dy.start; dy.planFdp = dy.planEnd - (f.leg.dep - rep);
       dy.limit = fdpLimit(st, f.leg.dep - rep, dy.legs.length); dy.buffer = dy.limit - dy.fdp; dy.planBuffer = dy.limit - dy.planFdp;
       dy.exceed = Math.max(0, -dy.buffer);
+      dy.cascExceed = dy.exceed ? 0 : Math.max(0, dy.cascEnd - dy.start - dy.limit);
+      dy.cascLeg = dy.cascExceed ? dy.legs.find(x => x.carr > dy.start + dy.limit) : null;
       dy.exLeg = dy.exceed ? dy.legs.find(x => x.arr > dy.start + dy.limit) : null;
+      dy.nLanded = dy.legs.filter(x => x.landed).length; dy.nKnown = dy.legs.filter(x => x.known).length;
       dy.risk = dy.buffer < 0 ? 'over' : dy.buffer < (S.fdpRiskHigh || 60) ? 'high' : dy.buffer < (S.fdpRiskMed || 120) ? 'med' : 'low';
       dy.planRisk = dy.planBuffer < 0 ? 'over' : dy.planBuffer < (S.fdpRiskHigh || 60) ? 'high' : dy.planBuffer < (S.fdpRiskMed || 120) ? 'med' : 'low';
       const nx = out[k + 1]; if (nx) { const req = (S.minOvernightRestH || 10) * 60; dy.restAfter = (nx.legs[0].dep - rep) - (dy.end + rel); dy.planRest = (nx.legs[0].leg.dep - rep) - (dy.planEnd + rel);
         dy.restShort = dy.restAfter < dy.planRest ? Math.max(0, req - dy.restAfter) : 0; dy.planRestShort = Math.max(0, req - dy.planRest); } });
     return out;
+  }
+  // 旧版 st.delays {legKey: 分钟} → st.actuals：仅对该段本身设预计起飞/落地（不再级联）
+  function migrateDelays(st) {
+    if (!st.delays) { st.actuals = st.actuals || {}; return st; }
+    st.actuals = st.actuals || {}; const legs = {}; st.pairings.forEach(p => p.legs.forEach(l => legs[legKey(l)] = l));
+    Object.keys(st.delays).forEach(k => { const v = +st.delays[k] || 0; const l = legs[k]; if (l && v > 0 && !st.actuals[k]) st.actuals[k] = { dep: l.dep + v, arr: l.arr + v, kind: 'est' }; });
+    delete st.delays; return st;
   }
   const RISK_ORDER = { over: 0, high: 1, med: 2, low: 3 };
   function pairingRisk(pr, st, delays) { const ds = fdpDays(pr, st, delays); const w = ds.slice().sort((a, b) => RISK_ORDER[delays ? a.risk : a.planRisk] - RISK_ORDER[delays ? b.risk : b.planRisk] || a.buffer - b.buffer)[0];
@@ -788,7 +807,7 @@
     return out;
   }
   function dutyMonitor(st, date) {
-    const delays = st.delays || {}; const idx = buildIndex(st); const res = [];
+    const delays = st.actuals || {}; const idx = buildIndex(st); const res = [];
     for (const pr of st.pairings) { const ds = fdpDays(pr, st, delays); const dy = ds.find(x => x.date === date); if (!dy) continue;
       const dn = downstream(st, pr, ds, idx).filter(x => !x.overnight || x.d >= dy.d);
       res.push({ pr, day: dy, days: ds, downstream: dn, exceed: ds.some(x => x.exceed > 0 && x.date >= date) }); }
@@ -804,7 +823,7 @@
     pr.freshAt = legKey(pr.legs[0]); return { A: null, B: pr };
   }
   function fdpOptions(st, prId, opt) {
-    opt = opt || {}; const t0 = Date.now(); const delays = st.delays || {};
+    opt = opt || {}; const t0 = Date.now(); const delays = st.actuals || {};
     const pr0 = st.pairings.find(p => p.id === prId); if (!pr0) return null;
     const ds0 = fdpDays(pr0, st, delays); const idx0 = buildIndex(st);
     const ex = ds0.find(x => x.exceed > 0) || null; const dn0 = downstream(st, pr0, ds0, idx0);
@@ -853,7 +872,7 @@
     sol.fdpAfter = ex; sol.restAfterV = rv; sol.score = Math.round((sol.score + ex * 800 + rv * 300) * 10) / 10;
   }
 
-  return { fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+  return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, shareFor, SLOT_NAME, slotRankOK, blockMin };
