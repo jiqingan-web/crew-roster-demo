@@ -176,3 +176,18 @@ details summary{cursor:pointer;color:var(--mut)}
 
 .solbtns{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
 .solbtns .solext{margin:0}.solbtns .solapply{margin:0}
+
+/* 人员总览 */
+.rost{font-size:12px;border-collapse:collapse;width:100%}
+.rost th,.rost td{padding:5px 6px;border-bottom:1px solid #1a2e52;text-align:center;white-space:nowrap}
+.rost th{position:sticky;top:0;background:#0f203d;z-index:2;font-weight:600;color:var(--mut)}
+.rost th.ath{font-size:11px;writing-mode:horizontal-tb;max-width:52px}
+.rost td:nth-child(2),.rost td.hcell{text-align:left}
+.rost tr.rorow{cursor:pointer}.rost tr.rorow:hover{background:#132848}
+.authtag{display:inline-block;min-width:18px;padding:1px 6px;margin:1px;border-radius:9px;background:#1a2a45;color:#6a7f9e;border:1px solid #2a3f66;font-size:11px;line-height:1.4}
+.authtag.on{background:#0f5a3e;color:#8ff0d8;border-color:#2ecc8f}
+.authgrid{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.authgrid .authtag{cursor:pointer;padding:4px 10px}.authgrid .authtag:hover{filter:brightness(1.15)}
+.hb{display:inline-block;padding:1px 7px;border-radius:8px;background:#1d3460;color:#9fd4ff;font-size:11px;margin:1px 2px}
+.hb.warn{background:#5b3b0a;color:#ffd58a}.hb.bad{background:#5a1c27;color:#ffb3ba}
+.lab{display:block;color:var(--mut);font-size:11px;margin-bottom:3px}

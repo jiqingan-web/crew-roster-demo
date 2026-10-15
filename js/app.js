@@ -8,11 +8,11 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => new Date(C.YEAR, C.MONTH - 1, d).getDay();
   let st, sum, tab = 'gantt', lastSolveMs = null, leaveResult = null;
-  const ui = { gq: '', gg: '全部', tf: '全部', tq: '', cw: 150, fit: false };
+  const ui = { gq: '', gg: '全部', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '全部', ra: '全部', rh: '全部' };
   const CW_MIN = 6, CW_MAX = 240, BASE_CW = 150;
   const ZSTEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 67, 80, 90, 100, 110, 125, 150, 160];
 
-  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); return; } } catch (e) {} reset(false); }
+  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st); return; } } catch (e) {} reset(false); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
   function refresh() { sum = C.summarize(st); renderKpis(); render(); save(); }
@@ -33,7 +33,7 @@
   }
   function render() {
     document.querySelectorAll('#tabs>button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    ({ gantt: rGantt, tasks: rTasks, report: rReport, leave: rLeave, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+    ({ gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
 
   // ---------------- 人员视图 ----------------
@@ -552,6 +552,120 @@
   }
   function scrollToHl() { const b = document.querySelector('.bar.hl'); const g = $('.gwrap'); if (b && g) { g.scrollTop = Math.max(0, b.parentElement.offsetTop - 140); g.scrollLeft = Math.max(0, b.offsetLeft - 420); } }
   function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; refresh(); toast('已撤销：' + esc(x.label)); }
+
+  // ---------------- 人员总览（授权 / 健康限制） ----------------
+  function rRoster() {
+    C.migratePilots(st);
+    const authList = C.authAirports(st);
+    const levelList = C.levelAirports(st);
+    let ps = st.pilots.slice().sort((a, b) => {
+      const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
+      return order[C.rankGroup(a.rank)] - order[C.rankGroup(b.rank)] || C.RANK_VAL[b.rank] - C.RANK_VAL[a.rank] || a.id.localeCompare(b.id);
+    });
+    if (ui.rg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.rg);
+    if (ui.rs !== '全部') ps = ps.filter(p => p.squad === ui.rs);
+    if (ui.ra !== '全部') ps = ps.filter(p => (p.auth || []).includes(ui.ra));
+    if (ui.rh === '有限制') ps = ps.filter(p => C.hasHealthRestriction(p.health));
+    if (ui.rh === '不适飞') ps = ps.filter(p => p.health && p.health.noFly);
+    if (ui.rh === '限制高原') ps = ps.filter(p => p.health && p.health.noPlateau);
+    if (ui.rh === '限制夜间') ps = ps.filter(p => p.health && p.health.noNight);
+    if (ui.rq) { const q = ui.rq.trim(); ps = ps.filter(p => (p.name + p.id + p.rank + (p.squad || '') + (p.health && p.health.note || '')).includes(q)); }
+    const squads = ['全部', ...new Set(st.pilots.map(p => p.squad).filter(Boolean))];
+    const nAuth = authList.length;
+    const nRest = st.pilots.filter(p => C.hasHealthRestriction(p.health)).length;
+    let h = `<div class="panel"><h3>人员总览 · 特殊机场授权与健康限制 <small>授权机场与规章校验一致（RE12 需授权类）；健康限制参与候选人过滤与校验（不适飞/体检过期为硬性，高原/夜航限制为软性提示）</small></h3>
+      <div class="flex" style="flex-wrap:wrap;gap:8px">
+        <input id="rq" placeholder="搜索姓名/员工号/备注" value="${esc(ui.rq)}" style="width:180px">
+        <select id="rg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.rg ? 'selected' : ''}>${g}</option>`).join('')}</select>
+        <select id="rs">${squads.map(g => `<option ${g === ui.rs ? 'selected' : ''}>${g}</option>`).join('')}</select>
+        <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
+        <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
+        <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 授权机场 ${nAuth} 个</span>
+        <button class="btn sm" id="roExp" style="margin-left:auto">导出 CSV</button>
+      </div>
+      <div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div></div>
+      <div class="panel scroll" style="max-height:calc(100vh - 220px);padding:0"><table class="rost"><thead><tr>
+        <th>员工号</th><th>姓名</th><th>级别</th><th>大队</th><th>健康限制</th>
+        ${authList.map(c => `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`).join('')}
+        <th>授权数</th><th></th></tr></thead><tbody>`;
+    for (const p of ps) {
+      const flags = C.healthFlags(p.health);
+      const badges = flags.length
+        ? flags.map(f => {
+            const cls = f.includes('不适飞') || f.includes('体检') ? 'hb bad' : f.includes('高原') || f.includes('夜间') ? 'hb warn' : 'hb';
+            return `<span class="${cls}">${esc(f)}</span>`;
+          }).join(' ')
+        : '<span class="mut">—</span>';
+      const authN = (p.auth || []).filter(c => authList.includes(c)).length;
+      h += `<tr class="rorow" data-pid="${p.id}">
+        <td class="mut">${p.id}</td><td><b>${esc(p.name)}</b></td><td>${pill(p.rank)}</td><td>${esc(p.squad || '—')}</td>
+        <td class="hcell">${badges}</td>
+        ${authList.map(c => `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`).join('')}
+        <td>${authN}/${nAuth}</td>
+        <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button></td></tr>`;
+    }
+    if (!ps.length) h += '<tr><td colspan="20" class="note">无匹配人员</td></tr>';
+    h += '</tbody></table></div>';
+    // legend level airports
+    h += `<div class="panel"><h3>级别运行机场（参考）</h3><div class="note">${levelList.map(c => `${esc(C.apName(c, st))}（${esc(C.CAT_DESC[C.apCat(c, st)] || C.apCat(c, st))}）`).join('　·　') || '—'}</div></div>`;
+    $('#main').innerHTML = h;
+    const redraw = () => rRoster();
+    $('#rq').oninput = e => { ui.rq = e.target.value; const pos = e.target.selectionStart; redraw(); const el = $('#rq'); if (el) { el.focus(); el.setSelectionRange(pos, pos); } };
+    $('#rg').onchange = e => { ui.rg = e.target.value; redraw(); };
+    $('#rs').onchange = e => { ui.rs = e.target.value; redraw(); };
+    $('#ra').onchange = e => { ui.ra = e.target.value; redraw(); };
+    $('#rh').onchange = e => { ui.rh = e.target.value; redraw(); };
+    document.querySelectorAll('.roEdit').forEach(b => b.onclick = () => openRosterEdit(b.dataset.pid));
+    document.querySelectorAll('.rorow').forEach(r => r.ondblclick = () => openRosterEdit(r.dataset.pid));
+    $('#roExp').onclick = () => {
+      const rows = [['员工号', '姓名', '级别', '组别', '大队', '暂时不适飞', '限制高原', '限制夜间', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
+      st.pilots.forEach(p => {
+        const h = p.health || C.defaultHealth();
+        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
+          ...authList.map(c => (p.auth || []).includes(c) ? '✓' : ''), (p.auth || []).filter(c => authList.includes(c)).length]);
+      });
+      dl('人员总览_授权与健康_2026-11.csv', csv(rows));
+      toast('✔ 已导出人员总览 CSV');
+    };
+  }
+  function openRosterEdit(pid) {
+    C.migratePilots(st);
+    const p = st.pilots.find(x => x.id === pid); if (!p) return;
+    const authList = C.authAirports(st);
+    const h = Object.assign(C.defaultHealth(), p.health || {});
+    const squads = ['一大队', '二大队', '三大队', '教学中队'];
+    let box = `<div class="flex"><h3 style="margin:0">人员档案 · ${esc(p.name)} ${pill(p.rank)} <span class="mut">${p.id}</span></h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
+      <div class="grid g2" style="margin-top:12px">
+        <div><label class="lab">大队</label><select id="edSquad">${squads.map(x => `<option ${x === p.squad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+        <div><label class="lab">体检到期日</label><input type="date" id="edMed" value="${esc(h.medExamExpiry || '')}"></div>
+      </div>
+      <h3 style="margin-top:14px">健康 / 身体限制</h3>
+      <div class="flex" style="flex-wrap:wrap;gap:12px">
+        <label><input type="checkbox" id="edNoFly" ${h.noFly ? 'checked' : ''}> 暂时不适飞</label>
+        <label><input type="checkbox" id="edNoPl" ${h.noPlateau ? 'checked' : ''}> 限制高原（拉萨/高原类）</label>
+        <label><input type="checkbox" id="edNoNi" ${h.noNight ? 'checked' : ''}> 限制夜间</label>
+      </div>
+      <div style="margin-top:8px"><label class="lab">血压相关备注</label><input id="edBp" style="width:100%" value="${esc(h.bpNote || '')}" placeholder="如：血压偏高随访、须带记录本"></div>
+      <div style="margin-top:8px"><label class="lab">其他备注</label><input id="edNote" style="width:100%" value="${esc(h.note || '')}"></div>
+      <h3 style="margin-top:14px">特殊机场授权 <small>点击切换</small></h3>
+      <div class="authgrid" id="edAuth">${authList.map(c => `<button type="button" class="authtag ${(p.auth || []).includes(c) ? 'on' : ''} edA" data-c="${c}">${esc(C.apName(c, st))}<span class="mut"> ${c}</span></button>`).join('')}</div>
+      <div class="flex" style="margin-top:14px"><button class="btn primary" id="edSave">保存</button><button class="btn" id="edCancel">取消</button></div>`;
+    $('#modalBox').innerHTML = box; $('#modal').classList.remove('hidden');
+    $('#mClose').onclick = $('#edCancel').onclick = closeModal;
+    document.querySelectorAll('.edA').forEach(b => b.onclick = () => b.classList.toggle('on'));
+    $('#edSave').onclick = () => {
+      p.squad = $('#edSquad').value;
+      p.health = {
+        noFly: $('#edNoFly').checked, noPlateau: $('#edNoPl').checked, noNight: $('#edNoNi').checked,
+        bpNote: $('#edBp').value.trim(), medExamExpiry: $('#edMed').value || '', note: $('#edNote').value.trim()
+      };
+      const on = new Set([...document.querySelectorAll('.edA.on')].map(x => x.dataset.c));
+      // keep non-auth-list entries if any, replace auth-list ones
+      const keep = (p.auth || []).filter(c => !authList.includes(c));
+      p.auth = keep.concat(authList.filter(c => on.has(c)));
+      closeModal(); refresh(); toast('✔ 已保存 ' + esc(p.name) + ' 的档案');
+    };
+  }
 
   // ---------------- 员工福利 ----------------
   function rWelfare() {

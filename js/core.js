@@ -118,6 +118,57 @@
     return S;
   }
 
+  function defaultHealth() {
+    return { noFly: false, noPlateau: false, noNight: false, bpNote: '', medExamExpiry: '', note: '' };
+  }
+  function authAirports(st) {
+    const A = (st && st.airports) || AIRPORTS;
+    return Object.keys(A).filter(c => AUTH_CATS.includes((A[c] && A[c][3]) || 'NONE')).sort((a, b) => apName(a, st).localeCompare(apName(b, st), 'zh'));
+  }
+  function levelAirports(st) {
+    const A = (st && st.airports) || AIRPORTS;
+    return Object.keys(A).filter(c => ['J1', 'US'].includes((A[c] && A[c][3]) || '')).sort();
+  }
+  function healthFlags(h) {
+    h = h || {}; const f = [];
+    if (h.noFly) f.push('暂时不适飞');
+    if (h.noPlateau) f.push('限制高原');
+    if (h.noNight) f.push('限制夜间');
+    if (h.bpNote) f.push('血压备注');
+    if (h.medExamExpiry) f.push('体检' + h.medExamExpiry);
+    if (h.note && !h.noFly && !h.noPlateau && !h.noNight) f.push('有备注');
+    return f;
+  }
+  function hasHealthRestriction(h) {
+    h = h || {}; return !!(h.noFly || h.noPlateau || h.noNight || (h.bpNote && h.bpNote.trim()) || (h.medExamExpiry && h.medExamExpiry.trim()) || (h.note && h.note.trim()));
+  }
+  function isPlateauAirport(c, st) { return ['LHASA', 'HIGH', 'PLATEAU'].includes(apCat(c, st)); }
+  function migratePilots(st) {
+    if (!st || !st.pilots) return st;
+    const squads = ['一大队', '二大队', '三大队', '教学中队'];
+    st.pilots.forEach((p, i) => {
+      if (!p.health) p.health = defaultHealth();
+      else p.health = Object.assign(defaultHealth(), p.health);
+      if (!p.squad) p.squad = isInstr(p.rank) ? '教学中队' : squads[i % 3];
+      if (!Array.isArray(p.auth)) p.auth = [];
+    });
+    return st;
+  }
+  function healthBlocks(p, pr, st) {
+    const h = p.health || {}; const rs = [];
+    if (h.noFly) rs.push('暂时不适飞');
+    if (h.noPlateau && pr.legs.some(l => isPlateauAirport(l.from, st) || isPlateauAirport(l.to, st))) rs.push('限制高原（任务含高原/拉萨类机场）');
+    if (h.noNight && pr.legs.some(isNightLeg)) rs.push('限制夜间（任务含夜航段）');
+    if (h.medExamExpiry) {
+      const exp = new Date(h.medExamExpiry + 'T23:59:59');
+      if (!isNaN(exp)) {
+        const touch = daysTouched(pr, st).map(d => new Date(YEAR, MONTH - 1, d));
+        if (touch.some(t => t > exp)) rs.push('体检已过期(' + h.medExamExpiry + ')');
+      }
+    }
+    return rs;
+  }
+
   function generateSample(seed, opt) {
     opt = opt || {};
     const r = rng(seed || 20261101);
@@ -137,7 +188,9 @@
       else { const v = RANK_VAL[rk];
         if (v >= 6) auth = specialAll.filter(x => AIRPORTS[x][3] !== 'LHASA' && r() < 0.85);
         else if (v >= 4) auth = specialAll.filter(x => ['PLATEAU', 'ZBCF'].includes(AIRPORTS[x][3]) && r() < 0.6); }
-      pilots.push({ id: 'E' + no, name: nm, rank: rk, auth, prefs: [], leave: [] });
+      // 大队按序号固定分配，避免额外消耗随机数（保持与历史示例种子一致）
+      const squad = isInstr(rk) ? '教学中队' : ['一大队', '二大队', '三大队'][pilots.length % 3];
+      pilots.push({ id: 'E' + no, name: nm, rank: rk, auth, prefs: [], leave: [], squad, health: defaultHealth() });
     } });
     // 请假（少量）+ 意向休息日，遵守同日上限
     const S = defaultSettings();
@@ -194,6 +247,15 @@
     pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     pairings.forEach((p, i) => p.id = 'PR' + String(i + 1).padStart(3, '0'));
     assignAircraftRegs(pairings);
+    // 固定下标写入演示用健康限制（不消耗 RNG）
+    const H = [
+      { i: 4, h: { noPlateau: true, note: '高原机场暂不适任（演示）' } },
+      { i: 9, h: { noNight: true, bpNote: '血压偏高随访中', note: '限制夜航（演示）' } },
+      { i: 14, h: { noFly: true, medExamExpiry: '2026-10-20', note: '体检复查前不适飞（演示）' } },
+      { i: 19, h: { medExamExpiry: '2026-11-05', bpNote: '须携带血压记录本' } },
+      { i: 24, h: { noPlateau: true, noNight: true, note: '综合健康限制（演示）' } }
+    ];
+    H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     return { version: 1, sample: true, settings: S, pilots, pairings };
   }
 
@@ -343,6 +405,7 @@
       if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) rs.push('休息不足' + S.minRestH + 'h(' + o.id + ')'); }
     const h = pairingHours(pr), already = idx.sched[p.id].includes(pr);
     const cap = hardCap(st); if (!already && idx.hours[p.id] + h > cap + 1e-9) rs.push('超出法规硬上限' + cap + 'h');
+    healthBlocks(p, pr, st).forEach(x => rs.push(x));
     return [rs.length === 0, rs];
   }
 
@@ -595,7 +658,9 @@
         if (!slotRankOK(s, p.rank)) add('岗位级别不符', 'hard', `${pr.id} ${SLOT_NAME[s]}位 ${p.name}(${p.rank}) 级别不符`, pr, p.id);
         const [ok, rs] = personCheck(p, pr, st, idx, { ignorePrefs: true });
         rs.forEach(r => { const t = r.startsWith('请假') ? '请假冲突' : r.startsWith('时间') ? '时间重叠' : r.startsWith('休息') ? '休息不足' : null;
-          if (t) add(t, 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id); });
+          if (t) add(t, 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('不适飞') || r.includes('体检已过期')) add('健康限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('限制高原') || r.includes('限制夜间')) add('健康限制', 'soft', `${pr.id} ${p.name}：${r}`, pr, p.id); });
         const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
         if (pf.length) add('意向休息日未满足', 'soft', `${pr.id} ${p.name} 意向休息日 ${pf.join(',')} 日被排班`, pr, p.id);
       });
@@ -607,6 +672,7 @@
         if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${pr.id} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
       const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
       if (tl.length && crew.some(Boolean)) add('需血压测试仪', 'info', `${pr.id} 自 ${[...new Set(tl.map(l => apName(l.from, st)))].join('、')} 出港（${tl.map(l => 'D' + l.d + ' ' + l.flt).join('，')}），始发站须配备血压测试仪`, pr);
+      crew.forEach(p => { if (p && p.health && p.health.bpNote && tl.length) add('血压健康备注', 'info', `${pr.id} ${p.name}：${p.health.bpNote}`, pr, p.id); });
     }
     // 时间重叠会被两边各报一次，去重
     const seen = new Set(); const ded = out.filter(v => { if (v.type !== '时间重叠' && v.type !== '休息不足') return true;
@@ -972,7 +1038,7 @@
     sol.fdpAfter = ex; sol.restAfterV = rv; sol.score = Math.round((sol.score + ex * 800 + rv * 300) * 10) / 10;
   }
 
-  return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+  return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, shareFor, SLOT_NAME, slotRankOK, blockMin };
