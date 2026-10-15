@@ -193,7 +193,91 @@
     }
     pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     pairings.forEach((p, i) => p.id = 'PR' + String(i + 1).padStart(3, '0'));
+    assignAircraftRegs(pairings);
     return { version: 1, sample: true, settings: S, pilots, pairings };
+  }
+
+  // 机号（机尾号）示例机队；同机型池内按时间贪心分配，保证同机号航段不重叠
+  const FLEET = {
+    A320: ['B-32GV','B-32HC','B-30A1','B-30C8','B-30E2','B-32JF','B-32KH','B-30F6','B-32LM','B-30G9','B-32NP','B-30H3','B-32QR','B-30J5','B-32ST','B-30K7','B-32UV','B-30L1'],
+    A321: ['B-32WX','B-30M4','B-32YZ']
+  };
+  function assignAircraftRegs(pairings) {
+    const busy = {}; // reg -> last arr minute
+    Object.values(FLEET).flat().forEach(r => busy[r] = -1e9);
+    const turn = 35;
+    // 按航段时间顺序分配；同一 pairing 同一日优先续用上一机号
+    const items = [];
+    pairings.forEach(pr => pr.legs.forEach((l, i) => items.push({ pr, l, i })));
+    items.sort((a, b) => a.l.dep - b.l.dep || a.pr.id.localeCompare(b.pr.id) || a.i - b.i);
+    const lastReg = {}; // pr.id#d -> reg
+    items.forEach(({ pr, l }) => {
+      const pool = FLEET[l.ac] || FLEET.A320;
+      const pk = pr.id + '#' + l.d;
+      const prefer = lastReg[pk];
+      let best = null;
+      if (prefer && busy[prefer] + turn <= l.dep) best = prefer;
+      if (!best) {
+        let bestT = 1e18;
+        for (const r of pool) {
+          if (busy[r] + turn <= l.dep && busy[r] < bestT) { best = r; bestT = busy[r]; }
+        }
+      }
+      if (!best) {
+        // 仍冲突：选空闲时刻最早的，必要时挤占（样本极少）
+        best = pool.slice().sort((a, b) => busy[a] - busy[b] || a.localeCompare(b))[0];
+      }
+      l.reg = best; lastReg[pk] = best; busy[best] = Math.max(busy[best], l.arr);
+    });
+  }
+  function ensureAircraftRegs(st) {
+    if (!st || !st.pairings) return;
+    const miss = st.pairings.some(p => p.legs.some(l => !l.reg));
+    if (miss) assignAircraftRegs(st.pairings);
+  }
+  function aircraftDay(st, date) {
+    ensureAircraftRegs(st);
+    const acts = st.actuals || {};
+    const day0 = (date - 1) * DAY, day1 = date * DAY;
+    // 收录：计划或实际起飞落在当日，或跨日穿越当日的航段
+    const rows = new Map(); // reg -> [{leg,pr,dy,...}]
+    for (const pr of st.pairings) {
+      const ds = fdpDays(pr, st, acts);
+      pr.legs.forEach((leg, i) => {
+        const a = acts[legKey(leg)] || {};
+        const dep = a.dep != null ? a.dep : leg.dep;
+        const arr = a.arr != null ? a.arr : (a.dep != null ? a.dep + (leg.arr - leg.dep) : leg.arr);
+        // 起飞或落地落在所选日，或航段跨越该日（含跨午夜）
+        const depDate = Math.floor(dep / DAY) + 1;
+        const arrDate = Math.floor(Math.max(arr - 1, dep) / DAY) + 1;
+        if (!(depDate === date || arrDate === date || (depDate < date && arrDate > date))) return;
+        const dy = ds.find(x => x.legs.some(z => z.i === i)) || ds.find(x => x.d === leg.d);
+        const lateArr = arr - leg.arr;
+        const lateDep = dep - leg.dep;
+        const risk = dy ? dy.risk : 'low';
+        const buffer = dy ? dy.buffer : null;
+        let color = 'ok';
+        if (risk === 'over' || risk === 'high') color = 'over';
+        else if (risk === 'med' || lateArr > 30 || lateDep > 30) color = 'med';
+        else if (lateArr > 10 || lateDep > 10) color = 'late';
+        const reg = leg.reg || '—';
+        if (!rows.has(reg)) rows.set(reg, []);
+        rows.get(reg).push({ leg, pr, i, dep, arr, planDep: leg.dep, planArr: leg.arr, lateDep, lateArr, risk, buffer, color, dy, known: a.dep != null || a.arr != null, kind: (a.kind || 'est'), landed: a.kind === 'act' && a.arr != null });
+      });
+    }
+    const list = [...rows.entries()].map(([reg, items]) => {
+      items.sort((a, b) => a.dep - b.dep);
+      return { reg, ac: items[0].leg.ac || 'A320', items, nLate: items.filter(x => x.lateArr > 10).length, nRisk: items.filter(x => x.color === 'over' || x.color === 'med').length };
+    }).sort((a, b) => a.reg.localeCompare(b.reg));
+    // 时间轴：当日 0:00 起，若有跨午夜则延长
+    let tMax = day1;
+    list.forEach(r => r.items.forEach(x => { if (x.arr > tMax) tMax = x.arr; }));
+    tMax = Math.max(tMax, day1);
+    // 若全在白天，也可从最早起飞前一小时起
+    let tMin = day0;
+    const deps = list.flatMap(r => r.items.map(x => x.dep));
+    if (deps.length) tMin = Math.min(day0, Math.max(day0 - 60, Math.min(...deps) - 60));
+    return { date, day0, tMin, tMax, rows: list };
   }
 
   // ---------- 任务派生量 ----------
@@ -872,7 +956,7 @@
     sol.fdpAfter = ex; sol.restAfterV = rv; sol.score = Math.round((sol.score + ex * 800 + rv * 300) * 10) / 10;
   }
 
-  return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+  return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, shareFor, SLOT_NAME, slotRankOK, blockMin };

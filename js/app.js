@@ -12,7 +12,7 @@
   const CW_MIN = 6, CW_MAX = 240, BASE_CW = 150;
   const ZSTEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 67, 80, 90, 100, 110, 125, 150, 160];
 
-  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); return; } } catch (e) {} reset(false); }
+  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); return; } } catch (e) {} reset(false); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
   function refresh() { sum = C.summarize(st); renderKpis(); render(); save(); }
@@ -118,7 +118,7 @@
   }
   function tipHtml(pr) {
     const m = pm(); const V = violByPairing();
-    return `<b>${pr.id}</b> · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h<br>${pr.legs.map(l => `D${l.d} ${l.flt} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)}${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
+    return `<b>${pr.id}</b> · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h<br>${pr.legs.map(l => `D${l.d} ${l.flt} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
       <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
   }
 
@@ -131,7 +131,7 @@
     const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
     let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
-      <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
+      <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${esc(l.reg || '—')}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
       ${bpt.length ? `<div class="note warnc">提醒：自 ${[...new Set(bpt.map(l => C.apName(l.from, st)))].join('、')} 出港，始发站须配备血压测试仪</div>` : ''}
       <h3 style="margin-top:14px">机组</h3><div id="slots"></div><div id="crewChk" class="note"></div>`;
@@ -226,45 +226,143 @@
   }
 
   // ---------------- 执勤监控（延误 / 超执勤） ----------------
-  let dutyDate = null, dutyOpts = null;
+  let dutyDate = null, dutyOpts = null, dutyView = 'cards', dutyRegQ = '', dutySel = null, dutyPxh = 48;
   const p2 = n => String(n).padStart(2, '0');
   function toDT(m) { const d = new Date(C.YEAR, C.MONTH - 1, 1, 0, m); return `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())}T${p2(d.getHours())}:${p2(d.getMinutes())}`; }
   function fromDT(v) { if (!v) return null; const t = new Date(v); if (isNaN(t)) return null; return Math.round((t - new Date(C.YEAR, C.MONTH - 1, 1)) / 60000); }
   function rDuty() {
-    const S = st.settings; C.migrateDelays(st); const A = st.actuals;
+    const S = st.settings; C.migrateDelays(st); C.ensureAircraftRegs(st); const A = st.actuals;
     if (!dutyDate) { const r = C.fdpRiskSummary(st).rows[0]; dutyDate = r ? r.date : 1; }
     const mon = C.dutyMonitor(st, dutyDate); const m = pm();
     const nEx = mon.filter(x => x.exceed).length, nDn = mon.filter(x => x.downstream.length).length;
     const dl = Object.keys(A).length;
+    const tog = `<span class="seg" id="dtView"><button type="button" data-v="cards" class="${dutyView === 'cards' ? 'on' : ''}">任务卡片</button><button type="button" data-v="ac" class="${dutyView === 'ac' ? 'on' : ''}">飞机甘特</button></span>`;
     let h = `<div class="panel"><h3>执勤监控 · 按实际/预计时刻滚动监控 <small>逐段录入实际/预计起飞、落地（日期+时间，可跨午夜），每录入一段实际落地即按实际时刻重算 FDP、剩余余量与过夜休息；数据随排班保存</small></h3>
-      <div class="flex" style="flex-wrap:wrap"><span>日期</span><select id="dtD">${Array.from({ length: C.DAYS }, (_, i) => `<option value="${i + 1}" ${i + 1 === dutyDate ? 'selected' : ''}>11/${String(i + 1).padStart(2, '0')} 周${WK[dow(i + 1)]}</option>`).join('')}</select>
+      <div class="flex" style="flex-wrap:wrap">${tog}<span>日期</span><select id="dtD">${Array.from({ length: C.DAYS }, (_, i) => `<option value="${i + 1}" ${i + 1 === dutyDate ? 'selected' : ''}>11/${String(i + 1).padStart(2, '0')} 周${WK[dow(i + 1)]}</option>`).join('')}</select>
       <span class="mut">当日执行任务 ${mon.length} 个 · 预计超限 <b class="${nEx ? 'red' : 'okc'}">${nEx}</b> · 下游休息受影响 <b class="${nDn ? 'warnc' : 'okc'}">${nDn}</b> · 已录入延误 ${dl} 段</span>
       <button class="btn sm" id="dtSim">模拟：风险最高任务第 2 段预计晚 120 分（仅该段）</button><button class="btn sm" id="dtClr">清除当日延误</button>${leaveHist.length ? `<button class="btn sm" id="dtUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
-      <div class="note">FDP = 报到（首段计划起飞前 ${S.reportMin} 分钟）→ 当日最晚的实际/预计落地；未录入的航段按计划时刻计算，前段延误<b>不会</b>自动顺延到后续航段（可能在后续过站追回）。若前段延误不追回、按最短过站 ${S.minTurnMin} 分钟顺延会超限，仅给出「若不追回将超限」提示，不计入超限。限制表为默认值（参考 CCAR-121，可在设置中修改）。</div></div>`;
-    h += `<div class="dutyg">${mon.map(x => { const dy = x.day; const pr = x.pr; const pct = Math.min(130, dy.fdp / dy.limit * 100);
-      return `<div class="panel dutyc ${x.exceed ? 'dex' : ''}"><div class="flex"><b>${pr.id}</b><span class="mut">D${dy.d}/${pr.ndays} · ${crewTxt(pr, m)}</span>
-        <span style="margin-left:auto" class="${{ over: 'red', high: 'red', med: 'warnc', low: 'okc' }[dy.risk]}"><span class="rdot r-${dy.risk}"></span>${dy.nLanded ? `已落地 ${dy.nLanded}/${dy.legs.length} 段 · ` : ''}预计 FDP ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '超 ' + dy.exceed + ' 分钟' : '剩余余量 ' + dy.buffer + ' 分钟'}</span></div>
-        <div class="fdpbar"><i style="width:${pct / 1.3}%" class="r-${dy.risk}"></i><b style="left:${100 / 1.3}%"></b></div>
-        <table class="dlt"><tr><th>航班</th><th>航段</th><th>计划</th><th>实际/预计起飞</th><th>实际/预计落地</th><th>状态</th><th>偏差</th></tr>${dy.legs.map(l => { const k = C.legKey(l.leg); const a = A[k] || {}; return `<tr class="${dy.exLeg && l.arr > dy.start + dy.limit ? 'exrow' : ''}"><td>${l.leg.flt}</td><td>${apHtml(l.leg.from)}-${apHtml(l.leg.to)}</td><td>${C.fmtT(l.leg.dep)}-${C.fmtT(l.leg.arr)}</td>
-          <td><input type="datetime-local" class="atin" data-k="${k}" data-f="dep" value="${a.dep != null ? toDT(a.dep) : ''}" placeholder="${toDT(l.leg.dep)}"></td><td><input type="datetime-local" class="atin" data-k="${k}" data-f="arr" value="${a.arr != null ? toDT(a.arr) : ''}"></td><td><select class="atkind" data-k="${k}" ${l.known ? '' : 'disabled'}><option value="est" ${a.kind !== 'act' ? 'selected' : ''}>预计</option><option value="act" ${a.kind === 'act' ? 'selected' : ''}>实际</option></select></td><td class="${l.known ? (l.lateArr > 0 ? 'warnc' : 'okc') : 'mut'}">${l.known ? `${l.landed ? '✔' : ''}落地 ${l.lateArr >= 0 ? '+' : ''}${l.lateArr} 分` : '按计划'}${l.conflict ? `<div class="mut" title="前段落地晚于本段计划起飞">前段晚到 ${l.conflict} 分</div>` : ''}</td></tr>`; }).join('')}</table>
-        ${dy.exLeg ? `<div class="red">✖ 自 ${dy.exLeg.leg.flt} ${C.apName(dy.exLeg.leg.from, st)}-${C.apName(dy.exLeg.leg.to, st)} 起超出 FDP 限制 ${dy.exceed} 分钟（报到 ${C.fmtT(dy.start)}，限制至 ${C.fmtT(dy.start + dy.limit)}）</div>` : ''}
-        ${dy.cascExceed ? `<div class="mut">ⓘ 若不追回将超限：前段延误按最短过站顺延，预计 ${dy.cascLeg.leg.flt} 落地 ${C.fmtT(dy.cascLeg.carr)}，超 ${dy.cascExceed} 分钟（提示，不计入超限）</div>` : ''}
-        ${x.downstream.map(d => `<div class="warnc">↳ ${d.overnight ? `D${d.d} 过夜休息压缩至 ${C.fmtH(d.restAfter)}（低于 ${S.minOvernightRestH}h，差 ${d.short} 分钟）` : `${esc(m[d.pilot].name)} 下一任务 ${d.next} 前休息仅 ${C.fmtH(d.gap)}（低于 ${S.minRestH}h，差 ${d.short} 分钟）`}</div>`).join('')}
-        ${x.exceed || x.downstream.length ? `<button class="btn sm ${x.exceed ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
+      <div class="note">FDP = 报到（首段计划起飞前 ${S.reportMin} 分钟）→ 当日最晚的实际/预计落地；未录入的航段按计划时刻计算，前段延误<b>不会</b>自动顺延到后续航段（可能在后续过站追回）。若前段延误不追回、按最短过站 ${S.minTurnMin} 分钟顺延会超限，仅给出「若不追回将超限」提示，不计入超限。限制表为默认值（参考 CCAR-121，可在设置中修改）。飞机甘特按机号分行，色块表示延误/FDP 风险（绿=正常 · 琥珀=延误或中风险 · 红=高风险/超限）。</div></div>`;
+    if (dutyView === 'ac') h += rDutyAcHtml(mon, m, A);
+    else {
+      h += `<div class="dutyg">${mon.map(x => { const dy = x.day; const pr = x.pr; const pct = Math.min(130, dy.fdp / dy.limit * 100);
+        return `<div class="panel dutyc ${x.exceed ? 'dex' : ''}"><div class="flex"><b>${pr.id}</b><span class="mut">D${dy.d}/${pr.ndays} · ${crewTxt(pr, m)}</span>
+          <span style="margin-left:auto" class="${{ over: 'red', high: 'red', med: 'warnc', low: 'okc' }[dy.risk]}"><span class="rdot r-${dy.risk}"></span>${dy.nLanded ? `已落地 ${dy.nLanded}/${dy.legs.length} 段 · ` : ''}预计 FDP ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '超 ' + dy.exceed + ' 分钟' : '剩余余量 ' + dy.buffer + ' 分钟'}</span></div>
+          <div class="fdpbar"><i style="width:${pct / 1.3}%" class="r-${dy.risk}"></i><b style="left:${100 / 1.3}%"></b></div>
+          <table class="dlt"><tr><th>航班</th><th>航段</th><th>机号</th><th>计划</th><th>实际/预计起飞</th><th>实际/预计落地</th><th>状态</th><th>偏差</th></tr>${dy.legs.map(l => { const k = C.legKey(l.leg); const a = A[k] || {}; return `<tr class="${dy.exLeg && l.arr > dy.start + dy.limit ? 'exrow' : ''}"><td>${l.leg.flt}</td><td>${apHtml(l.leg.from)}-${apHtml(l.leg.to)}</td><td class="mut">${esc(l.leg.reg || '—')}</td><td>${C.fmtT(l.leg.dep)}-${C.fmtT(l.leg.arr)}</td>
+            <td><input type="datetime-local" class="atin" data-k="${k}" data-f="dep" value="${a.dep != null ? toDT(a.dep) : ''}" placeholder="${toDT(l.leg.dep)}"></td><td><input type="datetime-local" class="atin" data-k="${k}" data-f="arr" value="${a.arr != null ? toDT(a.arr) : ''}"></td><td><select class="atkind" data-k="${k}" ${l.known ? '' : 'disabled'}><option value="est" ${a.kind !== 'act' ? 'selected' : ''}>预计</option><option value="act" ${a.kind === 'act' ? 'selected' : ''}>实际</option></select></td><td class="${l.known ? (l.lateArr > 0 ? 'warnc' : 'okc') : 'mut'}">${l.known ? `${l.landed ? '✔' : ''}落地 ${l.lateArr >= 0 ? '+' : ''}${l.lateArr} 分` : '按计划'}${l.conflict ? `<div class="mut" title="前段落地晚于本段计划起飞">前段晚到 ${l.conflict} 分</div>` : ''}</td></tr>`; }).join('')}</table>
+          ${dy.exLeg ? `<div class="red">✖ 自 ${dy.exLeg.leg.flt} ${C.apName(dy.exLeg.leg.from, st)}-${C.apName(dy.exLeg.leg.to, st)} 起超出 FDP 限制 ${dy.exceed} 分钟（报到 ${C.fmtT(dy.start)}，限制至 ${C.fmtT(dy.start + dy.limit)}）</div>` : ''}
+          ${dy.cascExceed ? `<div class="mut">ⓘ 若不追回将超限：前段延误按最短过站顺延，预计 ${dy.cascLeg.leg.flt} 落地 ${C.fmtT(dy.cascLeg.carr)}，超 ${dy.cascExceed} 分钟（提示，不计入超限）</div>` : ''}
+          ${x.downstream.map(d => `<div class="warnc">↳ ${d.overnight ? `D${d.d} 过夜休息压缩至 ${C.fmtH(d.restAfter)}（低于 ${S.minOvernightRestH}h，差 ${d.short} 分钟）` : `${esc(m[d.pilot].name)} 下一任务 ${d.next} 前休息仅 ${C.fmtH(d.gap)}（低于 ${S.minRestH}h，差 ${d.short} 分钟）`}</div>`).join('')}
+          ${x.exceed || x.downstream.length ? `<button class="btn sm ${x.exceed ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
+    }
     const o = dutyOpts;
     if (o) h += `<div class="panel" id="dtSol"><h3>${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : '下游休息不足'} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
       <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
       <div class="panel"><h3>影响预览 <small>悬停/点选方案：绿=新增任务 · 橙=被调整任务 · 红虚线=移出</small></h3><div id="mgBox">${miniGantt(o.solutions[cardCtx.hover])}</div></div>`;
     $('#main').innerHTML = h;
-    $('#dtD').onchange = e => { dutyDate = +e.target.value; dutyOpts = null; rDuty(); };
+    document.querySelectorAll('#dtView button').forEach(b => b.onclick = () => { dutyView = b.dataset.v; dutyOpts = null; dutySel = null; rDuty(); });
+    $('#dtD').onchange = e => { dutyDate = +e.target.value; dutyOpts = null; dutySel = null; rDuty(); };
     document.querySelectorAll('.atin').forEach(i => i.onchange = () => { const k = i.dataset.k; const a = A[k] = A[k] || { kind: 'est' }; const v = fromDT(i.value); if (v == null) delete a[i.dataset.f]; else a[i.dataset.f] = v; if (a.dep == null && a.arr == null) delete A[k]; dutyOpts = null; save(); sum = C.summarize(st); renderKpis(); rDuty(); });
     document.querySelectorAll('.atkind').forEach(i => i.onchange = () => { if (A[i.dataset.k]) A[i.dataset.k].kind = i.value; save(); rDuty(); });
-    $('#dtClr').onclick = () => { mon.forEach(x => x.day.legs.forEach(l => delete A[C.legKey(l.leg)])); dutyOpts = null; save(); rDuty(); };
+    $('#dtClr').onclick = () => { mon.forEach(x => x.day.legs.forEach(l => delete A[C.legKey(l.leg)])); dutyOpts = null; dutySel = null; save(); rDuty(); };
     $('#dtSim').onclick = () => { const x = mon.slice().sort((a, b) => a.day.buffer - b.day.buffer)[0]; if (!x) return; const l = x.day.legs[Math.min(1, x.day.legs.length - 1)]; A[C.legKey(l.leg)] = { dep: l.dep + 120, arr: l.arr + 120, kind: 'est' }; dutyOpts = null; save(); rDuty(); };
     if ($('#dtUndo')) $('#dtUndo').onclick = undoLeave;
     document.querySelectorAll('.dtGo').forEach(b => b.onclick = () => { dutyOpts = C.fdpOptions(st, b.dataset.pr); const i = dutyOpts.solutions.findIndex(x => x.recommended);
       cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(dutyOpts.pairing.crew).filter(Boolean), days: dutyOpts.days.map(d => d.date) }; rDuty(); const e = $('#dtSol'); if (e) e.scrollIntoView(); });
     if (o) bindCards(o.solutions, sol => `${o.pairing.id} ${o.exceed ? '超执勤' : '休息不足'}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; });
+    if (dutyView === 'ac') bindDutyAc(mon, m, A);
+  }
+
+  function rDutyAcHtml(mon, m, A) {
+    const ad = C.aircraftDay(st, dutyDate);
+    const q = (dutyRegQ || '').trim().toUpperCase();
+    let rows = ad.rows;
+    if (q) rows = rows.filter(r => r.reg.toUpperCase().includes(q) || r.ac.toUpperCase().includes(q));
+    const pxh = dutyPxh; // px per hour
+    const spanMin = Math.max(60, ad.tMax - ad.tMin);
+    const width = Math.ceil(spanMin / 60 * pxh);
+    const nw = 110;
+    const xOf = t => (t - ad.tMin) / 60 * pxh;
+    // hour ticks
+    const t0 = Math.floor(ad.tMin / 60) * 60;
+    let ticks = '';
+    for (let t = t0; t <= ad.tMax; t += 60) {
+      const lab = C.fmtT(t); const dayMark = t % C.DAY === 0 ? ' midn' : '';
+      ticks += `<div class="ac-tick${dayMark}" style="left:${xOf(t)}px">${lab}</div>`;
+    }
+    // midnight line
+    const day1 = dutyDate * C.DAY;
+    let h = `<div class="panel acpanel"><div class="flex" style="flex-wrap:wrap;margin-bottom:8px">
+      <input id="dtRegQ" placeholder="筛选机号 / 机型" value="${esc(dutyRegQ)}" style="width:160px">
+      <span class="mut">${rows.length} 架飞机 · ${rows.reduce((s, r) => s + r.items.length, 0)} 段
+        · <i class="acdot ok"></i>正常 <i class="acdot late"></i>小延误 <i class="acdot med"></i>中风险/延误 <i class="acdot over"></i>高风险/超限</span>
+      <span class="mut" style="margin-left:auto">点击航段条可编辑实际/预计时刻</span></div>
+      <div class="acbox"><div class="acwrap" id="acwrap"><div class="acgrid" style="width:${nw + width}px;--nw:${nw}px;--pxh:${pxh}px">
+      <div class="achead"><div class="accell0">机号</div><div class="actrack" style="width:${width}px">${ticks}
+        <div class="ac-midn" style="left:${xOf(day1)}px"></div></div></div>`;
+    for (const r of rows) {
+      h += `<div class="acrow"><div class="accell0" title="${esc(r.reg)} · ${r.ac}"><b>${esc(r.reg)}</b><span class="mut">${r.ac}</span></div><div class="actrack" style="width:${width}px;height:100%">`;
+      // ghost plan bars
+      for (const it of r.items) {
+        const left = xOf(it.dep), w = Math.max(4, xOf(it.arr) - left);
+        const pl = xOf(it.planDep), pw = Math.max(2, xOf(it.planArr) - pl);
+        const sel = dutySel && dutySel.k === C.legKey(it.leg);
+        const tip = `${it.leg.flt} ${C.apName(it.leg.from, st)}-${C.apName(it.leg.to, st)}`;
+        if (it.known && (it.lateDep || it.lateArr)) h += `<div class="acbar plan" style="left:${pl}px;width:${pw}px"></div>`;
+        h += `<div class="acbar c-${it.color}${sel ? ' sel' : ''}" style="left:${left}px;width:${w}px" data-k="${C.legKey(it.leg)}" data-pr="${it.pr.id}" title="${esc(tip)}"><span class="acfl">${esc(it.leg.flt)}</span>${w >= 70 ? `<span class="acroute">${esc(C.apName(it.leg.from, st))}-${esc(C.apName(it.leg.to, st))}</span>` : ''}</div>`;
+      }
+      h += `</div></div>`;
+    }
+    if (!rows.length) h += `<div class="note" style="padding:20px">无匹配机号</div>`;
+    h += `</div></div>`;
+    // zoom widget
+    const pct = Math.round(pxh / 48 * 100);
+    h += `<div class="zoomw" id="acZoom"><button id="azOut">−</button><button id="azPct">${pct}%</button><button id="azIn">+</button></div></div>`;
+    // selection editor
+    if (dutySel) {
+      const leg = dutySel.leg; const k = C.legKey(leg); const a = A[k] || {};
+      const pr = dutySel.pr; const dy = dutySel.dy;
+      h += `<div class="panel" id="acEdit"><div class="flex"><b>${esc(leg.reg || '')} · ${leg.flt}</b> ${apHtml(leg.from)}-${apHtml(leg.to)} · ${pr.id}
+        <span class="mut" style="margin-left:8px">${crewTxt(pr, m)}</span>
+        ${dy ? `<span style="margin-left:auto" class="${{ over: 'red', high: 'red', med: 'warnc', low: 'okc' }[dy.risk]}">FDP ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '超 ' + dy.exceed + ' 分' : '余量 ' + dy.buffer + ' 分'}</span>` : ''}
+        <button class="btn sm" id="acEditX">关闭</button></div>
+        <table class="dlt" style="margin-top:8px"><tr><th>计划</th><th>实际/预计起飞</th><th>实际/预计落地</th><th>状态</th></tr>
+        <tr><td>${C.fmtT(leg.dep)}-${C.fmtT(leg.arr)}</td>
+          <td><input type="datetime-local" class="atin" data-k="${k}" data-f="dep" value="${a.dep != null ? toDT(a.dep) : ''}"></td>
+          <td><input type="datetime-local" class="atin" data-k="${k}" data-f="arr" value="${a.arr != null ? toDT(a.arr) : ''}"></td>
+          <td><select class="atkind" data-k="${k}" ${a.dep != null || a.arr != null ? '' : 'disabled'}><option value="est" ${a.kind !== 'act' ? 'selected' : ''}>预计</option><option value="act" ${a.kind === 'act' ? 'selected' : ''}>实际</option></select>
+            <button class="btn sm dtGo" data-pr="${pr.id}">生成处置方案</button></td></tr></table></div>`;
+    }
+    return h;
+  }
+
+  function bindDutyAc(mon, m, A) {
+    const ad = C.aircraftDay(st, dutyDate);
+    const find = k => { for (const r of ad.rows) for (const it of r.items) if (C.legKey(it.leg) === k) return it; return null; };
+    $('#dtRegQ').oninput = e => { dutyRegQ = e.target.value; const pos = e.target.selectionStart; rDuty(); const el = $('#dtRegQ'); if (el) { el.focus(); el.setSelectionRange(pos, pos); } };
+    const setZ = v => { dutyPxh = Math.max(16, Math.min(120, v)); rDuty(); };
+    $('#azIn').onclick = () => setZ(dutyPxh * 1.25);
+    $('#azOut').onclick = () => setZ(dutyPxh / 1.25);
+    $('#azPct').onclick = () => setZ(48);
+    const gw = $('#acwrap');
+    if (gw) gw.addEventListener('wheel', e => { if (!e.ctrlKey && !e.metaKey) return; e.preventDefault(); setZ(dutyPxh * Math.exp(-e.deltaY * 0.003)); }, { passive: false });
+    document.querySelectorAll('.acbar:not(.plan)').forEach(b => {
+      b.onmousemove = e => {
+        const it = find(b.dataset.k); if (!it) return;
+        const t = $('#tip'); const dy = it.dy;
+        t.innerHTML = `<b>${esc(it.leg.reg)} · ${it.leg.flt}</b> ${apHtml(it.leg.from)}-${apHtml(it.leg.to)} · ${it.pr.id} · ${it.leg.ac}<br>
+          计划 ${C.fmtT(it.planDep)}-${C.fmtT(it.planArr)}<br>
+          ${it.known ? `${it.kind === 'act' ? '实际' : '预计'} ${C.fmtT(it.dep)}-${C.fmtT(it.arr)} <span class="${it.lateArr > 0 ? 'warnc' : 'okc'}">落地 ${it.lateArr >= 0 ? '+' : ''}${it.lateArr} 分</span>` : '<span class="mut">按计划（未录入）</span>'}
+          <br><b>${crewTxt(it.pr, m)}</b>
+          ${dy ? `<br>FDP ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '<span class="red">超 ' + dy.exceed + ' 分</span>' : '余量 ' + dy.buffer + ' 分'} · 风险 ${dy.risk}` : ''}`;
+        t.classList.remove('hidden');
+        t.style.left = Math.min(e.clientX + 14, innerWidth - 420) + 'px';
+        t.style.top = Math.min(e.clientY + 14, innerHeight - t.offsetHeight - 10) + 'px';
+      };
+      b.onmouseleave = () => $('#tip').classList.add('hidden');
+      b.onclick = () => { const it = find(b.dataset.k); if (!it) return; dutySel = { k: b.dataset.k, leg: it.leg, pr: it.pr, dy: it.dy }; $('#tip').classList.add('hidden'); rDuty(); const ed = $('#acEdit'); if (ed) ed.scrollIntoView({ block: 'nearest' }); };
+    });
+    if ($('#acEditX')) $('#acEditX').onclick = () => { dutySel = null; rDuty(); };
   }
 
   // ---------------- 请假调配（多方案） ----------------
