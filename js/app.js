@@ -256,7 +256,9 @@
           ${x.exceed || x.downstream.length ? `<button class="btn sm ${x.exceed ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
     }
     const o = dutyOpts;
-    if (o) h += `<div class="panel" id="dtSol"><h3>${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : '下游休息不足'} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
+    if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : '下游休息不足'} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
+      <button class="btn sm" id="dtExpSel" style="margin-left:auto" title="导出当前选中方案；若未选中则导出推荐方案">导出备选方案</button></div>
+      <div class="note" style="margin:6px 0 8px">「导出此方案 / 导出备选方案」仅下载 JSON 与 CSV 摘要，<b>不会</b>改动当前排班；「一键应用」才会写入并高亮。</div>
       <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
       <div class="panel"><h3>影响预览 <small>悬停/点选方案：绿=新增任务 · 橙=被调整任务 · 红虚线=移出</small></h3><div id="mgBox">${miniGantt(o.solutions[cardCtx.hover])}</div></div>`;
     $('#main').innerHTML = h;
@@ -269,7 +271,14 @@
     if ($('#dtUndo')) $('#dtUndo').onclick = undoLeave;
     document.querySelectorAll('.dtGo').forEach(b => b.onclick = () => { dutyOpts = C.fdpOptions(st, b.dataset.pr); const i = dutyOpts.solutions.findIndex(x => x.recommended);
       cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(dutyOpts.pairing.crew).filter(Boolean), days: dutyOpts.days.map(d => d.date) }; rDuty(); const e = $('#dtSol'); if (e) e.scrollIntoView(); });
-    if (o) bindCards(o.solutions, sol => `${o.pairing.id} ${o.exceed ? '超执勤' : '休息不足'}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; });
+    if (o) {
+      const expCtx = dutyExportCtx(o);
+      bindCards(o.solutions, sol => `${o.pairing.id} ${o.exceed ? '超执勤' : '休息不足'}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; }, expCtx);
+      if ($('#dtExpSel')) $('#dtExpSel').onclick = () => {
+        let i = cardCtx.hover; if (i == null || i < 0 || !o.solutions[i]) i = o.solutions.findIndex(x => x.recommended);
+        if (i < 0) i = 0; exportSolPlan(o.solutions[i], i, expCtx);
+      };
+    }
     if (dutyView === 'ac') bindDutyAc(mon, m, A);
   }
 
@@ -386,6 +395,97 @@
       h += '</div>'; }
     return h + '</div>';
   }
+  function dutyExportCtx(o) {
+    const pr = o.pairing;
+    const dayLegs = (o.exceed ? o.days.find(d => d.d === o.exceed.d) : o.days[0]);
+    const regs = [...new Set((dayLegs ? dayLegs.legs : pr.legs).map(x => (x.leg || x).reg).filter(Boolean))];
+    const reg = (dutySel && dutySel.leg && dutySel.leg.reg) || regs[0] || '';
+    const date = dutyDate || (dayLegs && dayLegs.date) || pr.start;
+    return { kind: 'fdp', pairingId: pr.id, reg, date, exceed: o.exceed, downstream: o.downstream, actuals: st.actuals || {} };
+  }
+  function exportSolPlan(sol, idx, ctx) {
+    ctx = ctx || {};
+    const letter = String.fromCharCode(65 + (idx || 0));
+    const before = st; const after = sol.state || null;
+    const pm0 = {}; before.pilots.forEach(p => pm0[p.id] = p);
+    const pm1 = {}; (after || before).pilots.forEach(p => pm1[p.id] = p);
+    const crewOf = (pr, pm) => ({ C: pr.crew.C && pm[pr.crew.C] ? { id: pr.crew.C, name: pm[pr.crew.C].name, rank: pm[pr.crew.C].rank } : null,
+      F: pr.crew.F && pm[pr.crew.F] ? { id: pr.crew.F, name: pm[pr.crew.F].name, rank: pm[pr.crew.F].rank } : null,
+      T: pr.crew.T && pm[pr.crew.T] ? { id: pr.crew.T, name: pm[pr.crew.T].name, rank: pm[pr.crew.T].rank } : null });
+    const ids = new Set(sol.steps.flatMap(x => [x.pairing, x.newPairing, x.chain && x.chain.pairing]).filter(Boolean));
+    if (ctx.pairingId) ids.add(ctx.pairingId);
+    const affected = [];
+    ids.forEach(id => {
+      const pb = before.pairings.find(p => p.id === id);
+      const pa = after && after.pairings.find(p => p.id === id);
+      if (!pb && !pa) return;
+      const src = pa || pb;
+      affected.push({
+        id, splitFrom: src.splitFrom || null, freshAt: src.freshAt || null,
+        before: pb ? { crew: crewOf(pb, pm0), hours: +C.pairingHours(pb).toFixed(2), ndays: pb.ndays, legs: pb.legs.length, reg: [...new Set(pb.legs.map(l => l.reg).filter(Boolean))] } : null,
+        after: pa ? { crew: crewOf(pa, pm1), hours: +C.pairingHours(pa).toFixed(2), ndays: pa.ndays, legs: pa.legs.length, reg: [...new Set(pa.legs.map(l => l.reg).filter(Boolean))],
+          legsDetail: pa.legs.map(l => ({ d: l.d, flt: l.flt, from: l.from, to: l.to, dep: l.dep, arr: l.arr, reg: l.reg || null, ac: l.ac })) } : null,
+        created: !pb && !!pa, removed: !!pb && !pa
+      });
+    });
+    const splits = affected.filter(x => x.created || (x.after && x.after.freshAt) || (sol.steps.some(s => s.type === 'split' && s.newPairing === x.id)));
+    const people = (sol.people || []).map(x => ({ id: x.id, name: x.name, rank: x.rank, hoursBefore: +x.hb.toFixed(2), hoursAfter: +x.ha.toFixed(2), delta: +(x.ha - x.hb).toFixed(2), overHard: !!x.overHard }));
+    const steps = (sol.steps || []).map(x => {
+      if (x.type === 'split') return { type: 'split', pairing: x.pairing, newPairing: x.newPairing, station: x.station, stationName: C.apName(x.station, before), time: x.time, timeTxt: C.fmtT(x.time), at: x.at, whole: !!x.whole, legsB: x.legsB };
+      if (x.type === 'manual') return { type: 'manual', pairing: x.pairing, block: x.block };
+      return { type: x.type, pairing: x.pairing, slot: x.slot, slotName: x.slot ? C.SLOT_NAME[x.slot] : null,
+        from: x.from ? { id: x.from, name: pm0[x.from] ? pm0[x.from].name : x.from } : null,
+        to: x.to ? { id: x.to, name: pm1[x.to] ? pm1[x.to].name : x.to, rank: pm1[x.to] ? pm1[x.to].rank : null } : null,
+        why: x.why || null, fromStandby: !!x.fromStandby, prefWarn: x.prefWarn || null,
+        chain: x.chain ? { pairing: x.chain.pairing, slot: x.chain.slot, from: x.chain.from, to: x.chain.to, fromStandby: !!x.chain.fromStandby } : null };
+    });
+    const dateStr = ctx.date != null ? `11/${String(ctx.date).padStart(2, '0')}` : '';
+    const payload = {
+      type: ctx.kind === 'leave' ? 'leave_alternate' : 'fdp_alternate',
+      version: 1, exportedAt: new Date().toISOString(),
+      note: '备选方案导出：仅供对比/备案，未应用到当前排班。使用「一键应用」才会写入。',
+      context: {
+        pairingId: ctx.pairingId || null, reg: ctx.reg || null, date: dateStr || null, dateNum: ctx.date || null,
+        reason: ctx.exceed ? `D${ctx.exceed.d} 预计超 FDP ${ctx.exceed.exceed} 分钟` : (ctx.kind === 'leave' ? '临时请假调配' : '下游休息不足'),
+        exceed: ctx.exceed ? { d: ctx.exceed.d, fdp: ctx.exceed.fdp, limit: ctx.exceed.limit, exceed: ctx.exceed.exceed } : null,
+        actuals: ctx.actuals || null,
+        leave: ctx.leave || null
+      },
+      solution: {
+        letter, name: sol.name, desc: sol.desc, score: sol.score, recommended: !!sol.recommended, key: sol.key || null,
+        fdpFix: sol.fdpAfter != null ? { fdpDaysStillOver: sol.fdpAfter, restShortItems: sol.restAfterV || 0, ok: !sol.fdpAfter && !sol.restAfterV } : null,
+        hard: sol.hard || 0, unresolved: sol.unresolved || 0, giniBefore: sol.giniB, giniAfter: sol.giniA, giniDelta: sol.giniD,
+        prefDaysHit: sol.prefN || 0, rhythmDelta: sol.rhy || 0, bpTester: sol.bp || [],
+        steps, people, affectedPairings: affected, newSplits: splits
+      }
+    };
+    const base = `备选方案_${ctx.pairingId || (ctx.leave && ctx.leave.pilotId) || '方案'}${ctx.reg ? '_' + ctx.reg : ''}${dateStr ? '_' + dateStr.replace('/', '-') : ''}_方案${letter}`;
+    dl(base + '.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
+    // CSV summary
+    const rows = [['字段', '值'],
+      ['方案', `方案${letter} · ${sol.name}`], ['推荐', sol.recommended ? '是' : '否'], ['评分', sol.score],
+      ['任务', ctx.pairingId || ''], ['机号', ctx.reg || ''], ['日期', dateStr],
+      ['说明', sol.desc || ''], ['FDP仍超限日数', sol.fdpAfter != null ? sol.fdpAfter : ''],
+      ['休息不足项', sol.restAfterV != null ? sol.restAfterV : ''], ['硬性违规', sol.hard || 0],
+      ['未解决岗位', sol.unresolved || 0], ['导出说明', '未应用到当前排班']];
+    rows.push([]); rows.push(['步骤类型', '任务', '详情']);
+    steps.forEach(x => {
+      if (x.type === 'split') rows.push(['拆分', x.pairing, `${x.whole ? '整组' : '拆分'} → ${x.newPairing} @ ${x.stationName} ${x.timeTxt} · ${x.legsB} 段`]);
+      else if (x.type === 'manual') rows.push(['人工', x.pairing, (x.block && x.block.rules || []).join('；')]);
+      else rows.push([x.type, x.pairing, `${x.slotName || ''} ${(x.from && x.from.name) || '空'} → ${(x.to && x.to.name) || '空缺'}`]);
+    });
+    rows.push([]); rows.push(['人员', '级别', '工时前', '工时后', '变化']);
+    people.forEach(x => rows.push([x.name, x.rank, x.hoursBefore, x.hoursAfter, x.delta]));
+    rows.push([]); rows.push(['任务', '状态', '原机组', '新机组', '小时前', '小时后']);
+    affected.forEach(x => {
+      const cb = x.before ? ['C', 'F', 'T'].map(s => x.before.crew[s] ? x.before.crew[s].name : '—').join('/') : '';
+      const ca = x.after ? ['C', 'F', 'T'].map(s => x.after.crew[s] ? x.after.crew[s].name : '—').join('/') : '';
+      rows.push([x.id, x.created ? '新建' : x.removed ? '移除' : '调整', cb, ca, x.before ? x.before.hours : '', x.after ? x.after.hours : '']);
+    });
+    setTimeout(() => dl(base + '.csv', csv(rows)), 200);
+    toast(`✔ 已导出备选方案 ${letter}（JSON + CSV），未改动当前排班`);
+  }
+
   function solCard(sol, i) {
     const m = {}; (sol.state || st).pilots.forEach(p => m[p.id] = p); const nm = id => id && m[id] ? `${esc(m[id].name)} <span class="mut">${m[id].rank}</span>` : '<span class="red">空缺</span>';
     const t = sol.manual || sol.unresolved ? TYPE_TXT.manual : null;
@@ -404,14 +504,16 @@
         ${sol.fdpAfter != null ? `<div><span class="lab">执勤 / 休息</span>${sol.fdpAfter ? `<span class="red">✖ 仍有 ${sol.fdpAfter} 个值勤日超限</span>` : '<span class="okc">✔ 预计 FDP 不超限</span>'} · ${sol.restAfterV ? `<span class="red">休息不足 ${sol.restAfterV} 项</span>` : '<span class="okc">休息满足</span>'}</div>` : ''}
         <div><span class="lab">合规检查</span>${sol.unresolved ? `<span class="red">✖ ${sol.unresolved} 个岗位需人工处理</span>` : sol.hard ? `<span class="red">✖ 硬性违规 ${sol.hard}</span>` : '<span class="okc">✔ 座位搭配 ✔ 特殊机场 ✔ 休息/工时 · 硬性违规 0</span>'}${sol.bp.length ? `<br><span class="warnc">血压测试仪：${sol.bp.join('、')} 始发站须配备</span>` : ''}</div>
       </div>
-      <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${!sol.state || (sol.unresolved && !sol.steps.some(x => x.to)) ? 'disabled' : ''}>${!sol.state ? '需运控人工处理' : sol.unresolved ? '应用（空缺待人工）' : '一键应用'}</button></div>`;
+      <div class="solbtns"><button class="btn sm solext" data-i="${i}" title="下载此方案 JSON/CSV，不修改当前排班">导出此方案</button>
+        <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${!sol.state || (sol.unresolved && !sol.steps.some(x => x.to)) ? 'disabled' : ''}>${!sol.state ? '需运控人工处理' : sol.unresolved ? '应用（空缺待人工）' : '一键应用'}</button></div></div>`;
   }
   // 通用：方案卡片交互（悬停预览、点选、应用）。label(sol) 生成历史说明
-  function bindCards(sols, label, after) {
+  function bindCards(sols, label, after, expCtx) {
     document.querySelectorAll('.solc').forEach(c => { const i = +c.dataset.i;
       c.onmouseenter = () => { $('#mgBox').innerHTML = miniGantt(sols[i]); document.querySelectorAll('.solc').forEach(x => x.classList.toggle('hov', x === c)); };
       c.onmouseleave = () => { $('#mgBox').innerHTML = miniGantt(sols[cardCtx.hover]); c.classList.remove('hov'); };
-      c.onclick = e => { if (e.target.closest('.solapply')) return; cardCtx.hover = i; document.querySelectorAll('.solc').forEach(x => x.classList.toggle('sel', x === c)); $('#mgBox').innerHTML = miniGantt(sols[i]); }; });
+      c.onclick = e => { if (e.target.closest('.solapply, .solext')) return; cardCtx.hover = i; document.querySelectorAll('.solc').forEach(x => x.classList.toggle('sel', x === c)); $('#mgBox').innerHTML = miniGantt(sols[i]); }; });
+    document.querySelectorAll('.solext').forEach(b => b.onclick = e => { e.stopPropagation(); exportSolPlan(sols[+b.dataset.i], +b.dataset.i, expCtx || {}); });
     document.querySelectorAll('.solapply').forEach(b => b.onclick = () => { const sol = sols[+b.dataset.i]; if (!sol.state) return;
       const lb = label(sol); leaveHist.push({ snap: JSON.stringify(st), label: lb, time: new Date().toTimeString().slice(0, 8) });
       st = sol.state; ui.hl = { pairings: new Set(sol.steps.flatMap(x => [x.pairing, x.newPairing, x.chain && x.chain.pairing]).filter(Boolean)), pilots: new Set([...(cardCtx.focus || []), ...sol.people.map(x => x.id)]), days: cardCtx.days };
@@ -444,7 +546,8 @@
     $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; rLeave(); };
     document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });
     $('#lvGo').onclick = regen;
-    if (o) bindCards(o.solutions, sol => `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { leaveOpts = null; });
+    if (o) bindCards(o.solutions, sol => `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { leaveOpts = null; },
+      { kind: 'leave', leave: { pilotId: o.pilot.id, pilotName: o.pilot.name, days: o.days }, date: o.days[0], pairingId: (o.affected[0] && o.affected[0].id) || '' });
     if ($('#lvUndo')) $('#lvUndo').onclick = undoLeave;
   }
   function scrollToHl() { const b = document.querySelector('.bar.hl'); const g = $('.gwrap'); if (b && g) { g.scrollTop = Math.max(0, b.parentElement.offsetTop - 140); g.scrollLeft = Math.max(0, b.offsetLeft - 420); } }

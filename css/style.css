@@ -173,3 +173,6 @@ details summary{cursor:pointer;color:var(--mut)}
 .acroute{opacity:.85;font-size:10px}
 .acdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin:0 2px 0 8px;vertical-align:middle}
 .acdot.ok{background:#2ecc8f}.acdot.late{background:#7dcea0}.acdot.med{background:#e6a23c}.acdot.over{background:#ff5a6a}
+
+.solbtns{display:flex;gap:8px;align-items:center;margin-top:4px;flex-wrap:wrap}
+.solbtns .solext{margin:0}.solbtns .solapply{margin:0}
