@@ -256,7 +256,7 @@
           ${x.exceed || x.downstream.length ? `<button class="btn sm ${x.exceed ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
     }
     const o = dutyOpts;
-    if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : '下游休息不足'} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
+    if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : (o.downstream && o.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
       <button class="btn sm" id="dtExpSel" style="margin-left:auto" title="导出当前选中方案；若未选中则导出推荐方案">导出备选方案</button></div>
       <div class="note" style="margin:6px 0 8px">「导出此方案 / 导出备选方案」仅下载 JSON 与 CSV 摘要，<b>不会</b>改动当前排班；「一键应用」才会写入并高亮。</div>
       <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
@@ -273,7 +273,7 @@
       cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(dutyOpts.pairing.crew).filter(Boolean), days: dutyOpts.days.map(d => d.date) }; rDuty(); const e = $('#dtSol'); if (e) e.scrollIntoView(); });
     if (o) {
       const expCtx = dutyExportCtx(o);
-      bindCards(o.solutions, sol => `${o.pairing.id} ${o.exceed ? '超执勤' : '休息不足'}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; }, expCtx);
+      bindCards(o.solutions, sol => `${o.pairing.id} ${o.exceed ? '超执勤' : (o.downstream && o.downstream.length ? '休息不足' : '余量紧张')}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; }, expCtx);
       if ($('#dtExpSel')) $('#dtExpSel').onclick = () => {
         let i = cardCtx.hover; if (i == null || i < 0 || !o.solutions[i]) i = o.solutions.findIndex(x => x.recommended);
         if (i < 0) i = 0; exportSolPlan(o.solutions[i], i, expCtx);
@@ -401,7 +401,7 @@
     const regs = [...new Set((dayLegs ? dayLegs.legs : pr.legs).map(x => (x.leg || x).reg).filter(Boolean))];
     const reg = (dutySel && dutySel.leg && dutySel.leg.reg) || regs[0] || '';
     const date = dutyDate || (dayLegs && dayLegs.date) || pr.start;
-    return { kind: 'fdp', pairingId: pr.id, reg, date, exceed: o.exceed, downstream: o.downstream, actuals: st.actuals || {} };
+    return { kind: 'fdp', pairingId: pr.id, reg, date, exceed: o.exceed, downstream: o.downstream || [], actuals: st.actuals || {} };
   }
   function exportSolPlan(sol, idx, ctx) {
     ctx = ctx || {};
@@ -446,7 +446,7 @@
       note: '备选方案导出：仅供对比/备案，未应用到当前排班。使用「一键应用」才会写入。',
       context: {
         pairingId: ctx.pairingId || null, reg: ctx.reg || null, date: dateStr || null, dateNum: ctx.date || null,
-        reason: ctx.exceed ? `D${ctx.exceed.d} 预计超 FDP ${ctx.exceed.exceed} 分钟` : (ctx.kind === 'leave' ? '临时请假调配' : '下游休息不足'),
+        reason: ctx.exceed ? `D${ctx.exceed.d} 预计超 FDP ${ctx.exceed.exceed} 分钟` : (ctx.kind === 'leave' ? '临时请假调配' : (ctx.downstream && ctx.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')),
         exceed: ctx.exceed ? { d: ctx.exceed.d, fdp: ctx.exceed.fdp, limit: ctx.exceed.limit, exceed: ctx.exceed.exceed } : null,
         actuals: ctx.actuals || null,
         leave: ctx.leave || null

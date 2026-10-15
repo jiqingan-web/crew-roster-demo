@@ -913,11 +913,19 @@
     const ex = ds0.find(x => x.exceed > 0) || null; const dn0 = downstream(st, pr0, ds0, idx0);
     const crew0 = { ...pr0.crew }; const before = summarize(st), bIdx = idx0;
     const sols = []; const usedRest = new Set();
-    // 拆分点：超限当天、超限航段之前（含）从成都出发的航段
-    const splits = [];
+    // 拆分点：
+    // 1) 已超限：超限日、超限段之前从成都出发的航段（基地换组）
+    // 2) 已超限或高风险（余量 < fdpRiskHigh）：该风险日首段（异地换组，需运控确认位置/DH）
+    const splits = []; const riskHigh = (st.settings.fdpRiskHigh || 60);
+    const riskDay = ex || ds0.slice().sort((a, b) => a.buffer - b.buffer)[0];
+    const needSplit = ex || (riskDay && riskDay.buffer < riskHigh && riskDay.buffer >= 0);
     if (ex) { const exI = ex.exLeg.i; const dayLegs = ex.legs.map(x => x.i);
       const cand = dayLegs.filter(i => i <= exI && pr0.legs[i].from === 'ZUUU');
       if (cand.length) { splits.push(cand[cand.length - 1]); if (cand[0] !== cand[cand.length - 1]) splits.push(cand[0]); } }
+    if (needSplit && riskDay) {
+      const dayStart = riskDay.legs[0].i;
+      if (!splits.includes(dayStart)) splits.push(dayStart);
+    }
     const mkBase = j => { const w = clone(st); const pr = w.pairings.find(p => p.id === prId); const sp = splitPairing(w, pr, j);
       const vac = ['C', 'F', 'T'].map(s => ({ id: sp.B.id, slot: s, from: crew0[s] })); if (!sp.A) ['C', 'F', 'T'].forEach(s => sp.B.crew[s] = null);
       return { w, sp, vac }; };
@@ -926,23 +934,31 @@
       const { w, sp, vac } = mkBase(j); const ban = new Set(Object.values(crew0).filter(Boolean));
       const st0 = pr0.legs[j]; const head = { pairing: prId, type: 'split', at: j, station: st0.from, time: st0.dep, newPairing: sp.B.id, whole: !sp.A, legsB: sp.B.legs.length };
       const steps = [head].concat(fillVac(w, vac, key, ban, usedRest));
-      // 原机组后续任务若休息被压缩，逐个换人
-      if (sp.A) { const dA = fdpDays(sp.A, w, delays); downstream(w, sp.A, dA).filter(x => !x.overnight).forEach(x => { const q = w.pairings.find(p => p.id === x.next); if (q.crew[x.nextSlot] === x.pilot) { q.crew[x.nextSlot] = null; steps.push(...fillVac(w, [{ id: q.id, slot: x.nextSlot, from: x.pilot, why: '休息不足' }], key, ban, usedRest)); } }); }
+      if (sp.A) { const dA = fdpDays(sp.A, w, delays); downstream(w, sp.A, dA).filter(x => !x.overnight).forEach(x => { const q = w.pairings.find(p => p.id === x.next); if (q && q.crew[x.nextSlot] === x.pilot) { q.crew[x.nextSlot] = null; steps.push(...fillVac(w, [{ id: q.id, slot: x.nextSlot, from: x.pilot, why: '休息不足' }], key, ban, usedRest)); } }); }
       const sol = evaluate(st, w, steps, key, before, bIdx); fdpEval(sol, w, delays, [prId, sp.B.id]);
-      sol.name = (sp.A ? `拆分换组@${apName(st0.from, st)}` : '整组替换') + ' · ' + STRATS[key].name.replace('休息人员 · ', '');
-      sol.desc = sp.A ? `原机组飞至 ${apName(st0.from, st)}（D${st0.d} ${fmtT(st0.dep)} 前）下机，新机组在成都基地接手 ${sp.B.legs.length} 段` : `当日从成都出发前更换整组机组（${pr0.legs.length - j} 段）`;
+      const atBase = st0.from === 'ZUUU';
+      const tag = ex ? '拆分换组' : '预防性拆分换组';
+      sol.name = (sp.A ? `${tag}@${apName(st0.from, st)}` : '整组替换') + ' · ' + STRATS[key].name.replace('休息人员 · ', '');
+      sol.desc = sp.A
+        ? `原机组飞至 ${apName(st0.from, st)}（D${st0.d} ${fmtT(st0.dep)} 前）下机，新机组在 ${apName(st0.from, st)} 接手 ${sp.B.legs.length} 段${atBase ? '' : '（异地换组，需确认新机组到位或 DH）'}${ex ? '' : '；当前未超限，属余量紧张的预防处置'}`
+        : `自 ${apName(st0.from, st)} 起更换整组机组（${pr0.legs.length - j} 段）`;
       sols.push(sol);
     }
-    // 无法在基地换组时：仅处理下游（后续任务换人）+ 人工兜底
     const seen = new Set(); let out = sols.filter(x => { if (seen.has(x.sig)) return false; seen.add(x.sig); return true; });
+    // 丢弃填人后仍有硬违规或未解决岗位的拆分方案（避免劣于人工）
+    out = out.filter(x => !x.unresolved && x.hard === 0);
     if (!ex && dn0.some(x => !x.overnight)) for (const key of ['standby', 'rhythm', 'hours', 'chain']) {
       const w = clone(st); const ban = new Set(Object.values(crew0).filter(Boolean)); const steps = [];
-      dn0.filter(x => !x.overnight).forEach(x => { const q = w.pairings.find(p => p.id === x.next); q.crew[x.nextSlot] = null; steps.push(...fillVac(w, [{ id: q.id, slot: x.nextSlot, from: x.pilot, why: '休息不足' }], key, ban, usedRest)); });
-      const sol = evaluate(st, w, steps, key, before, bIdx); fdpEval(sol, w, delays, [prId]); sol.name = '后续任务换人 · ' + STRATS[key].name.replace('休息人员 · ', ''); sol.desc = '延误压缩了机组下一任务前的休息，替换受影响成员'; if (!seen.has(sol.sig)) { seen.add(sol.sig); out.push(sol); } }
+      dn0.filter(x => !x.overnight).forEach(x => { const q = w.pairings.find(p => p.id === x.next); if (!q) return; q.crew[x.nextSlot] = null; steps.push(...fillVac(w, [{ id: q.id, slot: x.nextSlot, from: x.pilot, why: '休息不足' }], key, ban, usedRest)); });
+      if (!steps.length) continue;
+      const sol = evaluate(st, w, steps, key, before, bIdx); fdpEval(sol, w, delays, [prId]); sol.name = '后续任务换人 · ' + STRATS[key].name.replace('休息人员 · ', ''); sol.desc = '延误压缩了机组下一任务前的休息，替换受影响成员'; if (!seen.has(sol.sig) && !sol.unresolved && sol.hard === 0) { seen.add(sol.sig); out.push(sol); } }
     const reasons = [];
-    if (ex && !splits.length) reasons.push(`D${ex.d} 超限前无从成都出发的航段，无法在基地换组；需从成都摆渡（DH）新机组至 ${apName(ex.legs[0].leg.from, st)} 或调整/取消航段`);
+    if (needSplit && !splits.length) reasons.push(`风险日无从合适站点拆分`);
+    if (ex && !splits.some(j => pr0.legs[j].from === 'ZUUU')) reasons.push(`D${ex.d} 超限前无从成都出发的航段，基地换组不可用；已尝试异地预防/拆分（若上方无卡片则填人失败），或需 DH 新机组至 ${apName(ex.legs[0].leg.from, st)} / 调整航段`);
     if (ex) reasons.push(`D${ex.d} 预计 FDP ${fmtH(ex.fdp)} 超过限制 ${fmtH(ex.limit)}（${ex.legs.length} 段，报到 ${fmtT(ex.start)}），超 ${ex.exceed} 分钟，自 ${ex.exLeg.leg.flt} ${apName(ex.exLeg.leg.from, st)}-${apName(ex.exLeg.leg.to, st)} 起`);
+    else if (riskDay && riskDay.buffer < riskHigh) reasons.push(`D${riskDay.d} 预计 FDP ${fmtH(riskDay.fdp)} / 限制 ${fmtH(riskDay.limit)}，余量仅 ${riskDay.buffer} 分钟（高风险），建议预防性换组或压缩航段`);
     dn0.forEach(x => reasons.push(x.overnight ? `D${x.d} 过夜休息仅 ${fmtH(x.restAfter)}，少于 ${st.settings.minOvernightRestH || 10}h（差 ${x.short} 分钟）：可延后次日报到或换组` : `${idx0.pm[x.pilot].name} 下一任务 ${x.next} 前休息仅 ${fmtH(x.gap)}（差 ${x.short} 分钟）`));
+    if (!reasons.length) reasons.push('当前未超限且无下游休息压缩；可人工评估是否预防性调整');
     const man = { key: 'manual', name: ex ? '取消/调整超限航段（人工处理）' : '人工处理', desc: '由运控协调：取消或延后航段、摆渡机组、申请延长等', steps: [{ pairing: prId, type: 'manual', block: { rules: reasons, top: [] } }], people: [], giniB: before.all.gini, giniA: before.all.gini, giniD: 0, sbLeft: [], unresolved: 1, hard: before.hard, bp: [], prefN: 0, rhy: 0, score: 5000, state: null, manual: true, fdpAfter: ex ? 1 : 0, restAfterV: dn0.length, sig: 'manual' };
     out.sort((a, b) => a.score - b.score); out = out.slice(0, (opt.max || 5) - 1); out.push(man);
     const ok = out.filter(x => !x.unresolved && !x.fdpAfter); if (ok.length) ok[0].recommended = true;

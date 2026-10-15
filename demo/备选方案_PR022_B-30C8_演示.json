@@ -1,0 +1,293 @@
+{
+  "type": "fdp_alternate_demo",
+  "version": 1,
+  "note": "演示备选方案：PR022 / B-30C8 / EU4629 兰州-太原；D4 余量 30 分钟时的预防性拆分换组（可一键写回 state_after 对照）。",
+  "context": {
+    "pairingId": "PR022",
+    "reg": "B-30C8",
+    "date": "11/07",
+    "dateNum": 7,
+    "flightFocus": "EU4629",
+    "routeFocus": "兰州→太原",
+    "aircraftDayCrew": "夏云飞/任文博/苏林",
+    "crewBefore": {
+      "C": {
+        "id": "E10572",
+        "name": "夏云飞",
+        "rank": "J3"
+      },
+      "F": {
+        "id": "E11041",
+        "name": "任文博",
+        "rank": "F8"
+      },
+      "T": {
+        "id": "E11869",
+        "name": "苏林",
+        "rank": "F3"
+      }
+    },
+    "fdpBefore": {
+      "fdp": "13h30",
+      "limit": "14h00",
+      "bufferMin": 30,
+      "risk": "high"
+    },
+    "actuals": {
+      "EU5281@9915": {
+        "dep": 9915,
+        "arr": 10060,
+        "kind": "est"
+      }
+    },
+    "whyOnlyManual": "原 fdpOptions：① 未超限不生成拆分；② 无「下游非过夜休息不足」不换后续任务人；③ 即便超限，D4 始于兰州（非成都）也无「拆分@成都」候选 → 只剩人工处理。界面「下游休息不足」是无 exceed 时的默认标题文案。"
+  },
+  "solutions": [
+    {
+      "letter": "A",
+      "name": "预防性拆分换组@兰州 · 工时均衡",
+      "recommended": true,
+      "desc": "原机组执行 D1–D3 后于兰州过夜结束任务；新机组自 D4 EU7321（兰州→郑州）起接手 PR022-B 共 4 段，当日经郑州、太原返回成都。",
+      "split": {
+        "at": 7,
+        "station": "ZLLL",
+        "stationName": "兰州",
+        "time": 9310,
+        "timeTxt": "11:10",
+        "keep": "PR022",
+        "newPairing": "PR022-B",
+        "legsB": 4,
+        "freshAt": "EU7321@9310",
+        "legsDetail": [
+          {
+            "flt": "EU7321",
+            "from": "ZLLL",
+            "to": "ZHCC",
+            "fromName": "兰州",
+            "toName": "郑州",
+            "dep": "11:10",
+            "arr": "13:00",
+            "reg": "B-30C8"
+          },
+          {
+            "flt": "EU7322",
+            "from": "ZHCC",
+            "to": "ZLLL",
+            "fromName": "郑州",
+            "toName": "兰州",
+            "dep": "14:35",
+            "arr": "16:25",
+            "reg": "B-30C8"
+          },
+          {
+            "flt": "EU4629",
+            "from": "ZLLL",
+            "to": "ZBYN",
+            "fromName": "兰州",
+            "toName": "太原",
+            "dep": "18:00",
+            "arr": "19:40",
+            "reg": "B-30C8"
+          },
+          {
+            "flt": "EU5281",
+            "from": "ZBYN",
+            "to": "ZUUU",
+            "fromName": "太原",
+            "toName": "成都",
+            "dep": "21:15",
+            "arr": "23:20",
+            "reg": "B-30C8"
+          }
+        ]
+      },
+      "crewAfter": {
+        "C": {
+          "id": "E10522",
+          "name": "唐宇",
+          "rank": "J3",
+          "hoursBeforePick": 59.25,
+          "source": "休息日低工时（避开 F1/F2 与教员同组限制）"
+        },
+        "F": {
+          "id": "E11673",
+          "name": "秦明轩",
+          "rank": "F5",
+          "hoursBeforePick": 52.67,
+          "source": "休息日低工时（避开 F1/F2 与教员同组限制）"
+        },
+        "T": {
+          "id": "E11320",
+          "name": "蒋昊",
+          "rank": "F7",
+          "hoursBeforePick": 53.58,
+          "source": "休息日低工时（避开 F1/F2 与教员同组限制）"
+        }
+      },
+      "compliance": {
+        "RE12_seat": "J3 / F5 / F7 — 机长位合格，副驾均 ≥F3，无需教员同组",
+        "specialAirports": "D4 无特殊机场",
+        "A321": "A320",
+        "BP_tester": "无",
+        "hard90h": "无人超 90h",
+        "rest": "candidates 时间/休息/请假校验通过",
+        "FDP": "PR022-B 13h30/14h00 不超限"
+      },
+      "people": [
+        {
+          "id": "E10572",
+          "name": "夏云飞",
+          "rank": "J3",
+          "hb": 60.33,
+          "ha": 52.92,
+          "delta": -7.42
+        },
+        {
+          "id": "E11041",
+          "name": "任文博",
+          "rank": "F8",
+          "hb": 53.17,
+          "ha": 45.75,
+          "delta": -7.42
+        },
+        {
+          "id": "E11869",
+          "name": "苏林",
+          "rank": "F3",
+          "hb": 55.83,
+          "ha": 48.42,
+          "delta": -7.42
+        },
+        {
+          "id": "E10522",
+          "name": "唐宇",
+          "rank": "J3",
+          "hb": 59.25,
+          "ha": 66.67,
+          "delta": 7.42
+        },
+        {
+          "id": "E11673",
+          "name": "秦明轩",
+          "rank": "F5",
+          "hb": 52.67,
+          "ha": 60.08,
+          "delta": 7.42
+        },
+        {
+          "id": "E11320",
+          "name": "蒋昊",
+          "rank": "F7",
+          "hb": 53.58,
+          "ha": 61,
+          "delta": 7.42
+        }
+      ],
+      "fdpAfter": [
+        {
+          "id": "PR022",
+          "crew": "夏云飞(J3)/任文博(F8)/苏林(F3)",
+          "days": [
+            {
+              "d": 1,
+              "date": 4,
+              "fdp": "7h25",
+              "limit": "14h00",
+              "buffer": 395,
+              "exceed": 0,
+              "legs": "EU2549 成都-兰州 · EU2877 兰州-呼和浩特 · EU2662 呼和浩特-西安"
+            },
+            {
+              "d": 2,
+              "date": 5,
+              "fdp": "5h35",
+              "limit": "14h00",
+              "buffer": 505,
+              "exceed": 0,
+              "legs": "EU2661 西安-呼和浩特 · EU4461 呼和浩特-九寨"
+            },
+            {
+              "d": 3,
+              "date": 6,
+              "fdp": "4h50",
+              "limit": "14h00",
+              "buffer": 550,
+              "exceed": 0,
+              "legs": "EU2368 九寨-稻城亚丁 · EU2259 稻城亚丁-兰州"
+            }
+          ]
+        },
+        {
+          "id": "PR022-B",
+          "crew": "唐宇(J3)/秦明轩(F5)/蒋昊(F7)",
+          "days": [
+            {
+              "d": 1,
+              "date": 7,
+              "fdp": "13h30",
+              "limit": "14h00",
+              "buffer": 30,
+              "exceed": 0,
+              "legs": "EU7321 兰州-郑州 · EU7322 郑州-兰州 · EU4629 兰州-太原 · EU5281 太原-成都"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "letter": "B",
+      "name": "运控人工：取消/延后末两段或 DH 换组",
+      "recommended": false,
+      "desc": "若兰州无法就地换组：取消或延后 EU4629+EU5281，或从成都 DH 新机组至兰州。不自动改排班。"
+    }
+  ],
+  "backtest": {
+    "before": {
+      "label": "before",
+      "total": 148,
+      "cov": 100,
+      "hard": 0,
+      "soft": 0,
+      "info": 62,
+      "pref": 100,
+      "gini": 0.0328,
+      "hMin": 51.4,
+      "hMax": 67.6,
+      "mean": 56.84,
+      "fdpOverDays": 0,
+      "overnightRestShortDays": 0,
+      "softMsgs": [],
+      "hardMsgs": []
+    },
+    "after": {
+      "label": "after",
+      "total": 149,
+      "cov": 100,
+      "hard": 0,
+      "soft": 0,
+      "info": 62,
+      "pref": 100,
+      "gini": 0.0363,
+      "hMin": 45.8,
+      "hMax": 67.6,
+      "mean": 56.84,
+      "fdpOverDays": 0,
+      "overnightRestShortDays": 0,
+      "softMsgs": [],
+      "hardMsgs": []
+    },
+    "delta": {
+      "hard": 0,
+      "soft": 0,
+      "cov": 0,
+      "gini": 0.0035,
+      "pref": 0,
+      "hMin": -5.6,
+      "hMax": 0,
+      "fdpOverDays": 0,
+      "overnightRestShortDays": 0
+    },
+    "verdict": "整表回测通过：满员 100%、硬性违规 0、无 FDP 超限、意向休息满足率保持"
+  },
+  "solverUpdate": "已改进 fdpOptions：高风险未超限日亦可生成「预防性拆分换组@始发站」；PR022 同场景现可出 4 张非人工卡片 + 人工兜底。"
+}
