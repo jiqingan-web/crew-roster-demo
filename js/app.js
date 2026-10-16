@@ -252,7 +252,7 @@
   function rOps() {
     const m = C.opsMetrics(st); const S = st.settings;
     const kpis = [
-      ['剩余运力', m.remainHours.toFixed(0) + 'h', `法规上限 ${m.hardMaxHours}h × ${m.nPilots} 人 − 已排；已用 ${(m.usedPct * 100).toFixed(1)}%`],
+      ['剩余运力', m.remainHours.toFixed(0) + 'h', `系统月上限 ${m.hardMaxHours}h × ${m.nPilots} 人 − 已排；已用 ${(m.usedPct * 100).toFixed(1)}%`],
       ['人机比', m.pilotsPerAircraft, `${m.nPilots} 人 / ${m.nAircraft} 机`],
       ['人均轮挡', m.blockPerPilot + 'h', '总轮挡 ÷ 飞行员'],
       ['单机轮挡', m.blockPerAircraft + 'h', '总轮挡 ÷ 机号'],
@@ -268,7 +268,7 @@
           { label: '剩余运力', value: m.remainHours, color: '#2ecc8f' },
           { label: '总轮挡', value: m.blockHours, color: '#a78bfa' }
         ], { w: 520, h: 200, values: true })}
-        <div class="note">超法规上限人数：${m.overHardPilots} · 公式：剩余运力 = Σ max(0, ${m.hardMaxHours} − 个人已排小时)</div></div>
+        <div class="note">超系统月上限人数：${m.overHardPilots} · 公式：剩余运力 = Σ max(0, ${m.hardMaxHours} − 个人已排小时)</div></div>
       <div class="panel"><h3>人机效能</h3>
         ${CH.bars([
           { label: '人均轮挡h', value: m.blockPerPilot, color: '#3ea6ff' },
@@ -507,11 +507,11 @@
     const card = (lab, val, sub, cls) => `<div class="card"><div class="lab">${lab}</div><div class="val ${cls || ''}">${val}</div><div class="sub">${sub}</div></div>`;
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
     const demos = st.pairings.filter(p => p.demoAnomaly);
-    const R = C.CCAR121;
-    const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} 回测摘要 <small>现行版 R8（2024-04-13）· 已逐格核对表A/B</small></h3>
-      <div class="mut">表B（FDP）逐格一致 ✔ · 表A（日飞行时间 8/9/8h）已实现 ✔ · 休息 ${S.minRestH}h ≥ 法规 ${R.minRestBeforeFdpH}h ✔ · 月飞行时间：<b>设置 ${S.hardMaxHours || 90}h</b>，法规 <b>${R.monthFlightH}h</b>（设置更严，不是法规数值）<br>
-      未实现：年 ${R.yearFlightH}h、7日 FDP ${R.sevenDayFdpH}h、月 FDP ${R.monthFdpH}h、144h 内 48h 连续休息、4连续日历日后第5日不飞 · 公司手册 RE07-06/RE12 待提供 ·
-      <a href="回测/121回测报告.md" target="_blank" rel="noopener">完整回测报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/121回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
+    const R = C.CCAR121, COM = C.COM || {};
+    const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 公司手册回测摘要 <small>R8 · ${COM.rev || 'EU.COM'} · ${COM.re12 || 'RE12'}</small></h3>
+      <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（公司/法规 ${R.minRestBeforeFdpH}h；公司口径关车+40→报到−25，本系统用落地+${S.releaseMin}→报到近似）· 月飞行：<b>设置 ${S.hardMaxHours || 90}h</b>，<b>公司与法规均为 ${COM.monthFlightH || R.monthFlightH}h</b>（设置更严）· 报到默认 ${S.reportMin}min（公司国内飞行组 ${COM.reportMinDomesticFlight || 95}min）<br>
+      未实现：年 ${R.yearFlightH}h、7日 FDP ${R.sevenDayFdpH}h、月 FDP ${R.monthFdpH}h、144h 内 48h、4连续日后第5日不飞、主备份并入值勤累积 ·
+      <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="回测/公司手册回测报告.md" target="_blank" rel="noopener">公司手册报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/公司手册回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
     let h = ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${p.id}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
       + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
       ${card('任务覆盖率（满员）', (s.coverage * 100).toFixed(1) + '%', `${s.full}/${s.total} 个任务 · ${s.totalHours.toFixed(0)} 任务飞行小时`, s.coverage === 1 ? 'ok' : 'bad')}
@@ -524,7 +524,7 @@
       <tr><td>备份超过每人每月 ${S.maxStandbyPerPilot} 天（软性）</td><td class="warnc">${(s.byType['备份超限'] || {}).n || 0}</td></tr><tr><td>每日备份人数不足（软性）</td><td class="warnc">${(s.byType['备份人数不足'] || {}).n || 0}</td></tr><tr><td>意向休息日未满足（软性）</td><td class="warnc">${(s.byType['意向休息日未满足'] || {}).n || 0}</td></tr><tr><td>始发站需血压测试仪提醒（信息）</td><td class="warnc">${(s.byType['需血压测试仪'] || {}).n || 0}</td></tr></table></div>
       <div class="panel"><h3>公平性 · 各级别组月飞行小时分布 <small>圆点=均值，阴影=±1σ，线=最小–最大；红虚线=月硬上限（设置值） ${S.hardMaxHours || 90}h</small></h3><div class="chart">${CH.ranges(C.GROUPS.map(g => Object.assign({ label: g, color: GCOL[g] }, s.groups[g].hours)), { range: [20, 100], marks: [{ v: S.hardMaxHours || 90, color: '#ff5a6a' }] })}</div>
       <table><tr><th>组别</th><th>人数</th><th>均值</th><th>标准差</th><th>最小</th><th>最大</th><th>基尼</th></tr>${C.GROUPS.map(g => { const x = s.groups[g].hours; return `<tr><td>${g}</td><td>${x.n}</td><td>${x.mean.toFixed(1)}</td><td>${x.std.toFixed(2)}</td><td>${x.min.toFixed(1)}</td><td>${x.max.toFixed(1)}</td><td>${x.gini.toFixed(3)}</td></tr>`; }).join('')}</table></div></div>
-      <div class="panel"><h3>每人本月飞行小时 <small>按组别、小时排序；颜色=组别</small></h3><div class="chart">${CH.bars(s.per.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.hardMaxHours || 90, label: '法规硬上限 ' + (S.hardMaxHours || 90) + 'h', color: '#ff5a6a' }], max: 100 })}</div>
+      <div class="panel"><h3>每人本月飞行小时 <small>按组别、小时排序；颜色=组别</small></h3><div class="chart">${CH.bars(s.per.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.hardMaxHours || 90, label: '月硬上限(设置) ' + (S.hardMaxHours || 90) + 'h', color: '#ff5a6a' }], max: 100 })}</div>
       <div class="legend">${C.GROUPS.map(g => `<span><i style="background:${GCOL[g]}"></i>${g}</span>`).join('')}</div></div>
       <div class="grid g3">
       <div class="panel"><h3>节奏 · 任务天数分布 <small>${s.total} 个任务</small></h3>${CH.bars(Object.keys(s.rhythm.lenDist).map(k => ({ label: k + '天', value: s.rhythm.lenDist[k], color: '#3ea6ff' })), { w: 420, h: 200, values: true })}<div class="note">以 3–4 天多日任务为主，${((((s.rhythm.lenDist[3] || 0) + (s.rhythm.lenDist[4] || 0)) / s.total) * 100).toFixed(0)}% 为 3–4 天</div></div>
@@ -835,7 +835,7 @@
         ${x.chain ? `<div class="mut">↳ ${x.chain.pairing} ${C.SLOT_NAME[x.chain.slot]}位：<span class="diff-del">${nm(x.chain.from)}</span> → ${nm(x.chain.to)}${x.chain.fromStandby ? ' <span class="ttag sbt">备份</span>' : ''}</div>` : ''}
         ${x.block ? `<div class="red" style="font-size:11px">受阻规则：${x.block.rules.map(esc).join('；') || '—'}<br>候选人主要不满足：${x.block.top.map(esc).join('，')}</div>` : ''}</td></tr>`).join('')}</table>
       <div class="solk">
-        <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.overHard ? 'red' : 'okc'}">${x.ha.toFixed(1)}h</b> ${x.overHard ? `<span class="red">超 ${st.settings.hardMaxHours || 90}h 法规上限</span>` : ''}</div>`).join('') || '—'}</div>
+        <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.overHard ? 'red' : 'okc'}">${x.ha.toFixed(1)}h</b> ${x.overHard ? `<span class="red">超 ${st.settings.hardMaxHours || 90}h 系统月上限</span>` : ''}</div>`).join('') || '—'}</div>
         <div><span class="lab">公平（基尼）</span>${sol.giniB.toFixed(4)}→${sol.giniA.toFixed(4)} <span class="${sol.giniD > 0.002 ? 'warnc' : 'okc'}">(${sol.giniD >= 0 ? '+' : ''}${sol.giniD.toFixed(4)})</span></div>
         <div><span class="lab">意向休息 / 节奏</span>${sol.prefN ? `<span class="warnc">占用意向休息 ${sol.prefN} 天</span>` : '<span class="okc">不占意向休息</span>'} · ${sol.rhy ? `<span class="warnc">节奏扰动 +${sol.rhy}</span>` : '<span class="okc">节奏无扰动</span>'}</div>
         <div><span class="lab">当日剩余备份</span>${sol.sbLeft.map(x => `<span class="${x.n ? '' : 'warnc'}">${x.d}日:${x.n}</span>`).join(' ')}</div>
@@ -1197,10 +1197,10 @@
     const num = (k, lab, unit) => `<div class="slotbox" style="grid-template-columns:200px 120px 60px"><span>${lab}</span><input type="number" step="any" data-k="${k}" value="${S[k]}"><span class="mut">${unit}</span></div>`;
     const cats = ['NONE', 'LHASA', 'HIGH', 'PLATEAU', 'ZBCF', 'J1', 'US'];
     $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>排班参数</h3>
-      ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（设置值；CCAR-121.487 法规为100h）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
-      ${num('maxOffCapt', '同日最多休息/请假（机长类）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到', '分钟')}${num('releaseMin', '末段落地后退场', '分钟')}
+      ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（系统设置；公司手册与法规均为100h）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
+      ${num('maxOffCapt', '同日最多休息/请假（机长类）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
-      <div class="note" style="margin-top:8px">月飞行小时仅设硬上限（默认90h，比 CCAR-121.487(b)(1) 的100h更严；是否采用90h以公司规定为准）；自动排班按可用天数折算份额做公平均衡（基尼系数），不设目标上下限。</div>
+      <div class="note" style="margin-top:8px">月飞行小时硬上限为<strong>本系统设置</strong>（默认90h）。公司手册 EU.COM 3.6.4 与 CCAR-121.487 均为<strong>100h</strong>；默认90h更严、可在此改。两任务间最短休息默认12h（公司/法规为10h；公司主基地休息=关车后40分钟起至下次报到前25分钟止）。自动排班按可用天数折算份额做公平均衡（基尼系数），不设目标上下限。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <h3 style="margin-top:16px">飞行值勤期（FDP）限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>

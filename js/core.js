@@ -103,6 +103,9 @@
   // CCAR-121-R8（交通运输部令2024年第7号）P章 数值常量；条款出处见 回测/121回测报告.md
   const CCAR121 = { rev: 'R8', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10, augFlightH3: 13, augFlightH4: 17,
     tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
+  // 公司手册 EU.COM（A3）核实值；出处见 回测/公司手册回测报告.md。月飞行公司=100h（与法规同）；本系统 hardMaxHours 默认仍 90（更严可配）。
+  const COM = { rev: 'EU.COM-Re07-06', re12: 'RE12-2026-09-11', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
+    reportMinDomesticFlight: 95, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 };
   // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
   function flightLimitMin(st, reportMin) {
     if (st && st.settings && st.settings.fdpAugmented) return CCAR121.augFlightH3 * 60;
@@ -110,7 +113,7 @@
   }
   function defaultSettings() {
     return { minRestH: 12, hardMaxHours: 90, maxOffCapt: 4, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, releaseMin: 30, honorPrefs: true,
       standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.35,
       opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
       // 飞行值勤期（FDP）限制：默认值参考 CCAR-121 部（非扩编机组 表A），可按公司规定修改
@@ -122,7 +125,7 @@
     if (S && S.testerAirports) { S.bpTesterAirports = S.testerAirports; delete S.testerAirports; }
     // 旧版备份参数（连续空闲插备份 + 每日 2+3 人池）→ 每日 1 人、每人每月至多 1 天
     if (S && ('standbyCapt' in S || 'standbyFO' in S || 'maxFreeRun' in S)) { delete S.standbyCapt; delete S.standbyFO; delete S.maxFreeRun; S.standbyPerDay = 1; S.maxStandbyPerPilot = 1; }
-    // 取消 30–70h 目标范围，仅保留 90h 法规硬上限
+    // 取消 30–70h 目标范围；月上限为系统设置（默认90，严于公司/法规100h）
     if (S) { delete S.minHours; delete S.maxHours; if (!S.fdpTable) S.fdpTable = defaultFdpTable(); }
     return S;
   }
@@ -696,7 +699,7 @@
     if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay == null ? 1 : S.standbyPerDay;
       if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 ${n}/${need} 人` }); }
     st.pilots.forEach(p => { const h = idx.hours[p.id];
-      if (h > hardCap(st) + 1e-9) ded.push({ type: '月小时超法规上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${hardCap(st)}h（本系统设置值；CCAR-121.487(b)(1) 法规月上限 ${CCAR121.monthFlightH}h）`, pilot: p.id });
+      if (h > hardCap(st) + 1e-9) ded.push({ type: '月小时超法规上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${hardCap(st)}h（本系统设置；公司手册 ${COM.monthFlightH}h / CCAR-121.487 法规 ${CCAR121.monthFlightH}h）`, pilot: p.id });
  });
     return ded;
   }
@@ -1292,7 +1295,7 @@
   }
 
 
-    return { CCAR121, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, injectDemoAnomalies, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
