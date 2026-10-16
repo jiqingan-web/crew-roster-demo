@@ -258,3 +258,10 @@ details summary{cursor:pointer;color:var(--mut)}
 tr.issueJump{cursor:pointer}tr.issueJump:hover td{background:#1a3a5c}
 @keyframes hlpulse{0%,100%{outline-color:var(--ok);box-shadow:0 0 14px rgba(46,204,143,.8)}50%{outline-color:#fff;box-shadow:0 0 22px rgba(255,176,32,.95)}}
 .bar.hl.pulse{animation:hlpulse .55s ease-in-out 3}
+
+/* 换人确定 */
+.edit-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line);position:sticky;bottom:0;background:var(--panel);z-index:2}
+.edit-foot #editDiff{flex:1;min-width:180px;font-size:12px;line-height:1.45}
+.slotbox.pending select{border-color:var(--warn);box-shadow:0 0 0 1px rgba(255,176,32,.35)}
+.pendtag{margin-left:6px;padding:1px 7px;border-radius:8px;background:#5b3b0a;color:#ffd58a;font-size:10px;font-weight:700;white-space:nowrap}
+.slotbox{grid-template-columns:60px 1fr auto}

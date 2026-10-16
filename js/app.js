@@ -83,6 +83,32 @@
     openIssuePanel();
   }
 
+  /** 确认写入后：高亮并切到人员甘特，同步其它视图读同一 st */
+  function commitHighlight(opt) {
+    const pairings = opt.pairings || [];
+    const pilots = opt.pilots || [];
+    const days = opt.days || null;
+    ui.hl = { pairings: new Set(pairings), pilots: new Set(pilots.filter(Boolean)), days };
+    closeIssuePanel();
+    tab = 'gantt'; location.hash = 'gantt';
+    refresh();
+    setTimeout(() => { scrollToHl(); pulseHl(); }, 40);
+    if (opt.toast) toast(opt.toast, opt.toastMs || 8000);
+    const tu = $('#tUndo'); if (tu && opt.undo) tu.onclick = e => { e.preventDefault(); opt.undo(); };
+  }
+  function nameOf(id) { if (!id) return '空缺'; const p = st.pilots.find(x => x.id === id); return p ? p.name : id; }
+  function recordFillEdit(pr, slot, fromId, toId) {
+    if (!toId) return;
+    ensureFills();
+    st.fills.push({ id: 'FL' + Date.now().toString(36) + Math.floor(Math.random() * 99),
+      time: new Date().toTimeString().slice(0, 8), ts: Date.now(),
+      pairingId: pr.id, slot, slotName: C.SLOT_NAME[slot],
+      leavePilotId: fromId || '', leavePilotName: nameOf(fromId), leaveDays: [],
+      fromId: fromId || '', fromName: nameOf(fromId),
+      toId, toName: nameOf(toId), toRank: (st.pilots.find(x => x.id === toId) || {}).rank || '',
+      source: 'edit', undone: false });
+  }
+
   const pm = () => { const m = {}; st.pilots.forEach(p => m[p.id] = p); return m; };
   const pill = r => `<span class="pill r-${C.rankGroup(r)}">${esc(r)}</span>`;
   const dateOf = d => `11/${String(d).padStart(2, '0')}`;
@@ -139,7 +165,7 @@
     let h = '<table class="solt"><tr><th>时间</th><th>请假人</th><th>请假日</th><th>任务</th><th>座位</th><th>原成员</th><th>补位人</th><th>来源</th><th></th></tr>';
     if (rows.length) {
       h += rows.map((f, ri) => {
-        const src = f.source === 'hole' ? '空洞换人' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
+        const src = f.source === 'hole' ? '空洞换人' : f.source === 'edit' ? '手工换人' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
         return `<tr class="${f.undone ? 'mut' : ''}"><td>${esc(f.time)}</td><td>${esc(f.leavePilotName || '—')}</td><td>${(f.leaveDays || []).join(',') || '—'}</td>
           <td><b>${esc(f.pairingId)}</b>${fillBadge(f.pairingId)}</td><td>${esc(f.slotName || f.slot || '')}</td>
           <td>${esc(f.fromName || '—')}</td><td><b>${esc(f.toName || '—')}</b> ${f.toRank ? pill(f.toRank) : ''}</td>
@@ -351,27 +377,73 @@
     $('#tip').classList.add('hidden');
     const pr = st.pairings.find(x => x.id === id); const m = pm();
     const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
+    const draft = { C: pr.crew.C || null, F: pr.crew.F || null, T: pr.crew.T || null };
+    const orig = { C: draft.C, F: draft.F, T: draft.T };
     let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
       <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${esc(l.reg || '—')}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
       ${bpt.length ? `<div class="note warnc">提醒：自 ${[...new Set(bpt.map(l => C.apName(l.from, st)))].join('、')} 出港，始发站须配备血压测试仪</div>` : ''}
-      <h3 style="margin-top:14px">机组</h3><div id="slots"></div><div id="crewChk" class="note"></div>`;
+      <h3 style="margin-top:14px">机组 <small class="mut">点选候选人后须点「确定」才写入；关闭不保存</small></h3><div id="slots"></div><div id="crewChk" class="note"></div>
+      <div class="edit-foot"><div id="editDiff" class="mut">尚未选择变更</div>
+        <button class="btn primary" id="mConfirm" disabled>确定</button>
+        <button class="btn" id="mCancel">取消</button></div>`;
     $('#modalBox').innerHTML = h; $('#modal').classList.remove('hidden');
-    $('#mClose').onclick = closeModal;
+    $('#mClose').onclick = $('#mCancel').onclick = closeModal;
+    const dirty = () => ['C', 'F', 'T'].some(s => (draft[s] || null) !== (orig[s] || null));
+    const diffHtml = () => {
+      if (!dirty()) return '尚未选择变更 · 点选下拉仅预览，须点「确定」写入各甘特';
+      return ['C', 'F', 'T'].filter(s => (draft[s] || null) !== (orig[s] || null)).map(s => {
+        const a = nameOf(orig[s]), b = nameOf(draft[s]);
+        return `<b>${C.SLOT_NAME[s]}</b> ${esc(a)} → <b class="okc">${esc(b)}</b>`;
+      }).join('　·　');
+    };
     const drawSlots = () => {
       let s = '';
       for (const slot of ['C', 'F', 'T']) {
-        const cs = C.candidates(st, pr, slot); const cur = pr.crew[slot];
-        const ok = cs.filter(c => c.ok || c.p.id === cur), bad = cs.filter(c => !c.ok && c.p.id !== cur && C.slotRankOK(slot, c.p.rank));
-        s += `<div class="slotbox"><b>${C.SLOT_NAME[slot]}位</b><select data-slot="${slot}"><option value="">— 空缺 —</option>${ok.map(c => `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''}>${esc(c.p.name)} ${c.p.rank} · ${c.p.id} · 本月${c.hours.toFixed(1)}h${c.standby && c.standby.length ? ' · ★备份可调用' : ''}${c.warn ? ' · ⚠' + c.warn : ''}${!c.ok ? ' · ✖' + c.reasons.join('；') : ''}</option>`).join('')}</select></div>
-          <details style="margin:-4px 0 10px 68px"><summary>${ok.length} 名合规候选（按本月小时升序）；${bad.length} 名不合规 — 查看原因</summary><div class="inel"><table>${bad.map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>`;
+        const cs = C.candidates(st, pr, slot); const cur = draft[slot];
+        const ok = cs.filter(c => c.ok || c.p.id === cur || c.p.id === orig[slot]);
+        const bad = cs.filter(c => !c.ok && c.p.id !== cur && c.p.id !== orig[slot] && C.slotRankOK(slot, c.p.rank));
+        const changed = (draft[slot] || null) !== (orig[slot] || null);
+        s += `<div class="slotbox ${changed ? 'pending' : ''}"><b>${C.SLOT_NAME[slot]}位</b><select data-slot="${slot}"><option value="">— 空缺 —</option>${ok.map(c => `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''}>${esc(c.p.name)} ${c.p.rank} · ${c.p.id} · 本月${c.hours.toFixed(1)}h${c.standby && c.standby.length ? ' · ★备份可调用' : ''}${c.warn ? ' · ⚠' + c.warn : ''}${!c.ok && c.p.id !== orig[slot] ? ' · ✖' + c.reasons.join('；') : ''}${c.p.id === orig[slot] && changed ? ' · 原任' : ''}</option>`).join('')}</select>${changed ? '<span class="pendtag">待确定</span>' : ''}</div>
+          <details style="margin:-4px 0 10px 68px"><summary>${ok.length} 名候选；${bad.length} 名不合规 — 查看原因</summary><div class="inel"><table>${bad.map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>`;
       }
       $('#slots').innerHTML = s;
-      const crew = ['C', 'F', 'T'].map(x => pr.crew[x] && pm()[pr.crew[x]]); const iss = C.crewIssue(pr, crew, st);
+      // 用草稿机组做合规预览（临时挂到对象上再还原）
+      const bak = { C: pr.crew.C, F: pr.crew.F, T: pr.crew.T };
+      pr.crew.C = draft.C; pr.crew.F = draft.F; pr.crew.T = draft.T;
+      const crew = ['C', 'F', 'T'].map(x => draft[x] && pm()[draft[x]]); const iss = C.crewIssue(pr, crew, st);
+      pr.crew.C = bak.C; pr.crew.F = bak.F; pr.crew.T = bak.T;
       $('#crewChk').innerHTML = crew.every(Boolean) ? (iss ? `<span class="red">✖ ${esc(iss)}</span>` : '<span class="okc">✔ 机组组合满足全部航段座位搭配、特殊机场及新机长带飞规则</span>') : '<span class="warnc">机组未满员</span>';
-      document.querySelectorAll('#slots select').forEach(sel => sel.onchange = () => { pr.crew[sel.dataset.slot] = sel.value || null;
-        if (sel.value && st.standby && st.standby[sel.value]) { const td = C.daysTouched(pr, st); st.standby[sel.value] = st.standby[sel.value].filter(d => !td.includes(d)); } save(); drawSlots(); sum = C.summarize(st); renderKpis(); });
+      $('#editDiff').innerHTML = diffHtml();
+      const btn = $('#mConfirm'); btn.disabled = !dirty();
+      document.querySelectorAll('#slots select').forEach(sel => sel.onchange = () => {
+        draft[sel.dataset.slot] = sel.value || null;
+        drawSlots();
+      });
+    };
+    $('#mConfirm').onclick = () => {
+      if (!dirty()) return;
+      const changes = ['C', 'F', 'T'].filter(s => (draft[s] || null) !== (orig[s] || null));
+      const snap = JSON.stringify(st);
+      changes.forEach(slot => {
+        const fromId = orig[slot], toId = draft[slot];
+        pr.crew[slot] = toId;
+        if (toId && st.standby && st.standby[toId]) {
+          const td = C.daysTouched(pr, st);
+          st.standby[toId] = st.standby[toId].filter(d => !td.includes(d));
+        }
+        if (toId) recordFillEdit(pr, slot, fromId, toId);
+      });
+      const parts = changes.map(s => `${C.SLOT_NAME[s]} ${nameOf(orig[s])}→${nameOf(draft[s])}`);
+      leaveHist.push({ snap, label: `${pr.id} 手工换人：${parts.join('，')}`, time: new Date().toTimeString().slice(0, 8) });
+      const pilots = changes.flatMap(s => [orig[s], draft[s]]);
+      $('#modal').classList.add('hidden');
+      commitHighlight({
+        pairings: [pr.id], pilots, days: C.daysTouched(pr, st),
+        toast: `✔ 已确定换人 ${esc(pr.id)}：${parts.map(esc).join('；')} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
+        undo: undoLeave
+      });
     };
     drawSlots();
   }
@@ -484,7 +556,7 @@
     const o = dutyOpts;
     if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : (o.downstream && o.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
       <button class="btn sm" id="dtExpSel" style="margin-left:auto" title="导出当前选中方案；若未选中则导出推荐方案">导出备选方案</button></div>
-      <div class="note" style="margin:6px 0 8px">「导出此方案 / 导出备选方案」仅下载 JSON 与 CSV 摘要，<b>不会</b>改动当前排班；「一键应用」才会写入并高亮。</div>
+      <div class="note" style="margin:6px 0 8px">「导出此方案 / 导出备选方案」仅下载 JSON 与 CSV 摘要，<b>不会</b>改动当前排班；「确定应用」才会写入并高亮各甘特。</div>
       <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
       <div class="panel"><h3>影响预览 <small>悬停/点选方案：绿=新增任务 · 橙=被调整任务 · 红虚线=移出</small></h3><div id="mgBox">${miniGantt(o.solutions[cardCtx.hover])}</div></div>`;
     $('#main').innerHTML = h;
@@ -681,7 +753,7 @@
     const payload = {
       type: ctx.kind === 'leave' ? 'leave_alternate' : 'fdp_alternate',
       version: 1, exportedAt: new Date().toISOString(),
-      note: '备选方案导出：仅供对比/备案，未应用到当前排班。使用「一键应用」才会写入。',
+      note: '备选方案导出：仅供对比/备案，未应用到当前排班。使用「确定应用」才会写入。',
       context: {
         pairingId: ctx.pairingId || null, reg: ctx.reg || null, date: dateStr || null, dateNum: ctx.date || null,
         reason: ctx.exceed ? `D${ctx.exceed.d} 预计超 FDP ${ctx.exceed.exceed} 分钟` : (ctx.kind === 'leave' ? '临时请假调配' : (ctx.downstream && ctx.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')),
@@ -743,7 +815,7 @@
         <div><span class="lab">合规检查</span>${sol.unresolved ? `<span class="red">✖ ${sol.unresolved} 个岗位需人工处理</span>` : sol.hard ? `<span class="red">✖ 硬性违规 ${sol.hard}</span>` : '<span class="okc">✔ 座位搭配 ✔ 特殊机场 ✔ 休息/工时 · 硬性违规 0</span>'}${sol.bp.length ? `<br><span class="warnc">血压测试仪：${sol.bp.join('、')} 始发站须配备</span>` : ''}</div>
       </div>
       <div class="solbtns"><button class="btn sm solext" data-i="${i}" title="下载此方案 JSON/CSV，不修改当前排班">导出此方案</button>
-        <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${!sol.state || (sol.unresolved && !sol.steps.some(x => x.to)) ? 'disabled' : ''}>${!sol.state ? '需运控人工处理' : sol.unresolved ? '应用（空缺待人工）' : '一键应用'}</button></div></div>`;
+        <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${!sol.state || (sol.unresolved && !sol.steps.some(x => x.to)) ? 'disabled' : ''}>${!sol.state ? '需运控人工处理' : sol.unresolved ? '确定（空缺待人工）' : '确定应用'}</button></div></div>`;
   }
   // 通用：方案卡片交互（悬停预览、点选、应用）。label(sol) 生成历史说明
   function bindCards(sols, label, after, expCtx) {
@@ -757,9 +829,12 @@
       leaveHist.push({ snap, label: lb, time: new Date().toTimeString().slice(0, 8) });
       const leavePilot = { id: (cardCtx.focus || [])[0] }; const days = cardCtx.days || [];
       st = sol.state; st.fills = prevFills; recordFillsFromSol(sol, leavePilot, days, sol.name);
-      ui.hl = { pairings: new Set(sol.steps.flatMap(x => [x.pairing, x.newPairing, x.chain && x.chain.pairing]).filter(Boolean)), pilots: new Set([...(cardCtx.focus || []), ...sol.people.map(x => x.id)]), days: cardCtx.days };
-      if (after) after(); tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30); toast('✔ 已应用并标记补位：' + esc(lb) + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
-      const tu = $('#tUndo'); if (tu) tu.onclick = e => { e.preventDefault(); undoLeave(); }; });
+      const prs = sol.steps.flatMap(x => [x.pairing, x.newPairing, x.chain && x.chain.pairing]).filter(Boolean);
+      const pls = [...(cardCtx.focus || []), ...sol.people.map(x => x.id)];
+      if (after) after();
+      commitHighlight({ pairings: prs, pilots: pls, days: cardCtx.days,
+        toast: '✔ 已确定并同步甘特：' + esc(lb) + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', undo: undoLeave });
+    });
   }
   const nmOf = (sol, id) => { const p = (sol.state || st).pilots.find(x => x.id === id); return p ? p.name : '空缺'; };
   function stepTxt(sol) { return sol.steps.map(x => x.type === 'split' ? `${x.pairing}${x.whole ? '整组替换' : '在' + C.apName(x.station, st) + '拆分'}` : x.pairing + (x.to ? '→' + nmOf(sol, x.to) : '空缺') + (x.chain ? `（${x.chain.pairing}→${nmOf(sol, x.chain.to)}）` : '')).join('，'); }
@@ -780,7 +855,7 @@
     if (leaveView === 'holes' && holes) {
       h += `<div class="panel"><h3>${esc(holes.pilot.name)}（${holes.pilot.rank}）请假 ${holes.days[0]}${holes.days.length > 1 ? '–' + holes.days[holes.days.length - 1] : ''} 日 · 空洞 ${holes.holes.length} 个</h3>`;
       if (holes.plan) h += `<div class="planhint">✔ 引擎整案推荐「${esc(holes.plan.name)}」：${esc(holes.plan.desc || '')} · 评分 ${holes.plan.score}
-        · 可在下方点选直接候选人，或打开「多方案卡片」一键应用整案（含链式调换）</div>`;
+        · 可在下方点选候选人预览，点「确定」写入；或打开「多方案卡片」确定应用整案</div>`;
       if (!holes.holes.length) h += `<div class="note">所选日期内无执勤任务，仅需登记请假（可在多方案卡片中一键登记）。</div>`;
       h += `<div class="holegrid">${holes.holes.map((hh, hi) => {
         const empty = `<div class="hole-seat empty"><span class="clight red"></span><b>${hh.slotName}位 · 空缺</b><div class="mut">${esc(p.name)} 请假腾出</div></div>`;
@@ -826,7 +901,7 @@
             <div class="note">请假日备份人数：${imp.sbDays.map(x => `${x.d}日 ${x.before}→${x.after}`).join('；')}</div>
           </div>` : ''}
           ${holes.plan ? `<div class="note">若直接补位不可行，请改用多方案卡片中的「${esc(holes.plan.name)}」整案（可能含链式调换）。</div>` : ''}
-          <div class="flex" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button class="btn primary" id="hpApply" ${c.light === 'red' ? 'disabled' : ''}>应用此人补位并登记请假</button>
+          <div class="flex" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button class="btn primary" id="hpApply" ${c.light === 'red' ? 'disabled' : ''}>确定</button><span class="mut">写入补位并登记请假 · 点选候选人仅预览</span>
             ${holes.plan && o ? `<button class="btn" id="hpUsePlan">改用整案「${esc(holes.plan.name)}」</button>` : ''}
             <span class="mut">仅填本空洞；其余空洞请继续点选</span></div></div>`;
       }
@@ -870,6 +945,7 @@
     const days = leaveHoles.days.slice(); const pid = leaveHoles.pilot.id;
     const snap = JSON.stringify(st);
     const p = st.pilots.find(x => x.id === pid);
+    const fromName = p ? p.name : '空缺';
     p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
     p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
     if (st.standby && st.standby[pid]) st.standby[pid] = st.standby[pid].filter(d => !days.includes(d));
@@ -878,11 +954,12 @@
     if (st.standby && st.standby[c.id]) st.standby[c.id] = st.standby[c.id].filter(d => !C.daysTouched(pr, st).includes(d));
     leaveHist.push({ snap, label: `${p.name} 请假 ${days[0]}–${days[days.length - 1]} · ${hh.id}${hh.slotName}←${c.name}`, time: new Date().toTimeString().slice(0, 8) });
     recordFillsFromHole(hh, p, days, c, 'hole');
-    ui.hl = { pairings: new Set([hh.id]), pilots: new Set([pid, c.id]), days };
     leaveOpts = null; leaveHoles = null; holePrev = null;
-    tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30);
-    toast('✔ 已补位并标记：' + esc(c.name) + ' → ' + hh.id + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
-    const tu = $('#tUndo'); if (tu) tu.onclick = e => { e.preventDefault(); undoLeave(); };
+    commitHighlight({
+      pairings: [hh.id], pilots: [pid, c.id], days,
+      toast: `✔ 已确定补位 ${esc(hh.id)} ${esc(hh.slotName)}：${esc(fromName)} → <b>${esc(c.name)}</b> <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
+      undo: undoLeave
+    });
   }
   function scrollToHl() { const b = document.querySelector('.bar.hl'); const g = $('.gwrap'); if (b && g) { g.scrollTop = Math.max(0, b.parentElement.offsetTop - 140); g.scrollLeft = Math.max(0, b.offsetLeft - 420); } }
   function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; leaveHoles = null; holePrev = null; refresh(); toast('已撤销：' + esc(x.label)); }
