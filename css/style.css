@@ -228,3 +228,12 @@ details summary{cursor:pointer;color:var(--mut)}
 .opskpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px}
 .okpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
 .okpi .olab{color:var(--mut);font-size:12px}.okpi .oval{font-size:22px;font-weight:700;color:#fff;margin:4px 0}.okpi .omut{font-size:11px;color:var(--mut);line-height:1.35}
+
+
+/* 补位标记 / 演示异常 */
+.fbadge{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:8px;background:#6b2d8a;color:#f0d0ff;font-size:10px;font-weight:700;vertical-align:middle;letter-spacing:.3px;line-height:1.4;white-space:nowrap}
+.bar .fbadge,.bh .fbadge{box-shadow:0 0 0 1px rgba(167,80,220,.45)}
+.demotag{display:inline-block;margin-left:4px;padding:1px 7px;border-radius:8px;background:#5a1c27;color:#ffb3ba;font-size:10px;font-weight:700;vertical-align:middle;white-space:nowrap}
+.demo-banner{background:#3a1520;border:1px solid #ff5a6a;border-radius:10px;padding:10px 14px;margin-bottom:12px;color:#ffb3ba;line-height:1.55}
+.demo-banner a{color:#9fd4ff;text-decoration:underline}
+.bar.has-fill{box-shadow:0 0 0 1px rgba(167,80,220,.55)}

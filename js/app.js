@@ -12,7 +12,7 @@
   const CW_MIN = 6, CW_MAX = 240, BASE_CW = 150;
   const ZSTEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 67, 80, 90, 100, 110, 125, 150, 160];
 
-  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st); return; } } catch (e) {} reset(false); }
+  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st); st.fills = st.fills || []; return; } } catch (e) {} reset(false); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
   function refresh() { sum = C.summarize(st); renderKpis(); render(); save(); }
@@ -20,6 +20,102 @@
   const pm = () => { const m = {}; st.pilots.forEach(p => m[p.id] = p); return m; };
   const pill = r => `<span class="pill r-${C.rankGroup(r)}">${esc(r)}</span>`;
   const dateOf = d => `11/${String(d).padStart(2, '0')}`;
+
+  function ensureFills() { if (!st.fills) st.fills = []; }
+  function fillsOf(prId) { return (st.fills || []).filter(f => f.pairingId === prId && !f.undone); }
+  function fillBadge(prId) { return fillsOf(prId).length ? '<span class="fbadge" title="补位：' + fillsOf(prId).map(f => (f.toName || '') + '←' + (f.fromName || '')).join('；') + '">补位</span>' : ''; }
+  function demoTag(pr) { return pr && pr.demoAnomaly ? '<span class="demotag" title="' + esc(pr.demoAnomalyNote || '') + '">演示异常</span>' : ''; }
+  function recordFillsFromHole(hh, leavePilot, days, cand, source) {
+    ensureFills();
+    const rec = { id: 'FL' + Date.now().toString(36) + Math.floor(Math.random() * 99),
+      time: new Date().toTimeString().slice(0, 8), ts: Date.now(),
+      pairingId: hh.id, slot: hh.slot, slotName: hh.slotName || C.SLOT_NAME[hh.slot],
+      leavePilotId: leavePilot.id, leavePilotName: leavePilot.name, leaveDays: (days || []).slice(),
+      fromId: leavePilot.id, fromName: leavePilot.name,
+      toId: cand.id, toName: cand.name, toRank: cand.rank || '',
+      source: source || 'hole', undone: false };
+    st.fills.push(rec); return rec;
+  }
+  function recordFillsFromSol(sol, leavePilot, days, planName) {
+    ensureFills();
+    const lp = leavePilot || { id: (cardCtx.focus || [])[0], name: '' };
+    if (lp.id && !lp.name) { const p = st.pilots.find(x => x.id === lp.id); if (p) lp.name = p.name; }
+    const recs = [];
+    (sol.steps || []).forEach(x => {
+      if (x.type === 'split' || x.type === 'manual' || !x.pairing) return;
+      if (x.to) {
+        const toP = (sol.state || st).pilots.find(p => p.id === x.to) || { id: x.to, name: x.to, rank: '' };
+        const fromP = x.from ? ((sol.state || st).pilots.find(p => p.id === x.from) || { id: x.from, name: x.from }) : lp;
+        recs.push({ id: 'FL' + Date.now().toString(36) + Math.floor(Math.random() * 99),
+          time: new Date().toTimeString().slice(0, 8), ts: Date.now(),
+          pairingId: x.pairing, slot: x.slot, slotName: x.slot ? C.SLOT_NAME[x.slot] : '',
+          leavePilotId: lp.id, leavePilotName: lp.name, leaveDays: (days || []).slice(),
+          fromId: fromP.id, fromName: fromP.name, toId: toP.id, toName: toP.name, toRank: toP.rank || '',
+          source: 'plan', planName: planName || sol.name, undone: false });
+      }
+      if (x.chain && x.chain.to) {
+        const toP = (sol.state || st).pilots.find(p => p.id === x.chain.to) || { id: x.chain.to, name: x.chain.to };
+        const fromP = x.chain.from ? ((sol.state || st).pilots.find(p => p.id === x.chain.from) || { id: x.chain.from, name: x.chain.from }) : {};
+        recs.push({ id: 'FL' + Date.now().toString(36) + Math.floor(Math.random() * 99),
+          time: new Date().toTimeString().slice(0, 8), ts: Date.now(),
+          pairingId: x.chain.pairing, slot: x.chain.slot, slotName: x.chain.slot ? C.SLOT_NAME[x.chain.slot] : '',
+          leavePilotId: lp.id, leavePilotName: lp.name, leaveDays: (days || []).slice(),
+          fromId: fromP.id, fromName: fromP.name, toId: toP.id, toName: toP.name, toRank: toP.rank || '',
+          source: 'plan-chain', planName: planName || sol.name, undone: false });
+      }
+    });
+    recs.forEach(r => st.fills.push(r)); return recs;
+  }
+  function fillsHistoryHtml() {
+    ensureFills();
+    const rows = (st.fills || []).slice().reverse();
+    if (!rows.length && !leaveHist.length) return '<div class="note">暂无补位记录。在「请假调配 · 空洞换人」应用补位后将显示在此。</div>';
+    let h = '<table class="solt"><tr><th>时间</th><th>请假人</th><th>请假日</th><th>任务</th><th>座位</th><th>原成员</th><th>补位人</th><th>来源</th><th></th></tr>';
+    if (rows.length) {
+      h += rows.map((f, ri) => {
+        const src = f.source === 'hole' ? '空洞换人' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
+        return `<tr class="${f.undone ? 'mut' : ''}"><td>${esc(f.time)}</td><td>${esc(f.leavePilotName || '—')}</td><td>${(f.leaveDays || []).join(',') || '—'}</td>
+          <td><b>${esc(f.pairingId)}</b>${fillBadge(f.pairingId)}</td><td>${esc(f.slotName || f.slot || '')}</td>
+          <td>${esc(f.fromName || '—')}</td><td><b>${esc(f.toName || '—')}</b> ${f.toRank ? pill(f.toRank) : ''}</td>
+          <td>${src}${f.undone ? ' · 已撤销' : ''}</td>
+          <td>${f.undone ? '' : `<button class="btn sm fillUndoOne" data-fid="${esc(f.id)}">撤销此步</button>`}</td></tr>`;
+      }).join('');
+    } else {
+      h += leaveHist.slice().reverse().map(x => `<tr><td>${esc(x.time)}</td><td colspan="7">${esc(x.label)}</td><td></td></tr>`).join('');
+    }
+    h += '</table>';
+    if (leaveHist.length) h += `<div class="flex" style="margin-top:8px"><button class="btn" id="fillUndoLast">↶ 撤销最近一次调配（${leaveHist.length}）</button>
+      <span class="mut">撤销将恢复应用前的排班快照（含补位标记）</span></div>`;
+    return h;
+  }
+  function undoToHist(i) {
+    if (i < 0 || i >= leaveHist.length) return;
+    const x = leaveHist[i];
+    st = JSON.parse(x.snap); st.fills = st.fills || [];
+    leaveHist = leaveHist.slice(0, i);
+    ui.hl = null; leaveOpts = null; leaveHoles = null; holePrev = null;
+    refresh(); toast('已撤销：' + esc(x.label));
+  }
+  function undoFillById(fid) {
+    // 找到对应 leaveHist 中含此补位的最近快照：简化为按 fills 顺序匹配 hist 栈顶逐步撤销直到该 fill 消失
+    ensureFills();
+    const f = st.fills.find(x => x.id === fid);
+    if (!f || f.undone) return;
+    // 从后往前找 leaveHist，恢复到「该 fill 写入前」的快照：hist 在写入 fill 前 push 了 snap
+    // 我们在 apply 时先 snap 再 mutate 再 push hist；fills 在 mutate 后写入，故 hist.snap 不含该 fill
+    // 找最后一个 label 含 pairing+toName 的 hist 项
+    let idx = -1;
+    for (let i = leaveHist.length - 1; i >= 0; i--) {
+      const lb = leaveHist[i].label || '';
+      if (lb.includes(f.pairingId) && (lb.includes(f.toName) || lb.includes(f.leavePilotName || ''))) { idx = i; break; }
+    }
+    if (idx < 0) { // fallback: mark undone only
+      f.undone = true; save(); render(); toast('已标记撤销（无匹配快照，机组未回滚）'); return;
+    }
+    undoToHist(idx);
+  }
+
+
   function apHtml(c) { const n = C.apName(c, st); return C.isSpecial(c, st) ? `<span class="red">${esc(n)}</span>` : esc(n); }
   function dayChains(pr) { const out = []; for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
     out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
@@ -33,7 +129,7 @@
   }
   function render() {
     document.querySelectorAll('#tabs>button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, fills: rFills, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
 
 
@@ -120,7 +216,7 @@
     const idx = C.buildIndex(st); const S = st.settings;
     let h = `<div class="toolbar"><input id="gq" placeholder="搜索 姓名/员工号/级别" value="${esc(ui.gq)}"> <select id="gg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.gg ? 'selected' : ''}>${g}</option>`).join('')}</select>
       <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>第三人(三)</span>
-      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span>点击任务条可调整机组</span></div>
+      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
       ${ui.hl ? `<div class="hlbar">已高亮刚应用的调配（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
       <div class="gbox"><div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
@@ -139,10 +235,10 @@
         const rk = C.pairingRisk(pr, st, st.actuals && Object.keys(st.actuals).length ? st.actuals : null); const rb = RISK_BADGE[rk.risk];
         const badge = rb ? `<span class="rbadge r-${rk.risk}" title="执勤风险：${rb[1]} · D${rk.worst.d} FDP ${C.fmtH(rk.worst.fdp)} / 限制 ${C.fmtH(rk.worst.limit)} · 余量 ${rk.worst.buffer} 分钟">${rb[0]}</span>` : '';
         let inner = '';
-        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
-        else if (lvl === 'mid') inner = `<div class="bh">${badge}${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
-        else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${pr.id}</span>`;
-        h += `<div class="bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${hlr && ui.hl.pairings.has(pr.id) ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
+        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
+        else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
+        else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${pr.id}</span>`;
+        h += `<div class="bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${hlr && ui.hl.pairings.has(pr.id) ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
       }
       h += '</div>';
     }
@@ -177,8 +273,9 @@
   }
   function tipHtml(pr) {
     const m = pm(); const V = violByPairing();
-    return `<b>${pr.id}</b> · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h<br>${pr.legs.map(l => `D${l.d} ${l.flt} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
-      <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
+    const fl = fillsOf(pr.id); const flTxt = fl.length ? '<br><span class="fbadge">补位</span> ' + fl.map(f => esc((f.slotName || '') + ' ' + (f.toName || '') + ' ← ' + (f.fromName || '') + (f.leaveDays && f.leaveDays.length ? '（请假 ' + f.leaveDays.join(',') + ' 日）' : ''))).join('；') : '';
+    return `<b>${pr.id}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h<br>${pr.legs.map(l => `D${l.d} ${l.flt} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
+      <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${flTxt}${pr.demoAnomalyNote ? '<br><span class="red">' + esc(pr.demoAnomalyNote) + '</span>' : ''}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
   }
 
   // ---------------- 编辑弹窗 ----------------
@@ -188,7 +285,7 @@
     $('#tip').classList.add('hidden');
     const pr = st.pairings.find(x => x.id === id); const m = pm();
     const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
-    let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
+    let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
       <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${esc(l.reg || '—')}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
@@ -230,7 +327,7 @@
       <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>执勤风险（每日 FDP / 限制 · 余量）</th><th>状态</th><th></th></tr>`;
     for (const pr of ps) {
       const full = pr.crew.C && pr.crew.F && pr.crew.T; const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
-      h += `<tr><td><b>${pr.id}</b></td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
+      h += `<tr><td><b>${pr.id}</b>${fillBadge(pr.id)}${demoTag(pr)}</td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
         <td>${dayChains(pr).map(c => c.html).join('<br>')}</td><td>${crewTxt(pr, m)}</td>
         <td class="fdpc">${C.fdpDays(pr, st).map(dy => `<div><span class="rdot r-${dy.planRisk}"></span>D${dy.d} ${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)} · <span class="${{ over: 'red', high: 'red', med: 'warnc', low: 'mut' }[dy.planRisk]}">余 ${dy.planBuffer} 分</span>${dy.planRestShort ? ` <span class="mut" title="计划过夜休息偏短">夜休 ${C.fmtH(dy.planRest)}</span>` : ''}</div>`).join('')}</td>
         <td>${V[pr.id] ? `<span class="red" title="${esc(V[pr.id].join('\n'))}">✖ ${V[pr.id].length}项违规</span>` : full ? '<span class="okc">✔ 合规</span>' : '<span class="warnc">待填</span>'}${bpt ? '<br><span class="warnc">需血压测试仪</span>' : ''}</td>
@@ -248,7 +345,9 @@
     const hardTypes = ['未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '备份冲突'];
     const card = (lab, val, sub, cls) => `<div class="card"><div class="lab">${lab}</div><div class="val ${cls || ''}">${val}</div><div class="sub">${sub}</div></div>`;
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
-    let h = `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
+    const demos = st.pairings.filter(p => p.demoAnomaly);
+    let h = (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${p.id}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
+      + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
       ${card('任务覆盖率（满员）', (s.coverage * 100).toFixed(1) + '%', `${s.full}/${s.total} 个任务 · ${s.totalHours.toFixed(0)} 任务飞行小时`, s.coverage === 1 ? 'ok' : 'bad')}
       ${card('硬性规则违规', s.hard, s.hard ? '需处理，见下表' : '全部合规 ✔（座位搭配/特殊机场/休息/请假/≤${S.hardMaxHours || 90}h）', s.hard ? 'bad' : 'ok')}
       ${card('工时公平性（基尼系数）', s.all.gini.toFixed(3), `全员 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h · 均值 ${s.all.mean.toFixed(1)}h · 同级组内标准差 ≤ ${Math.max(...C.GROUPS.map(g => s.groups[g].hours.std)).toFixed(1)}h`, 'ok')}
@@ -273,6 +372,7 @@
       <div class="panel"><h3>问题明细 <small>${s.violations.length} 条（含软性与提醒）</small></h3><div class="scroll" style="max-height:300px"><table><tr><th>级别</th><th>类型</th><th>说明</th></tr>
       ${s.violations.slice().sort((a, b) => ['hard', 'soft', 'info'].indexOf(a.level) - ['hard', 'soft', 'info'].indexOf(b.level)).map(v => `<tr><td class="${v.level === 'hard' ? 'red' : 'warnc'}">${{ hard: '硬性', soft: '软性', info: '提醒' }[v.level]}</td><td>${v.type}</td><td>${esc(v.msg)}</td></tr>`).join('') || '<tr><td colspan=3 class="okc">无</td></tr>'}</table></div></div>`;
     $('#main').innerHTML = h;
+    document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); const pr = st.pairings.find(x => x.id === a.dataset.pr); if (!pr) return; tab = 'gantt'; ui.hl = { pairings: new Set([pr.id]), pilots: new Set(['C','F','T'].map(s => pr.crew[s]).filter(Boolean)), days: C.daysTouched(pr, st) }; render(); setTimeout(scrollToHl, 40); });
   }
 
   function fdpReportPanel() {
@@ -586,9 +686,12 @@
       c.onclick = e => { if (e.target.closest('.solapply, .solext')) return; cardCtx.hover = i; document.querySelectorAll('.solc').forEach(x => x.classList.toggle('sel', x === c)); $('#mgBox').innerHTML = miniGantt(sols[i]); }; });
     document.querySelectorAll('.solext').forEach(b => b.onclick = e => { e.stopPropagation(); exportSolPlan(sols[+b.dataset.i], +b.dataset.i, expCtx || {}); });
     document.querySelectorAll('.solapply').forEach(b => b.onclick = () => { const sol = sols[+b.dataset.i]; if (!sol.state) return;
-      const lb = label(sol); leaveHist.push({ snap: JSON.stringify(st), label: lb, time: new Date().toTimeString().slice(0, 8) });
-      st = sol.state; ui.hl = { pairings: new Set(sol.steps.flatMap(x => [x.pairing, x.newPairing, x.chain && x.chain.pairing]).filter(Boolean)), pilots: new Set([...(cardCtx.focus || []), ...sol.people.map(x => x.id)]), days: cardCtx.days };
-      if (after) after(); tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30); toast('✔ 已应用：' + esc(lb) + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
+      const lb = label(sol); const snap = JSON.stringify(st); const prevFills = JSON.parse(JSON.stringify(st.fills || []));
+      leaveHist.push({ snap, label: lb, time: new Date().toTimeString().slice(0, 8) });
+      const leavePilot = { id: (cardCtx.focus || [])[0] }; const days = cardCtx.days || [];
+      st = sol.state; st.fills = prevFills; recordFillsFromSol(sol, leavePilot, days, sol.name);
+      ui.hl = { pairings: new Set(sol.steps.flatMap(x => [x.pairing, x.newPairing, x.chain && x.chain.pairing]).filter(Boolean)), pilots: new Set([...(cardCtx.focus || []), ...sol.people.map(x => x.id)]), days: cardCtx.days };
+      if (after) after(); tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30); toast('✔ 已应用并标记补位：' + esc(lb) + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
       const tu = $('#tUndo'); if (tu) tu.onclick = e => { e.preventDefault(); undoLeave(); }; });
   }
   const nmOf = (sol, id) => { const p = (sol.state || st).pilots.find(x => x.id === id); return p ? p.name : '空缺'; };
@@ -598,7 +701,7 @@
     const idx = C.buildIndex(st);
     if (!leaveSel.pid) { const c = caps.slice().sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0]; const pr = idx.sched[c.id][1] || idx.sched[c.id][0]; leaveSel = { pid: c.id, from: pr ? pr.start : 1, to: pr ? pr.start + pr.ndays - 1 : 1 }; }
     const p = st.pilots.find(x => x.id === leaveSel.pid); const o = leaveOpts; const holes = leaveHoles;
-    const tog = `<span class="seg" id="lvView"><button type="button" data-v="holes" class="${leaveView === 'holes' ? 'on' : ''}">空洞换人</button><button type="button" data-v="cards" class="${leaveView === 'cards' ? 'on' : ''}">多方案卡片</button></span>`;
+    const tog = `<span class="seg" id="lvView"><button type="button" data-v="holes" class="${leaveView === 'holes' ? 'on' : ''}">空洞换人</button><button type="button" data-v="cards" class="${leaveView === 'cards' ? 'on' : ''}">多方案卡片</button><button type="button" data-v="history" class="${leaveView === 'history' ? 'on' : ''}">补位历史</button></span>`;
     let h = `<div class="panel"><h3>临时请假 · 调配 <small>先看「空洞换人」：空缺座位 + 推荐候选人与合规灯；完整多方案在右侧/次要视图</small></h3>
       <div class="flex" style="flex-wrap:wrap;gap:8px">${tog}
         <select id="lvP">${caps.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
@@ -670,8 +773,15 @@
       h += `<div class="panel"><details><summary>高级：多方案卡片（${o ? o.solutions.length : 0}）</summary>
         ${o ? `<div class="solgrid" style="margin-top:10px">${o.solutions.map(solCard).join('')}</div>` : '<div class="note">请先生成</div>'}</details></div>`;
     }
-    h += `<div class="panel"><h3>调配历史</h3>${leaveHist.length ? `<table>${leaveHist.slice().reverse().map(x => `<tr><td>${x.time}</td><td>${esc(x.label)}</td></tr>`).join('')}</table>` : '<div class="note">暂无</div>'}</div>`;
+    if (leaveView === 'history') {
+      h += `<div class="panel"><h3>补位历史 <small>谁请假 · 谁补位 · 任务 · 可撤销</small></h3>${fillsHistoryHtml()}</div>`;
+    } else {
+      h += `<div class="panel"><h3>补位历史 <small><a href="#" id="lvToHist">查看全部</a></small></h3>${fillsHistoryHtml()}</div>`;
+    }
     $('#main').innerHTML = h;
+    if ($('#lvToHist')) $('#lvToHist').onclick = e => { e.preventDefault(); leaveView = 'history'; rLeave(); };
+    if ($('#fillUndoLast')) $('#fillUndoLast').onclick = undoLeave;
+    document.querySelectorAll('.fillUndoOne').forEach(b => b.onclick = () => undoFillById(b.dataset.fid));
     const regen = () => { if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; genLeave(); rLeave(); };
     document.querySelectorAll('#lvView button').forEach(b => b.onclick = () => { leaveView = b.dataset.v; rLeave(); });
     $('#lvP').onchange = e => { leaveSel.pid = e.target.value; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); };
@@ -700,14 +810,26 @@
     pr.crew[hh.slot] = c.id;
     if (st.standby && st.standby[c.id]) st.standby[c.id] = st.standby[c.id].filter(d => !C.daysTouched(pr, st).includes(d));
     leaveHist.push({ snap, label: `${p.name} 请假 ${days[0]}–${days[days.length - 1]} · ${hh.id}${hh.slotName}←${c.name}`, time: new Date().toTimeString().slice(0, 8) });
+    recordFillsFromHole(hh, p, days, c, 'hole');
     ui.hl = { pairings: new Set([hh.id]), pilots: new Set([pid, c.id]), days };
     leaveOpts = null; leaveHoles = null; holePrev = null;
     tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30);
-    toast('✔ 已补位：' + esc(c.name) + ' → ' + hh.id + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
+    toast('✔ 已补位并标记：' + esc(c.name) + ' → ' + hh.id + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
     const tu = $('#tUndo'); if (tu) tu.onclick = e => { e.preventDefault(); undoLeave(); };
   }
   function scrollToHl() { const b = document.querySelector('.bar.hl'); const g = $('.gwrap'); if (b && g) { g.scrollTop = Math.max(0, b.parentElement.offsetTop - 140); g.scrollLeft = Math.max(0, b.offsetLeft - 420); } }
   function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; leaveHoles = null; holePrev = null; refresh(); toast('已撤销：' + esc(x.label)); }
+
+
+  function rFills() {
+    ensureFills();
+    let h = `<div class="panel"><h3>补位历史 <small>请假调配应用后的补位记录；甘特/任务上显示「补位」角标</small></h3>
+      <div class="note">共 ${(st.fills || []).filter(f => !f.undone).length} 条有效记录 · 历史栈 ${leaveHist.length} 步可撤销</div>
+      ${fillsHistoryHtml()}</div>`;
+    $('#main').innerHTML = h;
+    if ($('#fillUndoLast')) $('#fillUndoLast').onclick = undoLeave;
+    document.querySelectorAll('.fillUndoOne').forEach(b => b.onclick = () => undoFillById(b.dataset.fid));
+  }
 
   // ---------------- 人员总览（授权 / 健康限制） ----------------
   function rRoster() {
@@ -932,10 +1054,13 @@
   function runAuto(cb) {
     const p = $('#progress'); p.classList.remove('hidden'); $('#pfill').style.width = '0%';
     let v = 0; const iv = setInterval(() => { v = Math.min(92, v + 7); $('#pfill').style.width = v + '%'; $('#ptext').textContent = v + '%'; }, 40);
-    setTimeout(() => { const t0 = performance.now(); const s = C.autoFill(st); lastSolveMs = Math.round(performance.now() - t0);
+    setTimeout(() => { const t0 = performance.now(); C.autoFill(st);
+      let demoN = 0;
+      if (st.sample) { const d = C.injectDemoAnomalies(st) || []; demoN = d.length; }
+      const s = C.summarize(st); lastSolveMs = Math.round(performance.now() - t0);
       clearInterval(iv); $('#pfill').style.width = '100%'; $('#ptext').textContent = '100%';
       setTimeout(() => { p.classList.add('hidden'); refresh();
-        toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%`, 6000); if (cb) cb(); }, 250); }, 350);
+        toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 250); }, 350);
   }
 
   // ---------------- 启动 ----------------
@@ -943,7 +1068,7 @@
   $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; location.hash = t; render(); } };
   $('#btnAuto').onclick = () => runAuto();
   $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; refresh(); } };
-  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; ui.hl = null; dutyOpts = null; dutyDate = null; reset(true); toast('已重置示例数据'); } };
+  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; reset(true); toast('已重置示例数据'); } };
   $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
   const hp = location.hash.slice(1).split('&'); if (hp[0]) tab = hp[0];
   sum = C.summarize(st); renderKpis(); render();

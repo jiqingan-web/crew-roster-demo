@@ -257,7 +257,7 @@
       { i: 24, h: { noPlateau: true, noNight: true, note: '综合健康限制（演示）' } }
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
-    return { version: 1, sample: true, settings: S, pilots, pairings };
+    return { version: 1, sample: true, settings: S, pilots, pairings, fills: [], demoAnomaliesApplied: false, demoAnomalies: [] };
   }
 
   // 机号（机尾号）示例机队；同机型池内按时间贪心分配，保证同机号航段不重叠
@@ -667,8 +667,11 @@
       });
       if (crew.every(Boolean)) {
         const iss = crewIssue(pr, crew, st);
-        if (iss) { const t = iss.includes('新机长') ? '新机长无教员' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则'; add(t, 'hard', `${pr.id} ${iss}`, pr); }
+        if (iss) { const t = iss.includes('新机长') ? '新机长无教员' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
+          const demo = pr.demoAnomaly ? '【演示异常】' : '';
+          add(t, 'hard', `${demo}${pr.id} ${iss}`, pr); }
       }
+      if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${pr.id} D${dy.d} 计划 FDP ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
         if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${pr.id} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
       const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
@@ -1211,8 +1214,76 @@
     sol.fdpAfter = ex; sol.restAfterV = rv; sol.score = Math.round((sol.score + ex * 800 + rv * 300) * 10) / 10;
   }
 
-  return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+
+  // ---------- 路演演示异常（示例数据自动填人后注入；测试勿默认调用） ----------
+  // 故意留下：① 新机长机组缺教员（座位规则硬违规）；② 某值勤日 FDP 余量压到高风险区间
+  function injectDemoAnomalies(st) {
+    if (!st || !st.sample) return [];
+    if (st.demoAnomaliesApplied) return st.demoAnomalies || [];
+    const out = [];
+    const idx = buildIndex(st);
+
+    // ① 座位：找「新机长任机位 + 机组含教员」的任务，把教员位换成空闲副驾驶 → 触发「新机长须有教员」
+    let seatPr = st.pairings.find(pr => {
+      const c = pr.crew.C && idx.pm[pr.crew.C];
+      if (!c || !isNew(c.rank)) return false;
+      return ['C', 'F', 'T'].some(s => { const q = pr.crew[s] && idx.pm[pr.crew[s]]; return q && isInstr(q.rank); });
+    });
+    if (seatPr) {
+      for (const s of ['T', 'F', 'C']) {
+        const q = seatPr.crew[s] && idx.pm[seatPr.crew[s]];
+        if (!q || !isInstr(q.rank)) continue;
+        if (s === 'C') continue; // 保留新机长在机位
+        const fo = st.pilots.find(p => isFO(p.rank) && !Object.values(seatPr.crew).includes(p.id) && personCheck(p, seatPr, st, idx, { ignorePrefs: true })[0]);
+        if (fo) { seatPr.crew[s] = fo.id; break; }
+      }
+      // 若仍有教员，再清一次
+      ['T', 'F'].forEach(s => {
+        const q = seatPr.crew[s] && idx.pm[seatPr.crew[s]];
+        if (q && isInstr(q.rank)) {
+          const fo = st.pilots.find(p => isFO(p.rank) && !Object.values(seatPr.crew).includes(p.id));
+          if (fo) seatPr.crew[s] = fo.id;
+        }
+      });
+      seatPr.demoAnomaly = 'seat';
+      seatPr.demoAnomalyNote = '演示异常：新机长机组故意缺少教员（座位规则，路演用例）';
+      out.push({ kind: 'seat', pairingId: seatPr.id, note: seatPr.demoAnomalyNote });
+    }
+
+    // ② FDP：取计划余量适中的值勤日，拉长末段落地，把余量压到约 35 分（高风险，不超限）
+    const rows = fdpRiskSummary(st).rows.filter(x => x.buffer >= 55 && x.buffer <= 220).sort((a, b) => a.buffer - b.buffer);
+    const fdpRow = rows[0] || fdpRiskSummary(st).rows.filter(x => x.buffer > 40).sort((a, b) => a.buffer - b.buffer)[0];
+    if (fdpRow) {
+      const pr = st.pairings.find(p => p.id === fdpRow.pr);
+      if (pr) {
+        const legs = pr.legs.filter(l => l.d === fdpRow.d);
+        const last = legs[legs.length - 1];
+        if (last) {
+          const target = 35;
+          const add = Math.max(0, fdpRow.buffer - target);
+          last.arr += add;
+          const note = `演示异常：${pr.id} D${fdpRow.d} 执勤余量压至约 ${target} 分（易超限，路演用例）`;
+          if (pr.demoAnomaly === 'seat') {
+            pr.demoAnomaly = 'seat+fdp';
+            pr.demoAnomalyNote = (pr.demoAnomalyNote || '') + '；' + note;
+          } else {
+            pr.demoAnomaly = 'fdp';
+            pr.demoAnomalyNote = note;
+          }
+          out.push({ kind: 'fdp', pairingId: pr.id, d: fdpRow.d, note });
+        }
+      }
+    }
+
+    st.demoAnomaliesApplied = true;
+    st.demoAnomalies = out;
+    st.fills = st.fills || [];
+    return out;
+  }
+
+
+    return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
+    crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, injectDemoAnomalies, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });
