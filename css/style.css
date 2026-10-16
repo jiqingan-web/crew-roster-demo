@@ -193,23 +193,37 @@ details summary{cursor:pointer;color:var(--mut)}
 .lab{display:block;color:var(--mut);font-size:11px;margin-bottom:3px}
 
 /* 空洞换人 */
-.holegrid{display:flex;flex-direction:column;gap:12px}
-.holec{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+/* 合规灯（勿用 .lg，以免与甘特 .bar .lg 航段字冲突） */
+.clight{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle;flex:0 0 auto;background:#666}
+.clight.green{background:#2ecc8f;box-shadow:0 0 6px rgba(46,204,143,.55)}
+.clight.amber{background:#e6a23c;box-shadow:0 0 6px rgba(230,162,60,.45)}
+.clight.red{background:#ff5a6a;box-shadow:0 0 6px rgba(255,90,106,.45)}
+.holegrid{display:flex;flex-direction:column;gap:14px}
+.holec{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:14px;overflow:visible}
+.holec .holehd{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px 12px;margin-bottom:8px}
+.holec .holehd b{font-size:15px;color:#fff}
+.holemeta{color:var(--mut);font-size:12px}
+.holeroute{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0 10px;line-height:1.5}
+.holeroute .legchip{background:#0b1a33;border:1px solid #2a3f66;border-radius:6px;padding:2px 8px;font-size:12px;white-space:normal;max-width:100%}
+.holeroute .legchip .sp{color:var(--red);font-weight:600}
 .holeseats{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
-.hole-seat{background:#0b1a33;border:1px solid #2a3f66;border-radius:8px;padding:8px 10px;min-width:120px;font-size:12px}
+.hole-seat{background:#0b1a33;border:1px solid #2a3f66;border-radius:8px;padding:8px 10px;min-width:130px;font-size:12px;overflow:visible}
 .hole-seat.empty{border-color:#ff5a6a;background:#3a1520;box-shadow:0 0 0 1px rgba(255,90,106,.35)}
-.candrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
-.cand{display:flex;align-items:center;gap:8px;background:#0f203d;border:1px solid #3a5a8c;border-radius:10px;padding:6px 10px;cursor:pointer;color:inherit;text-align:left}
+.candrow{display:flex;flex-wrap:wrap;align-items:stretch;gap:8px;margin-top:8px}
+.candrow .lab{color:var(--mut);font-size:12px;align-self:center;min-width:40px}
+.cand{display:flex;align-items:center;gap:8px;background:#0f203d;border:1px solid #3a5a8c;border-radius:10px;padding:8px 10px;cursor:pointer;color:inherit;text-align:left;max-width:100%;overflow:visible}
 .cand:hover,.cand.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(62,166,255,.35)}
-.cand .av{width:28px;height:28px;border-radius:50%;background:#1d5fa8;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
-.cand .cn{font-size:12px;line-height:1.35}
-.lg{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle;background:#666}
-.lg.green{background:#2ecc8f;box-shadow:0 0 6px rgba(46,204,143,.6)}
-.lg.amber{background:#e6a23c;box-shadow:0 0 6px rgba(230,162,60,.5)}
-.lg.red{background:#ff5a6a;box-shadow:0 0 6px rgba(255,90,106,.5)}
+.cand.redish{opacity:.92;border-color:#6a2a38}
+.cand .av{width:30px;height:30px;border-radius:50%;background:#1d5fa8;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex:0 0 auto}
+.cand .cn{font-size:12px;line-height:1.4;min-width:0}
+.cand .cn b{color:#fff}
+.planhint{margin-top:10px;padding:8px 10px;border-radius:8px;background:#0f3b2c;border:1px solid var(--ok);font-size:12px}
 .chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
-.chip{background:#1d3460;border-radius:12px;padding:3px 10px;font-size:12px}
-.chip.warn{background:#5b3b0a;color:#ffd58a}.chip.bad{background:#5a1c27;color:#ffb3ba}
+.chip{background:#1d3460;border-radius:12px;padding:4px 10px;font-size:12px}
+.chip.warn{background:#5b3b0a;color:#ffd58a}.chip.bad{background:#5a1c27;color:#ffb3ba}.chip.ok{background:#0f5a3e;color:#8ff0d8}
+.impactbox{margin-top:10px;border-top:1px dashed var(--line);padding-top:10px}
+.impactbox h4{margin:0 0 6px;font-size:13px;color:#fff}
+
 /* 运营看板 */
 .opskpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px}
 .okpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}

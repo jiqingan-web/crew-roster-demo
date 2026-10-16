@@ -761,8 +761,10 @@
     const idx = buildIndex(base); const S = base.settings; const cap = hardCap(base);
     const out = holes.map(h => {
       const pr = h.pairing; const dt = daysTouched(pr, base);
-      const cands = candidates(base, pr, h.slot).filter(c => c.p.id !== pilotId).slice(0, 24);
-      const ranked = cands.map(c => {
+      const cands = candidates(base, pr, h.slot).filter(c => c.p.id !== pilotId && slotRankOK(h.slot, c.p.rank)).slice(0, 40);
+      const cands2 = cands.length ? cands : candidates(base, pr, h.slot).filter(c => c.p.id !== pilotId).slice(0, 40);
+      const pool = cands2;
+      const ranked = pool.map(c => {
         const hard = c.reasons.filter(r => !r.includes('限制高原') && !r.includes('限制夜间') && !r.includes('意向'));
         // candidates already folds personCheck; warn = prefs
         let light = 'red';
@@ -794,15 +796,61 @@
       return {
         id: pr.id, slot: h.slot, slotName: SLOT_NAME[h.slot],
         start: pr.start, ndays: pr.ndays, ac: pr.ac,
-        route: pr.legs.map(l => apName(l.from, base) + '-' + apName(l.to, base)).slice(0, 4).join(' · '),
+        route: pr.legs.map(l => apName(l.from, base) + '-' + apName(l.to, base)).join(' · '),
+        legChips: pr.legs.map(l => ({ flt: l.flt, from: l.from, to: l.to, fromName: apName(l.from, base), toName: apName(l.to, base),
+          spFrom: isSpecial(l.from, base), spTo: isSpecial(l.to, base), d: l.d })),
         legs: pr.legs.length, hours: +pairingHours(pr).toFixed(1),
         dates: dt, reg: [...new Set(pr.legs.map(l => l.reg).filter(Boolean))],
         crewLeft: ['C', 'F', 'T'].filter(s => s !== h.slot).map(s => { const q = idx.pm[pr.crew[s]]; return q ? { slot: s, id: q.id, name: q.name, rank: q.rank } : { slot: s, id: null }; }),
-        candidates: uniq
+        candidates: uniq,
+        nGreen: uniq.filter(x => x.light === 'green').length
       };
     });
-    return { pilot: { id: p.id, name: p.name, rank: p.rank }, days, holes: out, ms: 0 };
+    // 附上 leaveOptions 整案提示（链式/备份等直接候选看不到的路径）
+    let plan = null;
+    try {
+      const lo = leaveOptions(st, pilotId, days, { max: 3 });
+      const rec = (lo.solutions || []).find(x => x.recommended) || (lo.solutions || []).find(x => !x.unresolved && x.state);
+      if (rec) {
+        plan = { name: rec.name, desc: rec.desc, score: rec.score, steps: rec.steps, unresolved: rec.unresolved, hard: rec.hard,
+          people: (rec.people || []).map(x => ({ id: x.id, name: x.name, rank: x.rank, hb: +x.hb.toFixed(1), ha: +x.ha.toFixed(1), delta: +(x.ha - x.hb).toFixed(1), prefHit: x.prefHit })),
+          giniB: rec.giniB, giniA: rec.giniA, giniD: rec.giniD, sbLeft: rec.sbLeft };
+        out.forEach(h => {
+          const stps = rec.steps.filter(x => x.pairing === h.id || x.newPairing === h.id);
+          if (stps.length) h.planSteps = stps;
+        });
+      }
+    } catch (e) { /* ignore */ }
+    return { pilot: { id: p.id, name: p.name, rank: p.rank }, days, holes: out, plan, ms: 0 };
   }
+
+  function holeImpact(st, pilotId, days, pairingId, slot, candId) {
+    const before = summarize(st); const w = clone(st);
+    const p = w.pilots.find(x => x.id === pilotId); if (!p) return null;
+    p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
+    p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
+    if (w.standby && w.standby[pilotId]) w.standby[pilotId] = w.standby[pilotId].filter(d => !days.includes(d));
+    const pr = w.pairings.find(x => x.id === pairingId); if (!pr) return null;
+    const fromSlot = ['C', 'F', 'T'].find(s => pr.crew[s] === pilotId) || slot;
+    pr.crew[fromSlot] = candId;
+    if (w.standby && w.standby[candId]) w.standby[candId] = w.standby[candId].filter(d => !daysTouched(pr, w).includes(d));
+    const after = summarize(w); const idxB = buildIndex(st), idxA = buildIndex(w);
+    const otherHoles = w.pairings.filter(x => Object.values(x.crew).includes(pilotId) && daysTouched(x, w).some(d => days.includes(d))).map(x => x.id);
+    const ids = [pilotId, candId];
+    const hours = ids.map(id => { const q = w.pilots.find(x => x.id === id); return { id, name: q.name, rank: q.rank, hb: +idxB.hours[id].toFixed(1), ha: +idxA.hours[id].toFixed(1), delta: +(idxA.hours[id] - idxB.hours[id]).toFixed(1) }; });
+    const rest = ids.map(id => { const q = w.pilots.find(x => x.id === id); const gB = restGaps(q, idxB.sched[id], st), gA = restGaps(q, idxA.sched[id], w);
+      return { id, name: q.name, gapsBefore: gB.slice(), gapsAfter: gA.slice() }; });
+    const sbDays = days.map(d => ({ d, before: st.pilots.filter(q => ((st.standby || {})[q.id] || []).includes(d)).length,
+      after: w.pilots.filter(q => ((w.standby || {})[q.id] || []).includes(d)).length }));
+    return {
+      hardB: before.hard, hardA: after.hard, softB: before.soft, softA: after.soft,
+      giniB: +before.all.gini.toFixed(4), giniA: +after.all.gini.toFixed(4), giniD: +(after.all.gini - before.all.gini).toFixed(4),
+      coverageB: before.coverage, coverageA: after.coverage,
+      otherHoles, hours, rest, sbDays,
+      stillOpen: !(pr.crew.C && pr.crew.F && pr.crew.T)
+    };
+  }
+
 
   // ---------- 运营看板指标 ----------
   function opsMetrics(st) {
@@ -1166,5 +1214,5 @@
   return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
+    crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });
