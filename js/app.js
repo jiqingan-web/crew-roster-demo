@@ -338,7 +338,7 @@
     for (let d = 1; d <= C.DAYS; d++) h += `<div class="gday ${[0, 6].includes(dow(d)) ? 'we' : ''}" title="${dateOf(d)} 周${WK[dow(d)]}">${cw >= 70 ? `${dateOf(d)} 周${WK[dow(d)]}` : cw >= 26 ? `${d}<br>${WK[dow(d)]}` : cw >= 12 ? d : (d % 5 === 0 || d === 1 ? d : '')}</div>`;
     h += '</div>';
     for (const p of ps) {
-      const hr = idx.hours[p.id]; const bad = hr > (S.hardMaxHours || 90); const amb = false;
+      const hr = idx.hours[p.id]; const bad = hr > (S.hardMaxHours || 100); const amb = false;
       const hlr = ui.hl && ui.hl.pilots.has(p.id);
       h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点击：为此人临时请假 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
@@ -503,28 +503,27 @@
   // ---------------- 校验报告 ----------------
   function rReport() {
     const s = sum, S = st.settings;
-    const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '备份冲突'];
+    const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突'];
     const card = (lab, val, sub, cls) => `<div class="card"><div class="lab">${lab}</div><div class="val ${cls || ''}">${val}</div><div class="sub">${sub}</div></div>`;
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
     const demos = st.pairings.filter(p => p.demoAnomaly);
     const R = C.CCAR121, COM = C.COM || {};
     const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 公司手册回测摘要 <small>R8 · ${COM.rev || 'EU.COM'} · ${COM.re12 || 'RE12'}</small></h3>
-      <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（公司/法规 ${R.minRestBeforeFdpH}h；公司口径关车+40→报到−25，本系统用落地+${S.releaseMin}→报到近似）· 月飞行：<b>设置 ${S.hardMaxHours || 90}h</b>，<b>公司与法规均为 ${COM.monthFlightH || R.monthFlightH}h</b>（设置更严）· 报到默认 ${S.reportMin}min（公司国内飞行组 ${COM.reportMinDomesticFlight || 95}min）<br>
-      未实现：年 ${R.yearFlightH}h、7日 FDP ${R.sevenDayFdpH}h、月 FDP ${R.monthFdpH}h、144h 内 48h、4连续日后第5日不飞、主备份并入值勤累积 ·
+      <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、4连续值勤日后第5日不飞、7日FDP≤${R.sevenDayFdpH}h、月FDP≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编）<br>
       <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="回测/公司手册回测报告.md" target="_blank" rel="noopener">公司手册报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/公司手册回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
     let h = ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${p.id}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
       + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
       ${card('任务覆盖率（满员）', (s.coverage * 100).toFixed(1) + '%', `${s.full}/${s.total} 个任务 · ${s.totalHours.toFixed(0)} 任务飞行小时`, s.coverage === 1 ? 'ok' : 'bad')}
-      ${card('硬性规则违规', s.hard, s.hard ? '需处理，见下表' : '全部合规 ✔（座位搭配/特殊机场/休息/请假/≤${S.hardMaxHours || 90}h）', s.hard ? 'bad' : 'ok')}
+      ${card('硬性规则违规', s.hard, s.hard ? '需处理，见下表' : '全部合规 ✔（座位搭配/特殊机场/休息/请假/≤${S.hardMaxHours || 100}h）', s.hard ? 'bad' : 'ok')}
       ${card('工时公平性（基尼系数）', s.all.gini.toFixed(3), `全员 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h · 均值 ${s.all.mean.toFixed(1)}h · 同级组内标准差 ≤ ${Math.max(...C.GROUPS.map(g => s.groups[g].hours.std)).toFixed(1)}h`, 'ok')}
       ${card('休息间隔 2–3 天占比', (s.rhythm.gap23 * 100).toFixed(1) + '%', `均值 ${s.rhythm.gapMean.toFixed(2)} 天 · 备份 ${s.rhythm.standbyTotal} 人日`, s.rhythm.gap23 > 0.5 ? 'ok' : '')}
       ${card('意向休息日满足率', (s.prefRate * 100).toFixed(1) + '%', `${s.prefOK}/${s.prefT} 个意向休息日得到保障`, s.prefRate > 0.95 ? 'ok' : '')}</div>
       <div class="grid g2"><div class="panel"><h3>合规性 <small>硬性规则逐项计数${lastSolveMs ? ' · 自动排班用时 ' + lastSolveMs + ' ms' : ''}</small></h3><table><tr><th>规则</th><th>违规数</th></tr>
       ${hardTypes.map(t => { const n = (s.byType[t] || {}).n || 0; return `<tr><td>${t}</td><td class="${n ? 'red' : 'okc'}">${n ? n : '0 ✔'}</td></tr>`; }).join('')}
       <tr><td>备份超过每人每月 ${S.maxStandbyPerPilot} 天（软性）</td><td class="warnc">${(s.byType['备份超限'] || {}).n || 0}</td></tr><tr><td>每日备份人数不足（软性）</td><td class="warnc">${(s.byType['备份人数不足'] || {}).n || 0}</td></tr><tr><td>意向休息日未满足（软性）</td><td class="warnc">${(s.byType['意向休息日未满足'] || {}).n || 0}</td></tr><tr><td>始发站需血压测试仪提醒（信息）</td><td class="warnc">${(s.byType['需血压测试仪'] || {}).n || 0}</td></tr></table></div>
-      <div class="panel"><h3>公平性 · 各级别组月飞行小时分布 <small>圆点=均值，阴影=±1σ，线=最小–最大；红虚线=月硬上限（设置值） ${S.hardMaxHours || 90}h</small></h3><div class="chart">${CH.ranges(C.GROUPS.map(g => Object.assign({ label: g, color: GCOL[g] }, s.groups[g].hours)), { range: [20, 100], marks: [{ v: S.hardMaxHours || 90, color: '#ff5a6a' }] })}</div>
+      <div class="panel"><h3>公平性 · 各级别组月飞行小时分布 <small>圆点=均值，阴影=±1σ，线=最小–最大；红虚线=月硬上限（设置值） ${S.hardMaxHours || 100}h</small></h3><div class="chart">${CH.ranges(C.GROUPS.map(g => Object.assign({ label: g, color: GCOL[g] }, s.groups[g].hours)), { range: [20, 100], marks: [{ v: S.hardMaxHours || 100, color: '#ff5a6a' }] })}</div>
       <table><tr><th>组别</th><th>人数</th><th>均值</th><th>标准差</th><th>最小</th><th>最大</th><th>基尼</th></tr>${C.GROUPS.map(g => { const x = s.groups[g].hours; return `<tr><td>${g}</td><td>${x.n}</td><td>${x.mean.toFixed(1)}</td><td>${x.std.toFixed(2)}</td><td>${x.min.toFixed(1)}</td><td>${x.max.toFixed(1)}</td><td>${x.gini.toFixed(3)}</td></tr>`; }).join('')}</table></div></div>
-      <div class="panel"><h3>每人本月飞行小时 <small>按组别、小时排序；颜色=组别</small></h3><div class="chart">${CH.bars(s.per.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.hardMaxHours || 90, label: '月硬上限(设置) ' + (S.hardMaxHours || 90) + 'h', color: '#ff5a6a' }], max: 100 })}</div>
+      <div class="panel"><h3>每人本月飞行小时 <small>按组别、小时排序；颜色=组别</small></h3><div class="chart">${CH.bars(s.per.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.hardMaxHours || 100, label: '月硬上限(设置) ' + (S.hardMaxHours || 100) + 'h', color: '#ff5a6a' }], max: 100 })}</div>
       <div class="legend">${C.GROUPS.map(g => `<span><i style="background:${GCOL[g]}"></i>${g}</span>`).join('')}</div></div>
       <div class="grid g3">
       <div class="panel"><h3>节奏 · 任务天数分布 <small>${s.total} 个任务</small></h3>${CH.bars(Object.keys(s.rhythm.lenDist).map(k => ({ label: k + '天', value: s.rhythm.lenDist[k], color: '#3ea6ff' })), { w: 420, h: 200, values: true })}<div class="note">以 3–4 天多日任务为主，${((((s.rhythm.lenDist[3] || 0) + (s.rhythm.lenDist[4] || 0)) / s.total) * 100).toFixed(0)}% 为 3–4 天</div></div>
@@ -828,14 +827,14 @@
     const m = {}; (sol.state || st).pilots.forEach(p => m[p.id] = p); const nm = id => id && m[id] ? `${esc(m[id].name)} <span class="mut">${m[id].rank}</span>` : '<span class="red">空缺</span>';
     const t = sol.manual || sol.unresolved ? TYPE_TXT.manual : null;
     return `<div class="solc ${sol.recommended ? 'rec' : ''} ${i === cardCtx.hover ? 'sel' : ''} ${sol.unresolved ? 'bad' : ''}" data-i="${i}">
-      <div class="solh"><b>方案 ${String.fromCharCode(65 + i)} · ${esc(sol.name)}</b>${sol.recommended ? '<span class="rtag">推荐</span>' : ''}${t ? `<span class="ttag ${t[1]}">${t[0]}</span>` : ''}<span class="score" title="综合评分（越低越好）：未解决×1000、新增硬违规×500、超90h×200、占意向休息×25、节奏扰动×4、基尼增量×2000、链式层级×6、涉及人数×2、调用备份−5；执勤方案另加：仍超执勤×800、休息不足×300">评分 ${sol.score}</span></div>
+      <div class="solh"><b>方案 ${String.fromCharCode(65 + i)} · ${esc(sol.name)}</b>${sol.recommended ? '<span class="rtag">推荐</span>' : ''}${t ? `<span class="ttag ${t[1]}">${t[0]}</span>` : ''}<span class="score" title="综合评分（越低越好）：未解决×1000、新增硬违规×500、超月上限×200、占意向休息×25、节奏扰动×4、基尼增量×2000、链式层级×6、涉及人数×2、调用备份−5；执勤方案另加：仍超执勤×800、休息不足×300">评分 ${sol.score}</span></div>
       <div class="note">${esc(sol.desc)}</div>
       <table class="solt"><tr><th>任务</th><th>调整</th></tr>${sol.steps.map(x => x.type === 'split' ? `<tr><td>${x.pairing}</td><td><span class="ttag spt">${x.whole ? '整组替换' : '拆分'}</span> ${x.whole ? '' : `原机组飞至 ${esc(C.apName(x.station, st))} 下机；`}自 ${C.fmtT(x.time)} ${esc(C.apName(x.station, st))} 起 ${x.legsB} 段由新机组执行${x.whole ? '' : `（新任务 ${x.newPairing}）`}</td></tr>` : `<tr><td>${x.pairing}${x.slot ? `<br><span class="mut">${C.SLOT_NAME[x.slot]}位</span>` : ''}</td><td>
         ${x.from ? `<span class="diff-del">${esc(m[x.from] ? m[x.from].name : x.from)}</span> → ` : ''}${x.why ? `<span class="mut">（${x.why}）</span>` : ''}${x.type === 'manual' ? '<span class="red">待人工</span>' : nm(x.to)} <span class="ttag ${TYPE_TXT[x.type][1]}">${TYPE_TXT[x.type][0]}</span>${x.prefWarn ? ` <span class="warnc">占${x.prefWarn}</span>` : ''}
         ${x.chain ? `<div class="mut">↳ ${x.chain.pairing} ${C.SLOT_NAME[x.chain.slot]}位：<span class="diff-del">${nm(x.chain.from)}</span> → ${nm(x.chain.to)}${x.chain.fromStandby ? ' <span class="ttag sbt">备份</span>' : ''}</div>` : ''}
         ${x.block ? `<div class="red" style="font-size:11px">受阻规则：${x.block.rules.map(esc).join('；') || '—'}<br>候选人主要不满足：${x.block.top.map(esc).join('，')}</div>` : ''}</td></tr>`).join('')}</table>
       <div class="solk">
-        <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.overHard ? 'red' : 'okc'}">${x.ha.toFixed(1)}h</b> ${x.overHard ? `<span class="red">超 ${st.settings.hardMaxHours || 90}h 系统月上限</span>` : ''}</div>`).join('') || '—'}</div>
+        <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.overHard ? 'red' : 'okc'}">${x.ha.toFixed(1)}h</b> ${x.overHard ? `<span class="red">超 ${st.settings.hardMaxHours || 100}h 系统月上限</span>` : ''}</div>`).join('') || '—'}</div>
         <div><span class="lab">公平（基尼）</span>${sol.giniB.toFixed(4)}→${sol.giniA.toFixed(4)} <span class="${sol.giniD > 0.002 ? 'warnc' : 'okc'}">(${sol.giniD >= 0 ? '+' : ''}${sol.giniD.toFixed(4)})</span></div>
         <div><span class="lab">意向休息 / 节奏</span>${sol.prefN ? `<span class="warnc">占用意向休息 ${sol.prefN} 天</span>` : '<span class="okc">不占意向休息</span>'} · ${sol.rhy ? `<span class="warnc">节奏扰动 +${sol.rhy}</span>` : '<span class="okc">节奏无扰动</span>'}</div>
         <div><span class="lab">当日剩余备份</span>${sol.sbLeft.map(x => `<span class="${x.n ? '' : 'warnc'}">${x.d}日:${x.n}</span>`).join(' ')}</div>
@@ -1197,16 +1196,16 @@
     const num = (k, lab, unit) => `<div class="slotbox" style="grid-template-columns:200px 120px 60px"><span>${lab}</span><input type="number" step="any" data-k="${k}" value="${S[k]}"><span class="mut">${unit}</span></div>`;
     const cats = ['NONE', 'LHASA', 'HIGH', 'PLATEAU', 'ZBCF', 'J1', 'US'];
     $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>排班参数</h3>
-      ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（系统设置；公司手册与法规均为100h）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
+      ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
       ${num('maxOffCapt', '同日最多休息/请假（机长类）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
-      <div class="note" style="margin-top:8px">月飞行小时硬上限为<strong>本系统设置</strong>（默认90h）。公司手册 EU.COM 3.6.4 与 CCAR-121.487 均为<strong>100h</strong>；默认90h更严、可在此改。两任务间最短休息默认12h（公司/法规为10h；公司主基地休息=关车后40分钟起至下次报到前25分钟止）。自动排班按可用天数折算份额做公平均衡（基尼系数），不设目标上下限。</div>
+      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司手册 EU.COM 3.6.4 与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日历日后第5日不飞、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <h3 style="margin-top:16px">飞行值勤期（FDP）限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>
       <table class="fdpt"><tr><th>报到时间（本地）</th>${C.LEG_COLS.map(c => `<th>${c}</th>`).join('')}</tr>${S.fdpTable.map((r, ri) => `<tr><td>${r.label}</td>${r.lim.map((v, ci) => `<td><input type="number" step="0.5" class="fdpin" data-r="${ri}" data-c="${ci}" value="${v}"> h</td>`).join('')}</tr>`).join('')}</table>
       <div class="note">FDP = 当日首段计划起飞前报到（${S.reportMin} 分钟）至末段落地（挡轮挡）；按报到时刻与当日航段数查表。</div>
-      <label class="flex" style="margin-top:6px"><input type="checkbox" id="fdpAug" ${S.fdpAugmented ? 'checked' : ''}> 三人机组按扩编机组计算（须具备符合要求的机上休息设施），限制统一取</label>${num('fdpAugLimitH', '扩编机组 FDP 限制', '小时')}
+      <div class="note" style="margin-top:6px">三人制运行：不启用扩编机组 / 表C（公司手册 3.6.3 表C留白；用户拍板关闭）。</div>
       ${num('fdpRiskHigh', '高风险：延误余量 <', '分钟')}${num('fdpRiskMed', '中风险：延误余量 <', '分钟')}${num('minTurnMin', '延误推算最短过站', '分钟')}${num('minOvernightRestH', '任务内过夜最低休息', '小时')}
       <div style="margin-top:6px"><button class="btn sm" id="fdpReset">恢复默认 FDP 表</button></div>
       <div style="margin-top:12px"><button class="btn primary" id="saveS">保存设置并重新校验</button></div></div>
@@ -1214,7 +1213,7 @@
       <div class="scroll"><table><tr><th>ICAO</th><th>名称</th><th>类别</th></tr>${Object.keys(aps).map(c => `<tr><td>${c}</td><td class="${aps[c][3] ? 'red' : ''}">${aps[c][0]}</td><td><select data-cat="${c}" ${c === 'ZUUU' ? 'disabled' : ''}>${cats.map(k => `<option value="${k}" ${(aps[c][3] || 'NONE') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></td></tr>`).join('')}</table></div></div></div>`;
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);
-      document.querySelectorAll('.fdpin').forEach(i => S.fdpTable[+i.dataset.r].lim[+i.dataset.c] = +i.value); S.fdpAugmented = $('#fdpAug').checked;
+      document.querySelectorAll('.fdpin').forEach(i => S.fdpTable[+i.dataset.r].lim[+i.dataset.c] = +i.value); S.fdpAugmented = false;
       S.honorPrefs = $('#hp').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
       st.airports = {}; document.querySelectorAll('[data-cat]').forEach(s => { const a = C.AIRPORTS[s.dataset.cat].slice(0, 3); if (s.value !== 'NONE') a[3] = s.value; st.airports[s.dataset.cat] = a; });
       refresh(); toast('设置已保存，校验结果已更新');
