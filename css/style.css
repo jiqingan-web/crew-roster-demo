@@ -265,3 +265,24 @@ tr.issueJump{cursor:pointer}tr.issueJump:hover td{background:#1a3a5c}
 .slotbox.pending select{border-color:var(--warn);box-shadow:0 0 0 1px rgba(255,176,32,.35)}
 .pendtag{margin-left:6px;padding:1px 7px;border-radius:8px;background:#5b3b0a;color:#ffd58a;font-size:10px;font-weight:700;white-space:nowrap}
 .slotbox{grid-template-columns:60px 1fr auto}
+
+/* 主线 + 更多功能 */
+.tabs{position:relative}
+.more{position:relative}
+.more-btn{background:none;border:none;color:var(--mut);padding:11px 16px;cursor:pointer;font-size:14px;border-bottom:2px solid transparent}
+.more-btn:hover{color:#fff}.more-btn.active{color:#fff;border-bottom-color:var(--acc)}
+.more-panel{position:absolute;top:100%;left:0;z-index:60;min-width:150px;background:#0f2447;border:1px solid var(--line);border-radius:8px;padding:6px;box-shadow:0 8px 24px rgba(0,0,0,.45)}
+.more-panel.hidden{display:none}
+.more-panel button{display:block;width:100%;text-align:left;background:none;border:none;color:var(--txt);padding:8px 12px;border-radius:5px;cursor:pointer;font-size:13px}
+.more-panel button:hover{background:var(--panel2)}.more-panel button.active{color:#fff;background:#1a3563}
+.story{display:flex;align-items:center;gap:8px;padding:10px 18px;background:linear-gradient(90deg,#0c2347,#102c58);border-bottom:1px solid var(--line);flex-wrap:wrap}
+.story-lab{font-weight:700;color:var(--gold);font-size:14px;letter-spacing:2px;padding-right:6px;border-right:2px solid var(--gold);margin-right:4px}
+.story .step{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:7px 14px 7px 8px;border-radius:24px;cursor:pointer;text-align:left}
+.story .step:hover{border-color:var(--acc)}
+.story .sn{width:26px;height:26px;border-radius:50%;background:#1d3a6b;color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.story .sb{display:flex;flex-direction:column;line-height:1.25}.story .sb b{font-size:14px;color:#fff}.story .sb small{color:var(--mut);font-size:11px}
+.story .step.done .sn{background:var(--ok);color:#06241a}
+.story .step.next{border-color:var(--acc2);box-shadow:0 0 0 2px rgba(0,209,178,.25),0 0 14px rgba(0,209,178,.35)}
+.story .step.next .sn{background:linear-gradient(135deg,#1f7ae0,#00d1b2)}
+.story .step.rep.cur{border-color:var(--acc)}
+.story .sarrow{color:var(--mut);font-size:16px}

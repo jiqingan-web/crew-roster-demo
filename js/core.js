@@ -100,6 +100,14 @@
              { from: 5, to: 12, label: '05:00–11:59', lim: [14, 13, 12, 11] },
              { from: 12, to: 24, label: '12:00–23:59', lim: [13, 12, 11, 10] } ];
   }
+  // CCAR-121-R8（交通运输部令2024年第7号）P章 数值常量；条款出处见 回测/121回测报告.md
+  const CCAR121 = { rev: 'R8', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10, augFlightH3: 13, augFlightH4: 17,
+    tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
+  // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
+  function flightLimitMin(st, reportMin) {
+    if (st && st.settings && st.settings.fdpAugmented) return CCAR121.augFlightH3 * 60;
+    const h = (((reportMin % DAY) + DAY) % DAY) / 60; const r = CCAR121.tableA.find(x => h >= x.from && h < x.to) || CCAR121.tableA[2]; return r.h * 60;
+  }
   function defaultSettings() {
     return { minRestH: 12, hardMaxHours: 90, maxOffCapt: 4, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
@@ -405,7 +413,7 @@
       if (oa < b && a < ob) { rs.push('时间冲突(' + o.id + ')'); continue; }
       if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) rs.push('休息不足' + S.minRestH + 'h(' + o.id + ')'); }
     const h = pairingHours(pr), already = idx.sched[p.id].includes(pr);
-    const cap = hardCap(st); if (!already && idx.hours[p.id] + h > cap + 1e-9) rs.push('超出法规硬上限' + cap + 'h');
+    const cap = hardCap(st); if (!already && idx.hours[p.id] + h > cap + 1e-9) rs.push('超出月飞行小时硬上限' + cap + 'h');
     healthBlocks(p, pr, st).forEach(x => rs.push(x));
     return [rs.length === 0, rs];
   }
@@ -673,6 +681,7 @@
       }
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${pr.id} D${dy.d} 计划 FDP ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
+        if (dy.fltOver > 0) add('日飞行时间超限', 'hard', `${pr.id} D${dy.d} 计划飞行时间 ${fmtH(dy.planFlt)} > 表A限制 ${fmtH(dy.fltLimit)}（CCAR-121.483(a)）`, pr);
         if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${pr.id} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
       const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
       if (tl.length && crew.some(Boolean)) add('需血压测试仪', 'info', `${pr.id} 自 ${[...new Set(tl.map(l => apName(l.from, st)))].join('、')} 出港（${tl.map(l => 'D' + l.d + ' ' + l.flt).join('，')}），始发站须配备血压测试仪`, pr);
@@ -687,7 +696,7 @@
     if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay == null ? 1 : S.standbyPerDay;
       if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 ${n}/${need} 人` }); }
     st.pilots.forEach(p => { const h = idx.hours[p.id];
-      if (h > hardCap(st) + 1e-9) ded.push({ type: '月小时超法规上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${hardCap(st)}h（CAAC 月度硬上限）`, pilot: p.id });
+      if (h > hardCap(st) + 1e-9) ded.push({ type: '月小时超法规上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${hardCap(st)}h（本系统设置值；CCAR-121.487(b)(1) 法规月上限 ${CCAR121.monthFlightH}h）`, pilot: p.id });
  });
     return ded;
   }
@@ -1095,6 +1104,7 @@
       dy.cascEnd = Math.max(...dy.legs.map(x => x.carr));
       dy.fdp = dy.end - dy.start; dy.planFdp = dy.planEnd - (f.leg.dep - rep);
       dy.limit = fdpLimit(st, f.leg.dep - rep, dy.legs.length); dy.buffer = dy.limit - dy.fdp; dy.planBuffer = dy.limit - dy.planFdp;
+      dy.planFlt = dy.legs.reduce((a, x) => a + (x.leg.arr - x.leg.dep), 0); dy.fltLimit = flightLimitMin(st, f.leg.dep - rep); dy.fltOver = Math.max(0, dy.planFlt - dy.fltLimit);
       dy.exceed = Math.max(0, -dy.buffer);
       dy.cascExceed = dy.exceed ? 0 : Math.max(0, dy.cascEnd - dy.start - dy.limit);
       dy.cascLeg = dy.cascExceed ? dy.legs.find(x => x.carr > dy.start + dy.limit) : null;
@@ -1282,7 +1292,7 @@
   }
 
 
-    return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+    return { CCAR121, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, injectDemoAnomalies, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };

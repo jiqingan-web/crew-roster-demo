@@ -20,19 +20,25 @@
   </div>
 </header>
 <nav class="tabs" id="tabs">
-  <button data-tab="ops">运营看板</button>
+  <button data-tab="data" title="主线①">导入导出</button>
   <button data-tab="gantt" class="active">人员视图</button>
-  <button data-tab="roster">人员总览</button>
   <button data-tab="tasks">任务视图</button>
+  <button data-tab="leave" title="主线④">请假调配</button>
   <button data-tab="report">校验报告</button>
-  <button data-tab="leave">请假调配</button>
-  <button data-tab="fills">补位历史</button>
-  <button data-tab="duty">执勤监控</button>
-  <button data-tab="welfare">员工福利</button>
-  <button data-tab="data">导入导出</button>
-  <button data-tab="settings">设置</button>
+  <div class="more" id="moreWrap">
+    <button type="button" id="btnMore" class="more-btn" aria-haspopup="true" aria-expanded="false">更多功能 ▾</button>
+    <div class="more-panel hidden" id="morePanel" role="menu">
+      <button data-tab="roster">人员总览</button>
+      <button data-tab="ops">运营看板</button>
+      <button data-tab="duty">执勤监控</button>
+      <button data-tab="welfare">员工福利</button>
+      <button data-tab="fills">补位历史</button>
+      <button data-tab="settings">设置</button>
+    </div>
+  </div>
   <div class="kpis" id="kpis"></div>
 </nav>
+<section class="story" id="story" aria-label="主线流程"></section>
 <main id="main"></main>
 <div id="modal" class="modal hidden"><div class="modal-box" id="modalBox"></div></div>
 <div id="progress" class="progress hidden"><div class="pbox"><div class="ptitle">正在自动排班（多轮优化 + 备份编排）…</div><div class="pbar"><div id="pfill"></div></div><div id="ptext">0%</div></div></div>
