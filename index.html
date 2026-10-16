@@ -10,6 +10,10 @@
 <header class="topbar">
   <div class="brand"><span class="logo">✈</span><div><div class="t1">机组智能排班助手</div><div class="t2">A320 机队 · 成都基地 · 2026年11月</div></div><span class="sample-tag">示例数据 SAMPLE</span></div>
   <div class="actions">
+    <div class="issue-wrap">
+      <button id="btnIssues" class="btn warn" type="button" title="定位缺人与硬性违规">⚠ 定位问题<span id="issueBadge" class="ibadge hidden">0</span></button>
+      <div id="issuePanel" class="issue-panel hidden" role="dialog" aria-label="问题列表"></div>
+    </div>
     <button id="btnAuto" class="btn primary">⚡ 一键自动填人</button>
     <button id="btnClear" class="btn">清空排班</button>
     <button id="btnReset" class="btn danger">重置示例数据</button>

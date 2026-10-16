@@ -15,8 +15,74 @@
   function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st); st.fills = st.fills || []; return; } } catch (e) {} reset(false); }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
-  function refresh() { sum = C.summarize(st); renderKpis(); render(); save(); }
+  function refresh() { sum = C.summarize(st); renderKpis(); updateIssueBadge(); render(); save(); }
   function toast(m, ms) { const t = $('#toast'); t.innerHTML = m; t.classList.remove('hidden'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), ms || 2600); }
+
+  // ---------------- 定位问题（缺人 / 硬性违规） ----------------
+  function collectIssues() {
+    const items = [];
+    const hard = (sum.violations || []).filter(v => v.level === 'hard' && v.pairing);
+    hard.sort((a, b) => (a.type === '未满员' ? 0 : 1) - (b.type === '未满员' ? 0 : 1)
+      || String(a.pairing).localeCompare(String(b.pairing)) || String(a.msg).localeCompare(String(b.msg)));
+    hard.forEach(v => items.push({ level: 'hard', kind: v.type === '未满员' ? 'unfilled' : 'hard', type: v.type, msg: v.msg, pairing: v.pairing, pilot: v.pilot }));
+    const soft = (sum.violations || []).filter(v => v.level === 'soft' && v.pairing);
+    soft.forEach(v => items.push({ level: 'soft', kind: 'soft', type: v.type, msg: v.msg, pairing: v.pairing, pilot: v.pilot }));
+    const focus = items.filter(x => x.level === 'hard');
+    const pairings = new Set(focus.map(x => x.pairing));
+    return { items, focus, count: pairings.size, softN: soft.length };
+  }
+  function updateIssueBadge() {
+    const b = $('#issueBadge'), btn = $('#btnIssues'); if (!b || !btn) return;
+    const { count } = collectIssues();
+    if (count > 0) { b.textContent = count > 99 ? '99+' : String(count); b.classList.remove('hidden'); btn.classList.add('warn'); }
+    else { b.classList.add('hidden'); b.textContent = '0'; }
+  }
+  function closeIssuePanel() {
+    const pan = $('#issuePanel'); if (pan) pan.classList.add('hidden');
+    document.removeEventListener('mousedown', onIssueOutside, true);
+    document.removeEventListener('keydown', onIssueEsc, true);
+  }
+  function onIssueOutside(e) {
+    const wrap = document.querySelector('.issue-wrap');
+    if (wrap && !wrap.contains(e.target)) closeIssuePanel();
+  }
+  function onIssueEsc(e) { if (e.key === 'Escape') closeIssuePanel(); }
+  function pulseHl() {
+    document.querySelectorAll('.bar.hl').forEach(el => { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); });
+  }
+  function jumpToIssue(pairingId) {
+    const pr = st.pairings.find(x => x.id === pairingId); if (!pr) { toast('未找到任务 ' + esc(pairingId)); return; }
+    closeIssuePanel();
+    tab = 'gantt'; location.hash = 'gantt';
+    ui.hl = { pairings: new Set([pr.id]), pilots: new Set(['C', 'F', 'T'].map(s => pr.crew[s]).filter(Boolean)), days: C.daysTouched(pr, st) };
+    render(); setTimeout(() => { scrollToHl(); pulseHl(); }, 40);
+  }
+  function openIssuePanel() {
+    const pan = $('#issuePanel'); if (!pan) return;
+    const { focus, count, softN } = collectIssues();
+    if (!count) {
+      closeIssuePanel();
+      toast(softN ? `当前无硬性违规或缺人（另有 ${softN} 条软性提示，见校验报告）` : '当前无硬性违规或缺人');
+      return;
+    }
+    let h = `<div class="ihd"><span>⚠ 需处理 <b>${count}</b> 个任务</span><span class="mut">${focus.length} 条硬性/缺人</span></div>`;
+    h += focus.map((v, i) => `<button type="button" class="issue-row" data-pr="${esc(v.pairing)}" data-i="${i}">
+      <span class="itag ${v.kind}">${v.kind === 'unfilled' ? '缺人' : '硬性'}</span>
+      <span class="ipid">${esc(v.pairing)}</span>
+      <span class="imsg">${esc(v.type)} · ${esc(v.msg)}</span>
+    </button>`).join('');
+    pan.innerHTML = h;
+    pan.classList.remove('hidden');
+    pan.querySelectorAll('.issue-row').forEach(btn => btn.onclick = () => jumpToIssue(btn.dataset.pr));
+    document.addEventListener('mousedown', onIssueOutside, true);
+    document.addEventListener('keydown', onIssueEsc, true);
+  }
+  function toggleIssuePanel() {
+    const pan = $('#issuePanel');
+    if (pan && !pan.classList.contains('hidden')) { closeIssuePanel(); return; }
+    openIssuePanel();
+  }
+
   const pm = () => { const m = {}; st.pilots.forEach(p => m[p.id] = p); return m; };
   const pill = r => `<span class="pill r-${C.rankGroup(r)}">${esc(r)}</span>`;
   const dateOf = d => `11/${String(d).padStart(2, '0')}`;
@@ -369,10 +435,11 @@
       <div class="panel"><h3>合理性 · 特殊机场任务暴露 <small>σ=${spx.std.toFixed(2)}</small></h3>${CH.bars(C.GROUPS.map(g => ({ label: g, value: s.groups[g].special.mean, color: GCOL[g] })), { w: 420, h: 200, values: true })}<div class="note">人均含特殊机场任务数；仅持授权人员参与</div></div>
       <div class="panel"><h3>合理性 · 夜航航段 <small>σ=${nt.std.toFixed(2)}</small></h3>${CH.bars(C.GROUPS.map(g => ({ label: g, value: s.groups[g].night.mean, color: GCOL[g] })), { w: 420, h: 200, values: true })}<div class="note">人均夜航段（00:00–06:00 起降）；全员 ${nt.min}–${nt.max}</div></div></div>
       ${fdpReportPanel()}
-      <div class="panel"><h3>问题明细 <small>${s.violations.length} 条（含软性与提醒）</small></h3><div class="scroll" style="max-height:300px"><table><tr><th>级别</th><th>类型</th><th>说明</th></tr>
-      ${s.violations.slice().sort((a, b) => ['hard', 'soft', 'info'].indexOf(a.level) - ['hard', 'soft', 'info'].indexOf(b.level)).map(v => `<tr><td class="${v.level === 'hard' ? 'red' : 'warnc'}">${{ hard: '硬性', soft: '软性', info: '提醒' }[v.level]}</td><td>${v.type}</td><td>${esc(v.msg)}</td></tr>`).join('') || '<tr><td colspan=3 class="okc">无</td></tr>'}</table></div></div>`;
+      <div class="panel"><h3>问题明细 <small>${s.violations.length} 条（含软性与提醒）</small></h3><div class="scroll" style="max-height:300px"><table><tr><th>级别</th><th>类型</th><th>说明</th><th></th></tr>
+      ${s.violations.slice().sort((a, b) => ['hard', 'soft', 'info'].indexOf(a.level) - ['hard', 'soft', 'info'].indexOf(b.level)).map(v => `<tr class="${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><td class="${v.level === 'hard' ? 'red' : 'warnc'}">${{ hard: '硬性', soft: '软性', info: '提醒' }[v.level]}</td><td>${v.type}</td><td>${esc(v.msg)}</td><td>${v.pairing ? '<span class="mut">定位 →</span>' : ''}</td></tr>`).join('') || '<tr><td colspan=4 class="okc">无</td></tr>'}</table></div></div>`;
     $('#main').innerHTML = h;
-    document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); const pr = st.pairings.find(x => x.id === a.dataset.pr); if (!pr) return; tab = 'gantt'; ui.hl = { pairings: new Set([pr.id]), pilots: new Set(['C','F','T'].map(s => pr.crew[s]).filter(Boolean)), days: C.daysTouched(pr, st) }; render(); setTimeout(scrollToHl, 40); });
+    document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
+    document.querySelectorAll('tr.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
   }
 
   function fdpReportPanel() {
@@ -1065,13 +1132,14 @@
 
   // ---------------- 启动 ----------------
   load();
-  $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; location.hash = t; render(); } };
+  $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; location.hash = t; closeIssuePanel(); render(); } };
   $('#btnAuto').onclick = () => runAuto();
   $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; refresh(); } };
-  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; reset(true); toast('已重置示例数据'); } };
+  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
+  $('#btnIssues').onclick = e => { e.stopPropagation(); toggleIssuePanel(); };
   $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
   const hp = location.hash.slice(1).split('&'); if (hp[0]) tab = hp[0];
-  sum = C.summarize(st); renderKpis(); render();
+  sum = C.summarize(st); renderKpis(); updateIssueBadge(); render();
   if (hp.includes('auto')) runAuto(() => { if (hp.includes('leave')) { const idx = C.buildIndex(st); const c = st.pilots.filter(p => p.rank === 'J3').sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0];
     const pr = idx.sched[c.id][1]; goLeave(c.id, pr.start, pr.start + pr.ndays - 1); }
     if (hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length); openEdit(pr.id); document.querySelectorAll('#modalBox details')[0].open = true; } document.title += ' ready'; });
