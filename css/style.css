@@ -191,3 +191,26 @@ details summary{cursor:pointer;color:var(--mut)}
 .hb{display:inline-block;padding:1px 7px;border-radius:8px;background:#1d3460;color:#9fd4ff;font-size:11px;margin:1px 2px}
 .hb.warn{background:#5b3b0a;color:#ffd58a}.hb.bad{background:#5a1c27;color:#ffb3ba}
 .lab{display:block;color:var(--mut);font-size:11px;margin-bottom:3px}
+
+/* 空洞换人 */
+.holegrid{display:flex;flex-direction:column;gap:12px}
+.holec{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.holeseats{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
+.hole-seat{background:#0b1a33;border:1px solid #2a3f66;border-radius:8px;padding:8px 10px;min-width:120px;font-size:12px}
+.hole-seat.empty{border-color:#ff5a6a;background:#3a1520;box-shadow:0 0 0 1px rgba(255,90,106,.35)}
+.candrow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:6px}
+.cand{display:flex;align-items:center;gap:8px;background:#0f203d;border:1px solid #3a5a8c;border-radius:10px;padding:6px 10px;cursor:pointer;color:inherit;text-align:left}
+.cand:hover,.cand.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(62,166,255,.35)}
+.cand .av{width:28px;height:28px;border-radius:50%;background:#1d5fa8;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700}
+.cand .cn{font-size:12px;line-height:1.35}
+.lg{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px;vertical-align:middle;background:#666}
+.lg.green{background:#2ecc8f;box-shadow:0 0 6px rgba(46,204,143,.6)}
+.lg.amber{background:#e6a23c;box-shadow:0 0 6px rgba(230,162,60,.5)}
+.lg.red{background:#ff5a6a;box-shadow:0 0 6px rgba(255,90,106,.5)}
+.chiprow{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+.chip{background:#1d3460;border-radius:12px;padding:3px 10px;font-size:12px}
+.chip.warn{background:#5b3b0a;color:#ffd58a}.chip.bad{background:#5a1c27;color:#ffb3ba}
+/* 运营看板 */
+.opskpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px;margin-top:8px}
+.okpi{background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:12px}
+.okpi .olab{color:var(--mut);font-size:12px}.okpi .oval{font-size:22px;font-weight:700;color:#fff;margin:4px 0}.okpi .omut{font-size:11px;color:var(--mut);line-height:1.35}

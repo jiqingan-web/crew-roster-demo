@@ -33,7 +33,66 @@
   }
   function render() {
     document.querySelectorAll('#tabs>button').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    ({ gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+  }
+
+
+  // ---------------- 运营看板 ----------------
+  function rOps() {
+    const m = C.opsMetrics(st); const S = st.settings;
+    const kpis = [
+      ['剩余运力', m.remainHours.toFixed(0) + 'h', `法规上限 ${m.hardMaxHours}h × ${m.nPilots} 人 − 已排；已用 ${(m.usedPct * 100).toFixed(1)}%`],
+      ['人机比', m.pilotsPerAircraft, `${m.nPilots} 人 / ${m.nAircraft} 机`],
+      ['人均轮挡', m.blockPerPilot + 'h', '总轮挡 ÷ 飞行员'],
+      ['单机轮挡', m.blockPerAircraft + 'h', '总轮挡 ÷ 机号'],
+      ['飞机利用率', m.aircraftUtilPct + '%', `轮挡 ÷ (机数×${C.DAYS}天×${m.opsDayWindowH}h)`],
+      ['未满员任务', m.unfilled, m.unfilled ? m.unfilledIds.join('、') : '全部满员']
+    ];
+    let h = `<div class="panel"><h3>运营看板 <small>基于当前排班快照 · 机队按本月出现机号（示例机队模板 ${m.fleetTemplate} 架）</small></h3>
+      <div class="opskpi">${kpis.map(([a, b, c]) => `<div class="okpi"><div class="olab">${a}</div><div class="oval">${b}</div><div class="omut">${esc(c)}</div></div>`).join('')}</div></div>`;
+    h += `<div class="grid g2">
+      <div class="panel"><h3>运力与工时</h3>
+        ${CH.bars([
+          { label: '已排小时', value: m.assignedHours, color: '#3ea6ff' },
+          { label: '剩余运力', value: m.remainHours, color: '#2ecc8f' },
+          { label: '总轮挡', value: m.blockHours, color: '#a78bfa' }
+        ], { w: 520, h: 200, values: true })}
+        <div class="note">超法规上限人数：${m.overHardPilots} · 公式：剩余运力 = Σ max(0, ${m.hardMaxHours} − 个人已排小时)</div></div>
+      <div class="panel"><h3>人机效能</h3>
+        ${CH.bars([
+          { label: '人均轮挡h', value: m.blockPerPilot, color: '#3ea6ff' },
+          { label: '单机轮挡h', value: m.blockPerAircraft, color: '#e6a23c' },
+          { label: '人机比', value: m.pilotsPerAircraft, color: '#2ecc8f' },
+          { label: '机日航段', value: m.legsPerAcDay, color: '#a78bfa' }
+        ], { w: 520, h: 200, values: true })}
+        <div class="note">利用率 ${m.aircraftUtilPct}% = ${m.blockHours}h ÷ (${m.nAircraft} × ${C.DAYS} × ${m.opsDayWindowH}h)。日窗口可在设置中改 opsDayWindowH。</div></div></div>`;
+    const riskItems = [
+      { label: '超限', value: m.fdpRisk.over, color: '#ff5a6a' },
+      { label: '高风险', value: m.fdpRisk.high, color: '#ff8a5a' },
+      { label: '中风险', value: m.fdpRisk.med, color: '#e6a23c' },
+      { label: '低风险', value: m.fdpRisk.low, color: '#2ecc8f' }
+    ];
+    h += `<div class="grid g2">
+      <div class="panel"><h3>执勤风险（值勤日）</h3>${CH.bars(riskItems, { w: 520, h: 200, values: true })}
+        <div class="note">高/中/超限合计 ${m.fdpRiskDays} 个值勤日</div></div>
+      <div class="panel"><h3>备份与请假</h3>
+        ${CH.bars([
+          { label: '备份需求人日', value: m.standbyNeed, color: '#6b4a12' },
+          { label: '已排备份', value: m.standbyUsed, color: '#e6a23c' },
+          { label: '备份缺口', value: m.standbyLeft, color: m.standbyLeft ? '#ff5a6a' : '#2ecc8f' },
+          { label: '请假人日', value: m.leavePersonDays, color: '#a78bfa' }
+        ], { w: 520, h: 200, values: true })}</div></div>`;
+    h += `<div class="panel"><h3>焦点日 11/${String(m.focusDate).padStart(2, '0')} <small>取执勤风险条目最多的一天</small></h3>
+      <div class="opskpi">
+        <div class="okpi"><div class="olab">当日未满员</div><div class="oval">${m.day.unfilled}</div></div>
+        <div class="okpi"><div class="olab">当日风险值勤</div><div class="oval">${m.day.fdpRisk}</div></div>
+        <div class="okpi"><div class="olab">当日备份</div><div class="oval">${m.day.standby}</div></div>
+        <div class="okpi"><div class="olab">当日请假</div><div class="oval">${m.day.leave}</div></div>
+      </div></div>`;
+    h += `<div class="panel"><h3>指标公式</h3><table class="solt"><tr><th>指标</th><th>公式</th></tr>
+      ${Object.entries(m.formulas).map(([k, v]) => `<tr><td>${esc({ remain: '剩余运力', pilotsPerAc: '人机比', blockPerPilot: '人均轮挡', blockPerAc: '单机轮挡', util: '飞机利用率', legsPerAcDay: '机日航段' }[k] || k)}</td><td>${esc(v)}</td></tr>`).join('')}
+      </table></div>`;
+    $('#main').innerHTML = h;
   }
 
   // ---------------- 人员视图 ----------------
@@ -375,11 +434,13 @@
   }
 
   // ---------------- 请假调配（多方案） ----------------
-  let leaveSel = { pid: null, from: null, to: null }, leaveOpts = null, leaveHover = null, leaveHist = [];
+  let leaveSel = { pid: null, from: null, to: null }, leaveOpts = null, leaveHover = null, leaveHist = [], leaveView = 'holes', leaveHoles = null, holePrev = null;
   const TYPE_TXT = { standby: ['备份', 'sbt'], rest: ['休息人员', 'rst'], chain: ['链式调换', 'cht'], manual: ['人工处理', 'mnt'], split: ['拆分换组', 'spt'] };
   let cardCtx = { hover: 0 };
   function genLeave() { const days = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) days.push(d);
-    leaveOpts = C.leaveOptions(st, leaveSel.pid, days); leaveHover = leaveOpts.solutions.findIndex(x => x.recommended); if (leaveHover < 0) leaveHover = 0; cardCtx = { hover: leaveHover, focus: [leaveSel.pid], days }; }
+    leaveHoles = C.holeRecommend(st, leaveSel.pid, days);
+    leaveOpts = C.leaveOptions(st, leaveSel.pid, days); leaveHover = leaveOpts.solutions.findIndex(x => x.recommended); if (leaveHover < 0) leaveHover = 0;
+    cardCtx = { hover: leaveHover, focus: [leaveSel.pid], days }; holePrev = null; }
   function goLeave(pid, from, to) { leaveSel = { pid, from: from || 1, to: to || from || 1 }; tab = 'leave'; genLeave(); render(); }
   function miniGantt(sol, ctx) {
     ctx = ctx || cardCtx; const m = pm(); const ws = sol && sol.state ? sol.state : st; const idxA = C.buildIndex(ws), idxB = C.buildIndex(st);
@@ -526,32 +587,93 @@
     const caps = st.pilots.filter(p => C.isCaptClass(p.rank)).concat(st.pilots.filter(p => C.isFO(p.rank)));
     const idx = C.buildIndex(st);
     if (!leaveSel.pid) { const c = caps.slice().sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0]; const pr = idx.sched[c.id][1] || idx.sched[c.id][0]; leaveSel = { pid: c.id, from: pr ? pr.start : 1, to: pr ? pr.start + pr.ndays - 1 : 1 }; }
-    const p = st.pilots.find(x => x.id === leaveSel.pid); const o = leaveOpts;
-    let h = `<div class="panel"><h3>临时请假 · 多方案调配 <small>选择人员与日期后即时生成 3–5 个方案；也可在人员视图点击姓名，或在任务弹窗点“临时请假”</small></h3>
-      <div class="flex" style="flex-wrap:wrap"><select id="lvP">${caps.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
-      <span>日期</span><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>至</span><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>日</span>
-      <button class="btn primary" id="lvGo">生成方案</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
-      <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'}</div></div>`;
-    if (o) {
-      h += `<div class="panel"><h3>${esc(o.pilot.name)}（${o.pilot.rank}）请假 ${o.days[0]}${o.days.length > 1 ? '–' + o.days[o.days.length - 1] : ''} 日 <small>受影响任务 ${o.affected.map(a => a.id + '·' + C.SLOT_NAME[a.slot] + '位').join('、') || '无'} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms${o.solutions.length < 3 && o.affected.length ? ' · 合规候选有限，仅找到这些不同方案' : ''}</small></h3>
-        ${o.solutions.some(x => x.manual) ? '<div class="note red">所有方案均有岗位无法合规补位，请人工处理（见各卡片“受阻规则”）</div>' : ''}
-        <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
-        <div class="panel"><h3>影响预览 <small>悬停/点选方案卡片高亮：<span class="okc">绿=新增任务</span> · <span class="warnc">橙=被调整任务</span> · <span class="red">红虚线=移出</span> · 紫底=请假日</small></h3><div id="mgBox">${miniGantt(o.solutions[cardCtx.hover])}</div></div>`;
+    const p = st.pilots.find(x => x.id === leaveSel.pid); const o = leaveOpts; const holes = leaveHoles;
+    const tog = `<span class="seg" id="lvView"><button type="button" data-v="holes" class="${leaveView === 'holes' ? 'on' : ''}">空洞换人</button><button type="button" data-v="cards" class="${leaveView === 'cards' ? 'on' : ''}">多方案卡片</button></span>`;
+    let h = `<div class="panel"><h3>临时请假 · 调配 <small>先看「空洞换人」：空缺座位 + 推荐候选人与合规灯；完整多方案在右侧/次要视图</small></h3>
+      <div class="flex" style="flex-wrap:wrap;gap:8px">${tog}
+        <select id="lvP">${caps.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
+        <span>日期</span><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>至</span><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>日</span>
+        <button class="btn primary" id="lvGo">生成推荐</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
+      <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'}
+        · 灯：<span class="lg green"></span>合规 <span class="lg amber"></span>软性/意向休息 <span class="lg red"></span>硬性冲突</div></div>`;
+    if (!holes && !o) h += `<div class="note">选择人员与日期后点击「生成推荐」</div>`;
+    if (leaveView === 'holes' && holes) {
+      h += `<div class="panel"><h3>${esc(holes.pilot.name)}（${holes.pilot.rank}）请假 ${holes.days[0]}${holes.days.length > 1 ? '–' + holes.days[holes.days.length - 1] : ''} 日 · 空洞 ${holes.holes.length} 个</h3>`;
+      if (!holes.holes.length) h += `<div class="note">所选日期内无执勤任务，仅需登记请假（可在多方案卡片中一键登记）。</div>`;
+      h += `<div class="holegrid">${holes.holes.map((hh, hi) => {
+        const empty = `<div class="hole-seat empty"><span class="lg red"></span><b>${hh.slotName}位 · 空缺</b><div class="mut">${esc(p.name)} 请假腾出</div></div>`;
+        const left = hh.crewLeft.map(c => c.id ? `<div class="hole-seat"><b>${C.SLOT_NAME[c.slot]} ${esc(c.name)}</b> ${pill(c.rank)}</div>` : `<div class="hole-seat mut">${C.SLOT_NAME[c.slot]} 空</div>`).join('');
+        const cands = hh.candidates.map((c, ci) => `<button type="button" class="cand ${holePrev && holePrev.hi === hi && holePrev.ci === ci ? 'on' : ''}" data-hi="${hi}" data-ci="${ci}">
+          <span class="lg ${c.light}"></span><span class="av">${esc(c.name.slice(-2))}</span>
+          <span class="cn"><b>${esc(c.name)}</b> ${pill(c.rank)}<br><span class="mut">${c.hoursBefore}h${c.fromStandby ? ' · ★备份' : ''}${c.warn ? ' · ⚠' : ''}</span></span></button>`).join('') || '<span class="mut">无候选</span>';
+        return `<div class="holec"><div class="flex"><b>${hh.id}</b><span class="mut">${dateOf(hh.start)}起 ${hh.ndays}天 · ${hh.ac} · ${hh.hours}h · ${esc(hh.route)}</span></div>
+          <div class="holeseats">${empty}${left}</div>
+          <div class="candrow"><span class="mut" style="min-width:52px">推荐</span>${cands}</div></div>`;
+      }).join('')}</div></div>`;
+      if (holePrev && holes.holes[holePrev.hi] && holes.holes[holePrev.hi].candidates[holePrev.ci]) {
+        const hh = holes.holes[holePrev.hi]; const c = hh.candidates[holePrev.ci];
+        h += `<div class="panel" id="holePrev"><div class="flex"><h3 style="margin:0">预览 · ${esc(c.name)} → ${hh.id} ${hh.slotName}位</h3>
+          <span class="lg ${c.light}" style="margin-left:8px"></span><b class="${c.light === 'green' ? 'okc' : c.light === 'amber' ? 'warnc' : 'red'}">${c.light === 'green' ? '合规通过' : c.light === 'amber' ? '软性提示' : '硬性冲突'}</b>
+          <button class="btn sm" id="hpX" style="margin-left:auto">关闭</button></div>
+          <div class="chiprow">
+            <span class="chip">工时 ${c.hoursBefore}h → <b>${c.hoursAfter}h</b>（+${c.hoursDelta}）</span>
+            <span class="chip ${c.overHard ? 'bad' : ''}">${c.overHard ? '将超 90h' : '未超法规上限'}</span>
+            <span class="chip ${c.prefHit.length ? 'warn' : ''}">意向休息 ${c.prefHit.length ? '占 ' + c.prefHit.join(',') + ' 日' : '不占用'}</span>
+            <span class="chip">${c.fromStandby ? '调用备份日 ' + c.standbyDays.join(',') : '非备份'}</span>
+            <span class="chip">本人剩余备份 ${c.sbMonthLeft} 天</span>
+          </div>
+          ${c.reasons.length ? `<div class="note red">冲突：${c.reasons.map(esc).join('；')}</div>` : ''}
+          ${c.warn ? `<div class="note warnc">提示：${esc(c.warn)}</div>` : ''}
+          <div class="flex" style="margin-top:10px"><button class="btn primary" id="hpApply" ${c.light === 'red' ? 'disabled' : ''}>应用此人补位并登记请假</button>
+            <span class="mut">仅填本空洞；其余空洞请继续点选或改用「多方案卡片」一键整案</span></div></div>`;
+      }
     }
-    h += `<div class="panel"><h3>调配历史 <small>可逐步撤销</small></h3>${leaveHist.length ? `<table>${leaveHist.slice().reverse().map(x => `<tr><td>${x.time}</td><td>${esc(x.label)}</td></tr>`).join('')}</table>` : '<div class="note">暂无</div>'}</div>`;
+    if (leaveView === 'cards' && o) {
+      h += `<div class="panel"><h3>${esc(o.pilot.name)}（${o.pilot.rank}）请假 ${o.days[0]}${o.days.length > 1 ? '–' + o.days[o.days.length - 1] : ''} 日 <small>受影响 ${o.affected.map(a => a.id + '·' + C.SLOT_NAME[a.slot] + '位').join('、') || '无'} · ${o.solutions.length} 方案 · ${o.ms} ms</small></h3>
+        ${o.solutions.some(x => x.manual) ? '<div class="note red">有方案需人工处理</div>' : ''}
+        <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
+        <div class="panel"><h3>影响预览</h3><div id="mgBox">${miniGantt(o.solutions[cardCtx.hover])}</div></div>`;
+    } else if (holes && leaveView === 'holes') {
+      h += `<div class="panel"><details><summary>高级：多方案卡片（${o ? o.solutions.length : 0}）</summary>
+        ${o ? `<div class="solgrid" style="margin-top:10px">${o.solutions.map(solCard).join('')}</div>` : '<div class="note">请先生成</div>'}</details></div>`;
+    }
+    h += `<div class="panel"><h3>调配历史</h3>${leaveHist.length ? `<table>${leaveHist.slice().reverse().map(x => `<tr><td>${x.time}</td><td>${esc(x.label)}</td></tr>`).join('')}</table>` : '<div class="note">暂无</div>'}</div>`;
     $('#main').innerHTML = h;
     const regen = () => { if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; genLeave(); rLeave(); };
-    $('#lvP').onchange = e => { leaveSel.pid = e.target.value; leaveOpts = null; rLeave(); };
-    $('#lvF').onchange = e => { leaveSel.from = +e.target.value; if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; leaveOpts = null; rLeave(); };
-    $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; rLeave(); };
+    document.querySelectorAll('#lvView button').forEach(b => b.onclick = () => { leaveView = b.dataset.v; rLeave(); });
+    $('#lvP').onchange = e => { leaveSel.pid = e.target.value; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); };
+    $('#lvF').onchange = e => { leaveSel.from = +e.target.value; if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; leaveOpts = null; leaveHoles = null; rLeave(); };
+    $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; leaveHoles = null; rLeave(); };
     document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });
     $('#lvGo').onclick = regen;
-    if (o) bindCards(o.solutions, sol => `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { leaveOpts = null; },
+    document.querySelectorAll('.cand').forEach(b => b.onclick = () => { holePrev = { hi: +b.dataset.hi, ci: +b.dataset.ci }; rLeave(); const e = $('#holePrev'); if (e) e.scrollIntoView({ block: 'nearest' }); });
+    if ($('#hpX')) $('#hpX').onclick = () => { holePrev = null; rLeave(); };
+    if ($('#hpApply')) $('#hpApply').onclick = () => applyHoleCand();
+    if (o && (leaveView === 'cards' || (leaveView === 'holes' && holes))) bindCards(o.solutions, sol => `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { leaveOpts = null; leaveHoles = null; },
       { kind: 'leave', leave: { pilotId: o.pilot.id, pilotName: o.pilot.name, days: o.days }, date: o.days[0], pairingId: (o.affected[0] && o.affected[0].id) || '' });
     if ($('#lvUndo')) $('#lvUndo').onclick = undoLeave;
   }
+  function applyHoleCand() {
+    if (!leaveHoles || !holePrev) return;
+    const hh = leaveHoles.holes[holePrev.hi]; const c = hh.candidates[holePrev.ci]; if (!c || c.light === 'red') return;
+    const days = leaveHoles.days.slice(); const pid = leaveHoles.pilot.id;
+    const snap = JSON.stringify(st);
+    const p = st.pilots.find(x => x.id === pid);
+    p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
+    p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
+    if (st.standby && st.standby[pid]) st.standby[pid] = st.standby[pid].filter(d => !days.includes(d));
+    const pr = st.pairings.find(x => x.id === hh.id); if (!pr) return;
+    pr.crew[hh.slot] = c.id;
+    if (st.standby && st.standby[c.id]) st.standby[c.id] = st.standby[c.id].filter(d => !C.daysTouched(pr, st).includes(d));
+    leaveHist.push({ snap, label: `${p.name} 请假 ${days[0]}–${days[days.length - 1]} · ${hh.id}${hh.slotName}←${c.name}`, time: new Date().toTimeString().slice(0, 8) });
+    ui.hl = { pairings: new Set([hh.id]), pilots: new Set([pid, c.id]), days };
+    leaveOpts = null; leaveHoles = null; holePrev = null;
+    tab = 'gantt'; refresh(); setTimeout(scrollToHl, 30);
+    toast('✔ 已补位：' + esc(c.name) + ' → ' + hh.id + ' <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>', 8000);
+    const tu = $('#tUndo'); if (tu) tu.onclick = e => { e.preventDefault(); undoLeave(); };
+  }
   function scrollToHl() { const b = document.querySelector('.bar.hl'); const g = $('.gwrap'); if (b && g) { g.scrollTop = Math.max(0, b.parentElement.offsetTop - 140); g.scrollLeft = Math.max(0, b.offsetLeft - 420); } }
-  function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; refresh(); toast('已撤销：' + esc(x.label)); }
+  function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; leaveHoles = null; holePrev = null; refresh(); toast('已撤销：' + esc(x.label)); }
 
   // ---------------- 人员总览（授权 / 健康限制） ----------------
   function rRoster() {
@@ -743,7 +865,7 @@
     const num = (k, lab, unit) => `<div class="slotbox" style="grid-template-columns:200px 120px 60px"><span>${lab}</span><input type="number" step="any" data-k="${k}" value="${S[k]}"><span class="mut">${unit}</span></div>`;
     const cats = ['NONE', 'LHASA', 'HIGH', 'PLATEAU', 'ZBCF', 'J1', 'US'];
     $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>排班参数</h3>
-      ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时法规硬上限（CAAC）', '小时')}
+      ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时法规硬上限（CAAC）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
       ${num('maxOffCapt', '同日最多休息/请假（机长类）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到', '分钟')}${num('releaseMin', '末段落地后退场', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
       <div class="note" style="margin-top:8px">月飞行小时仅设 CAAC 法规硬上限；自动排班按可用天数折算份额做公平均衡（基尼系数），不设目标上下限。</div>

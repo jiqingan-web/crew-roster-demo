@@ -104,6 +104,7 @@
     return { minRestH: 12, hardMaxHours: 90, maxOffCapt: 4, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 60, releaseMin: 30, honorPrefs: true,
       standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.35,
+      opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
       // 飞行值勤期（FDP）限制：默认值参考 CCAR-121 部（非扩编机组 表A），可按公司规定修改
       fdpTable: defaultFdpTable(), fdpAugmented: false, fdpAugLimitH: 16, fdpRiskHigh: 60, fdpRiskMed: 120, minTurnMin: 35, minOvernightRestH: 10 };
   }
@@ -741,6 +742,130 @@
     return res.sort((a, b) => (b.ok - a.ok) || a.hours - b.hours);
   }
 
+  // ---------- 空洞换人推荐 ----------
+  // 请假后每个空缺位给出 topK 候选人，附合规灯与影响摘要（不改原状态）
+  function holeRecommend(st, pilotId, days, opt) {
+    opt = opt || {}; const topK = opt.topK || 3;
+    const base = clone(st); const p = base.pilots.find(x => x.id === pilotId); if (!p) return null;
+    p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
+    p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
+    if (base.standby && base.standby[pilotId]) base.standby[pilotId] = base.standby[pilotId].filter(d => !days.includes(d));
+    const holes = [];
+    for (const pr of base.pairings) {
+      if (!Object.values(pr.crew).includes(pilotId)) continue;
+      if (!daysTouched(pr, base).some(d => days.includes(d))) continue;
+      const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === pilotId);
+      pr.crew[slot] = null;
+      holes.push({ pairing: pr, id: pr.id, slot, from: pilotId });
+    }
+    const idx = buildIndex(base); const S = base.settings; const cap = hardCap(base);
+    const out = holes.map(h => {
+      const pr = h.pairing; const dt = daysTouched(pr, base);
+      const cands = candidates(base, pr, h.slot).filter(c => c.p.id !== pilotId).slice(0, 24);
+      const ranked = cands.map(c => {
+        const hard = c.reasons.filter(r => !r.includes('限制高原') && !r.includes('限制夜间') && !r.includes('意向'));
+        // candidates already folds personCheck; warn = prefs
+        let light = 'red';
+        if (c.ok && !c.warn) light = 'green';
+        else if (c.ok && c.warn) light = 'amber';
+        else if (!c.ok && c.reasons.every(r => r.includes('限制高原') || r.includes('限制夜间'))) light = 'amber';
+        else light = c.ok ? 'green' : 'red';
+        const ha = c.hours + pairingHours(pr);
+        const prefHit = dt.filter(d => (c.p.prefs || []).includes(d));
+        const sbUsed = dt.filter(d => ((base.standby || {})[c.p.id] || []).includes(d));
+        const sbLeftDays = days.map(d => ({ d, n: base.pilots.filter(q => q.id !== c.p.id && ((base.standby || {})[q.id] || []).includes(d)).length - (sbUsed.includes(d) ? 0 : 0) }));
+        // standby remaining after taking this person off standby for touched days
+        const sbMonthLeft = Math.max(0, ((base.standby || {})[c.p.id] || []).filter(d => !dt.includes(d)).length);
+        const score = (light === 'green' ? 0 : light === 'amber' ? 100 : 1000)
+          + (c.standby.length ? -5 : 0) + c.hours * 0.01 + prefHit.length * 20 + (ha > cap ? 200 : 0);
+        return {
+          id: c.p.id, name: c.p.name, rank: c.p.rank, squad: c.p.squad || '',
+          ok: c.ok, light, reasons: c.reasons.slice(), warn: c.warn || '',
+          hoursBefore: +c.hours.toFixed(1), hoursAfter: +ha.toFixed(1), hoursDelta: +pairingHours(pr).toFixed(1),
+          overHard: ha > cap + 1e-9, prefHit, standbyDays: c.standby.slice(), sbMonthLeft,
+          fromStandby: c.standby.length > 0, score
+        };
+      }).sort((a, b) => a.score - b.score || a.hoursBefore - b.hoursBefore);
+      const top = ranked.filter(x => x.light !== 'red').concat(ranked.filter(x => x.light === 'red')).slice(0, topK);
+      // if fewer than topK non-red, still fill with red for visibility
+      while (top.length < topK && ranked[top.length]) top.push(ranked[top.length]);
+      const uniq = []; const seen = new Set();
+      for (const x of ranked) { if (seen.has(x.id)) continue; seen.add(x.id); uniq.push(x); if (uniq.length >= topK) break; }
+      return {
+        id: pr.id, slot: h.slot, slotName: SLOT_NAME[h.slot],
+        start: pr.start, ndays: pr.ndays, ac: pr.ac,
+        route: pr.legs.map(l => apName(l.from, base) + '-' + apName(l.to, base)).slice(0, 4).join(' · '),
+        legs: pr.legs.length, hours: +pairingHours(pr).toFixed(1),
+        dates: dt, reg: [...new Set(pr.legs.map(l => l.reg).filter(Boolean))],
+        crewLeft: ['C', 'F', 'T'].filter(s => s !== h.slot).map(s => { const q = idx.pm[pr.crew[s]]; return q ? { slot: s, id: q.id, name: q.name, rank: q.rank } : { slot: s, id: null }; }),
+        candidates: uniq
+      };
+    });
+    return { pilot: { id: p.id, name: p.name, rank: p.rank }, days, holes: out, ms: 0 };
+  }
+
+  // ---------- 运营看板指标 ----------
+  function opsMetrics(st) {
+    const S = st.settings || defaultSettings(); const idx = buildIndex(st);
+    const hard = hardCap(st); const dayWin = S.opsDayWindowH || 14;
+    const nPilots = st.pilots.length;
+    const regs = new Set(); st.pairings.forEach(p => p.legs.forEach(l => { if (l.reg) regs.add(l.reg); }));
+    // also count fleet template size if sample has few flying
+    const fleetN = Math.max(regs.size, Object.values(FLEET).flat().length);
+    const flyingN = regs.size || fleetN;
+    let blockH = 0; st.pairings.forEach(p => { blockH += pairingHours(p); });
+    // 可用剩余运力：每人 (hard - assigned) 之和（下限 0）
+    let remain = 0, assigned = 0, overN = 0;
+    st.pilots.forEach(p => { const h = idx.hours[p.id] || 0; assigned += h; remain += Math.max(0, hard - h); if (h > hard + 1e-9) overN++; });
+    const capacityTotal = nPilots * hard;
+    const unfilled = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T));
+    const risk = fdpRiskSummary(st);
+    const highRiskDays = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over' || r.risk === 'med');
+    // 备份：本月已排备份人日 vs 需求 DAYS * standbyPerDay
+    const sbNeed = DAYS * (S.standbyPerDay == null ? 1 : S.standbyPerDay);
+    let sbUsed = 0; st.pilots.forEach(p => { sbUsed += ((st.standby || {})[p.id] || []).length; });
+    const sbLeft = Math.max(0, sbNeed - sbUsed);
+    // 请假压力：本月请假人日
+    let leaveDays = 0; st.pilots.forEach(p => { leaveDays += (p.leave || []).length; });
+    // 当日（默认取高风险最多的一天或 15 日）
+    const byDate = {}; highRiskDays.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + 1; });
+    let focusDate = 15; let best = -1; Object.keys(byDate).forEach(d => { if (byDate[d] > best) { best = byDate[d]; focusDate = +d; } });
+    const dayUnfilled = st.pairings.filter(p => daysTouched(p, st).includes(focusDate) && !(p.crew.C && p.crew.F && p.crew.T)).length;
+    const dayRisk = highRiskDays.filter(r => r.date === focusDate).length;
+    const daySb = st.pilots.filter(p => ((st.standby || {})[p.id] || []).includes(focusDate)).length;
+    const dayLeave = st.pilots.filter(p => (p.leave || []).includes(focusDate)).length;
+    // 飞机利用率
+    const util = flyingN && dayWin ? blockH / (flyingN * DAYS * dayWin) : 0;
+    // 每机日航段
+    let legs = 0; st.pairings.forEach(p => { legs += p.legs.length; });
+    const legsPerAcDay = flyingN ? legs / (flyingN * DAYS) : 0;
+    return {
+      hardMaxHours: hard, opsDayWindowH: dayWin,
+      nPilots, nAircraft: flyingN, fleetTemplate: fleetN, nPairings: st.pairings.length, nLegs: legs,
+      blockHours: +blockH.toFixed(1), assignedHours: +assigned.toFixed(1),
+      capacityTotal, remainHours: +remain.toFixed(1), usedPct: capacityTotal ? assigned / capacityTotal : 0,
+      overHardPilots: overN,
+      pilotsPerAircraft: flyingN ? +(nPilots / flyingN).toFixed(2) : 0,
+      blockPerPilot: nPilots ? +(blockH / nPilots).toFixed(2) : 0,
+      blockPerAircraft: flyingN ? +(blockH / flyingN).toFixed(2) : 0,
+      aircraftUtil: util, aircraftUtilPct: +(util * 100).toFixed(1),
+      legsPerAcDay: +legsPerAcDay.toFixed(2),
+      unfilled: unfilled.length, unfilledIds: unfilled.slice(0, 12).map(p => p.id),
+      fdpRisk: risk.cnt, fdpRiskDays: highRiskDays.length,
+      standbyNeed: sbNeed, standbyUsed: sbUsed, standbyLeft: sbLeft,
+      leavePersonDays: leaveDays,
+      focusDate, day: { unfilled: dayUnfilled, fdpRisk: dayRisk, standby: daySb, leave: dayLeave },
+      formulas: {
+        remain: 'Σ max(0, 法规月上限 − 已排飞行小时)',
+        pilotsPerAc: '飞行员人数 ÷ 本月出现过的机号数',
+        blockPerPilot: '总轮挡小时 ÷ 飞行员人数',
+        blockPerAc: '总轮挡小时 ÷ 机号数',
+        util: '总轮挡小时 ÷ (机号数 × 日历天数 × 日可用窗口小时)',
+        legsPerAcDay: '总航段数 ÷ (机号数 × 日历天数)'
+      }
+    };
+  }
+
   // ---------- 请假调配 ----------
   function applyLeave(st, pilotId, days) {
     const p = st.pilots.find(x => x.id === pilotId); if (!p) return null;
@@ -1041,5 +1166,5 @@
   return { migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, shareFor, SLOT_NAME, slotRankOK, blockMin };
+    crewIssue, personCheck, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });
