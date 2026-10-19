@@ -286,3 +286,11 @@ tr.issueJump{cursor:pointer}tr.issueJump:hover td{background:#1a3a5c}
 .story .step.next .sn{background:linear-gradient(135deg,#1f7ae0,#00d1b2)}
 .story .step.rep.cur{border-color:var(--acc)}
 .story .sarrow{color:var(--mut);font-size:16px}
+
+
+/* 换人/补位成功：条变绿 + 脉冲 */
+.bar.hl.ok{outline:3px solid var(--ok);outline-offset:-1px;box-shadow:0 0 16px rgba(46,204,143,.9);border-color:#2ecc8f!important;background:linear-gradient(180deg,#1d8a5a,#146344)!important;z-index:5}
+.bar.hl.ok.pulse{animation:okpulse .5s ease-in-out 3}
+@keyframes okpulse{0%,100%{filter:brightness(1);box-shadow:0 0 14px rgba(46,204,143,.85)}50%{filter:brightness(1.35);box-shadow:0 0 26px rgba(46,204,143,1)}}
+.hlbar.ok{background:#0f3b2c;border-color:var(--ok);color:#b8f5d4}
+.hlbar.ok::before{content:'';display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--ok);margin-right:4px;box-shadow:0 0 8px var(--ok)}

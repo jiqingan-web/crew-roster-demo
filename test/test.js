@@ -68,8 +68,10 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   if (!pass) process.exitCode = 1;
   // 校验：>硬上限为硬性；不再有 30–70h 软性提示
   const sv = JSON.parse(JSON.stringify(st5)); const v = C.summarize(sv); const t = !Object.keys(v.byType).some(k => /目标/.test(k));
-  sv.settings.hardMaxHours = 60; const v2 = C.summarize(sv); const t2 = v2.byType['月小时超法规上限'] && v2.byType['月小时超法规上限'].level === 'hard';
-  console.log('hours: no target warnings, hard>cap', t && t2 ? 'OK' : 'FAIL'); if (!(t && t2)) process.exitCode = 1; }
+  const peak = Math.max(0, ...v.per.map(x => x.hours));
+  sv.settings.hardMaxHours = Math.max(1, Math.floor(peak) - 5); // 压到峰值以下，必出硬违规
+  const v2 = C.summarize(sv); const t2 = v2.byType['月小时超法规上限'] && v2.byType['月小时超法规上限'].level === 'hard';
+  console.log('hours: no target warnings, hard>cap', t && t2 ? 'OK' : 'FAIL', 'peak', peak.toFixed(1), 'cap', sv.settings.hardMaxHours); if (!(t && t2)) process.exitCode = 1; }
 // ===== 执勤监控（FDP）=====
 { const sf = C.generateSample(); C.autoFill(sf,{attempts:3}); sf.settings.reportMin = 60; const chk = (n, ok, info) => { console.log('FDP ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
   const sm = C.fdpRiskSummary(sf); chk('planned risk counts', sm.cnt.over === 0 && (sm.cnt.high + sm.cnt.med + sm.cnt.low) === sm.n, JSON.stringify(sm.cnt));
@@ -218,12 +220,14 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
     const L = legs.map(([flt, from, to, depH, arrH], i) => ({ d: d0, flt, from, to, dep: (d0 - 1) * C.DAY + depH * 60, arr: (d0 - 1) * C.DAY + arrH * 60, ac: 'A320' }));
     return { id, start: d0, ndays: 1, ac: 'A320', legs: L, crew: { C: null, F: null, T: null } };
   };
-  // 清空并塞两个间隔仅 20h 的任务（报到间缺口 <48h，且窗口内无48h空隙）
+  // 连续 6 个值勤日填满 144h 窗口（日间空隙 ~18h <48h），再加第 7 日任务 → 窗口内无连续 48h 休息
   st.pairings = [];
-  const a = mk('PRa', 2, [['EU1', 'ZUUU', 'ZGGG', 8, 11]]);
-  const b = mk('PRb', 3, [['EU2', 'ZUUU', 'ZGSZ', 8, 11]]); // 次日再飞：release≈11:30 → report≈06:25，间隙约19h
-  a.crew.F = p.id; b.crew = { C: null, F: null, T: null };
-  st.pairings.push(a, b);
+  for (let d = 8; d <= 13; d++) {
+    const pr = mk('PRa' + d, d, [['EU' + d, 'ZUUU', 'ZGGG', 8, 14]]);
+    pr.crew.F = p.id; st.pairings.push(pr);
+  }
+  const b = mk('PRb', 14, [['EU2', 'ZUUU', 'ZGSZ', 8, 11]]);
+  st.pairings.push(b);
   st.standby = {}; st.pilots.forEach(x => st.standby[x.id] = []);
   const idx = C.buildIndex(st);
   const rs = C.ftlCheckPerson(p, b, st, idx, {});

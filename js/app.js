@@ -50,6 +50,14 @@
   function pulseHl() {
     document.querySelectorAll('.bar.hl').forEach(el => { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); });
   }
+  function crewComplianceOk(pr) {
+    if (!(pr.crew.C && pr.crew.F && pr.crew.T)) return false;
+    const m = pm();
+    const crew = ['C', 'F', 'T'].map(s => m[pr.crew[s]]);
+    if (C.crewIssue(pr, crew, st)) return false;
+    const V = violByPairing();
+    return !V[pr.id];
+  }
   function jumpToIssue(pairingId) {
     const pr = st.pairings.find(x => x.id === pairingId); if (!pr) { toast('未找到任务 ' + esc(pairingId)); return; }
     closeIssuePanel();
@@ -88,7 +96,8 @@
     const pairings = opt.pairings || [];
     const pilots = opt.pilots || [];
     const days = opt.days || null;
-    ui.hl = { pairings: new Set(pairings), pilots: new Set(pilots.filter(Boolean)), days };
+    const ok = !!opt.ok;
+    ui.hl = { pairings: new Set(pairings), pilots: new Set(pilots.filter(Boolean)), days, ok };
     closeIssuePanel();
     tab = 'gantt'; location.hash = 'gantt';
     refresh();
@@ -333,7 +342,7 @@
       <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>第三人(三)</span>
       <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
-      ${ui.hl ? `<div class="hlbar">已高亮刚应用的调配（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
+      ${ui.hl ? `<div class="hlbar ${ui.hl.ok ? 'ok' : ''}">${ui.hl.ok ? '✔ 已更新并合规' : '已高亮刚应用的调配'}（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
       <div class="gbox"><div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
     for (let d = 1; d <= C.DAYS; d++) h += `<div class="gday ${[0, 6].includes(dow(d)) ? 'we' : ''}" title="${dateOf(d)} 周${WK[dow(d)]}">${cw >= 70 ? `${dateOf(d)} 周${WK[dow(d)]}` : cw >= 26 ? `${d}<br>${WK[dow(d)]}` : cw >= 12 ? d : (d % 5 === 0 || d === 1 ? d : '')}</div>`;
     h += '</div>';
@@ -353,7 +362,9 @@
         if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
         else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
         else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${pr.id}</span>`;
-        h += `<div class="bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${hlr && ui.hl.pairings.has(pr.id) ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
+        const isHl = hlr && ui.hl.pairings.has(pr.id);
+        const isOk = isHl && ui.hl.ok && !V[pr.id];
+        h += `<div class="bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${isOk ? 'ok' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${isHl ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
       }
       h += '</div>';
     }
@@ -462,9 +473,13 @@
       leaveHist.push({ snap, label: `${pr.id} 手工换人：${parts.join('，')}`, time: new Date().toTimeString().slice(0, 8) });
       const pilots = changes.flatMap(s => [orig[s], draft[s]]);
       $('#modal').classList.add('hidden');
+      // 先刷新摘要再判定合规，便于去掉 viol、点亮绿灯
+      sum = C.summarize(st);
+      const okNow = crewComplianceOk(pr);
+      const light = okNow ? ' <span class="okc">● 合规</span>' : (pr.crew.C && pr.crew.F && pr.crew.T ? ' <span class="warnc">● 仍有问题</span>' : ' <span class="warnc">● 未满员</span>');
       commitHighlight({
-        pairings: [pr.id], pilots, days: C.daysTouched(pr, st),
-        toast: `✔ 已确定换人 ${esc(pr.id)}：${parts.map(esc).join('；')} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
+        pairings: [pr.id], pilots, days: C.daysTouched(pr, st), ok: okNow,
+        toast: `✔ 已更新：${esc(pr.id)} ${parts.map(esc).join('；')}${light} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
         undo: undoLeave
       });
     };
@@ -982,9 +997,11 @@
     leaveHist.push({ snap, label: `${p.name} 请假 ${days[0]}–${days[days.length - 1]} · ${hh.id}${hh.slotName}←${c.name}`, time: new Date().toTimeString().slice(0, 8) });
     recordFillsFromHole(hh, p, days, c, 'hole');
     leaveOpts = null; leaveHoles = null; holePrev = null;
+    sum = C.summarize(st);
+    const okNow = crewComplianceOk(pr);
     commitHighlight({
-      pairings: [hh.id], pilots: [pid, c.id], days,
-      toast: `✔ 已确定补位 ${esc(hh.id)} ${esc(hh.slotName)}：${esc(fromName)} → <b>${esc(c.name)}</b> <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
+      pairings: [hh.id], pilots: [pid, c.id], days, ok: okNow,
+      toast: `✔ 已更新：${esc(hh.id)} ${esc(hh.slotName)} ${esc(fromName)}→<b>${esc(c.name)}</b>${okNow ? ' <span class="okc">● 合规</span>' : ''} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
       undo: undoLeave
     });
   }
@@ -1210,6 +1227,10 @@
       ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
       ${num('maxOffCapt', '同日最多休息/请假（机长类）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
+      <h3 style="margin-top:14px">路演演示</h3>
+      <label class="flex"><input type="checkbox" id="demoAnom" ${S.demoAnomalies ? 'checked' : ''}> 自动填人后植入【演示异常】（默认关；开启时至多 1 项座位硬违规）</label>
+      ${num('demoHoles', '自动填人后预留易补空洞数', '个（建议 3–5）')}
+      <div class="note" style="margin-top:6px">空洞优先落在 1–2 天、无特殊机场的任务副驾位，便于现场「空洞换人」演示；不会故意留下大量 FTL 硬失败。</div>
       <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司手册 EU.COM 3.6.4 与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日历日后第5日不飞、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
@@ -1225,7 +1246,7 @@
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);
       document.querySelectorAll('.fdpin').forEach(i => S.fdpTable[+i.dataset.r].lim[+i.dataset.c] = +i.value); S.fdpAugmented = false;
-      S.honorPrefs = $('#hp').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
+      S.honorPrefs = $('#hp').checked; S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
       st.airports = {}; document.querySelectorAll('[data-cat]').forEach(s => { const a = C.AIRPORTS[s.dataset.cat].slice(0, 3); if (s.value !== 'NONE') a[3] = s.value; st.airports[s.dataset.cat] = a; });
       refresh(); toast('设置已保存，校验结果已更新');
     };
@@ -1237,12 +1258,24 @@
     const p = $('#progress'); p.classList.remove('hidden'); $('#pfill').style.width = '0%';
     let v = 0; const iv = setInterval(() => { v = Math.min(92, v + 7); $('#pfill').style.width = v + '%'; $('#ptext').textContent = v + '%'; }, 40);
     setTimeout(() => { const t0 = performance.now(); C.autoFill(st);
-      let demoN = 0;
-      if (st.sample) { const d = C.injectDemoAnomalies(st) || []; demoN = d.length; }
+      let demoN = 0, holeN = 0;
+      if (st.sample) {
+        // 每次重新填人时允许再留洞 / 再注入（受设置开关控制）
+        st.demoHolesApplied = false; st.demoHoles = [];
+        st.demoAnomaliesApplied = false; st.demoAnomalies = [];
+        st.pairings.forEach(pr => { delete pr.demoHole; delete pr.demoAnomaly; delete pr.demoAnomalyNote; });
+        const holes = C.leaveDemoHoles(st) || [];
+        holeN = holes.length;
+        if (st.settings && st.settings.demoAnomalies) {
+          const d = C.injectDemoAnomalies(st) || [];
+          demoN = d.length;
+        }
+      }
       const s = C.summarize(st); lastSolveMs = Math.round(performance.now() - t0);
       clearInterval(iv); $('#pfill').style.width = '100%'; $('#ptext').textContent = '100%';
       setTimeout(() => { p.classList.add('hidden'); refresh();
-        toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 250); }, 350);
+        const unf = s.total - s.full;
+        toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}` + (unf ? `（预留空洞 ${unf}）` : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 250); }, 350);
   }
 
   // ---------------- 启动 ----------------
