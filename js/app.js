@@ -252,7 +252,7 @@
       <span class="${hb}">硬性违规<b>${sum.hard}</b></span><span>工时区间<b>${sum.all.min.toFixed(0)}–${sum.all.max.toFixed(0)}h</b></span><span>意向休息满足<b>${(sum.prefRate * 100).toFixed(1)}%</b></span>`;
   }
   // ---------------- 主线（路演：4 步） + 更多功能 ----------------
-  const MORE_TABS = { roster: '人员总览', ops: '运营看板', duty: '执勤监控', welfare: '员工福利', fills: '补位历史', settings: '设置' };
+  const MORE_TABS = { roster: '人员总览', welfare: '员工福利', fills: '补位历史', settings: '设置' };
   function toggleMore() { const p = $('#morePanel'); const open = p.classList.contains('hidden'); p.classList.toggle('hidden', !open); $('#btnMore').setAttribute('aria-expanded', open ? 'true' : 'false'); }
   function closeMore() { const p = $('#morePanel'); if (p) p.classList.add('hidden'); const b = $('#btnMore'); if (b) b.setAttribute('aria-expanded', 'false'); }
   function goTab(t) { tab = t; ui.hl = null; location.hash = t; closeIssuePanel(); closeMore(); render(); }
