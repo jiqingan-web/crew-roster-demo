@@ -181,7 +181,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const st0 = C.generateSample();
   chk('pairings scaled', st0.pairings.length >= 300, st0.pairings.length);
   chk('regs scaled', (() => { const r = new Set(); st0.pairings.forEach(p => p.legs.forEach(l => r.add(l.reg))); return r.size >= 40; })(), 'regs');
-  chk('schema6', st0.sampleSchema === 6, st0.sampleSchema);
+  chk('schema7', st0.sampleSchema === 7, st0.sampleSchema);
 }
 
 // ---- CCAR-121-R8 回测回归（P章 表A/表B/累积限制；出处见 回测/121回测报告.md）----
@@ -316,4 +316,23 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('personal maxMonthH', rsH.some(x => x.includes('个人月飞行上限60h')), rsH.join('|'));
   const flags = C.healthFlags(st.pilots.find(p => p.id === 'MED19').health);
   chk('MED19 badges', flags.includes('月≤60h') && flags.includes('非唯一机长') && flags.includes('限制夜间'), flags.join(','));
+}
+
+// ===== 整月演示补全 + 导出 =====
+{ const st = C.generateSample();
+  const okSchema = st.sampleSchema >= 7;
+  const dayCover = {}; for (let d = 1; d <= C.DAYS; d++) dayCover[d] = 0;
+  st.pairings.forEach(p => { for (let d = p.start; d < p.start + p.ndays; d++) if (d >= 1 && d <= C.DAYS) dayCover[d]++; });
+  const zero = Object.keys(dayCover).filter(d => !dayCover[d]);
+  const fillN = st.pairings.filter(p => p.demoFill).length;
+  console.log('month complete', zero.length === 0 && fillN === st.pairings.length ? 'OK' : 'FAIL', 'zeroDays', zero.join(',') || 'none', 'pairings', st.pairings.length, 'schema', st.sampleSchema);
+  if (!(zero.length === 0 && fillN === st.pairings.length && okSchema)) process.exitCode = 1;
+  const rows = C.monthRosterRows(st);
+  const okR = rows.length > 1 && rows[0].includes('机长') && rows[0].includes('演示补全');
+  console.log('export monthRosterRows', okR ? 'OK' : 'FAIL', 'rows', rows.length); if (!okR) process.exitCode = 1;
+  const one = C.personalMonthRows(st, st.pilots[0].id);
+  const okP = one.length === C.DAYS + 1 && one[0].includes('状态');
+  console.log('export personalMonthRows', okP ? 'OK' : 'FAIL', 'rows', one.length); if (!okP) process.exitCode = 1;
+  const pack = C.personalMonthPack(st);
+  console.log('export personalMonthPack', pack.length === st.pilots.length ? 'OK' : 'FAIL', pack.length); if (pack.length !== st.pilots.length) process.exitCode = 1;
 }

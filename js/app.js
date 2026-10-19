@@ -21,10 +21,10 @@
         const isSampleish = s.sample === true;
         const stale = (s.pilots.length < 500)
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 6;
+          || !s.sampleSchema || s.sampleSchema < 7;
         if (isSampleish && stale) {
           reset(false);
-          toast('示例数据已升级（30天完整日机径扩量），已自动重置');
+          toast('示例数据已升级（整月演示补全 + 导出），已自动重置');
           return;
         }
         st = s;
@@ -388,7 +388,9 @@
     h += `<div class="panel"><h3>指标公式</h3><table class="solt"><tr><th>指标</th><th>公式</th></tr>
       ${Object.entries(m.formulas).map(([k, v]) => `<tr><td>${esc(fname[k] || k)}</td><td>${esc(v)}</td></tr>`).join('')}
       </table></div>`;
+    h = demoFillBanner() + exportBarHtml('<span class="mut">班表 / 个人月历</span>') + h;
     $('#main').innerHTML = h;
+    bindExportButtons();
     const bc = $('#btnBriefCopy'), be = $('#btnBriefExport');
     if (bc) bc.onclick = copyOpsBrief;
     if (be) be.onclick = exportOpsBrief;
@@ -417,9 +419,10 @@
     if (ui.fit) { const avail = ui.fitAvail || Math.max(200, innerHeight - 260); rh = Math.max(6, Math.min(40, Math.floor(avail / Math.max(1, ps.length))));
       lvl = rh >= 40 && cw >= 40 ? 'mid' : rh >= 16 ? 'small' : 'tiny'; }
     const idx = C.buildIndex(st); const S = st.settings;
-    let h = `<div class="toolbar"><input id="gq" placeholder="搜索 姓名/员工号/级别" value="${esc(ui.gq)}"> <select id="gg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.gg ? 'selected' : ''}>${g}</option>`).join('')}</select>
+    let h = `${demoFillBanner()}${exportBarHtml('<span class="mut">人员视图可导出班表/月历</span>')}
+      <div class="toolbar"><input id="gq" placeholder="搜索 姓名/员工号/级别" value="${esc(ui.gq)}"> <select id="gg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.gg ? 'selected' : ''}>${g}</option>`).join('')}</select>
       <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>第三人(三)</span>
-      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
+      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#1a3a5c;border:1px solid #5aa0e6"></i>培训</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
       ${ui.hl ? `<div class="hlbar ${ui.hl.ok ? 'ok' : ''}">${ui.hl.ok ? '✔ 已更新并合规' : '已高亮刚应用的调配'}（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
       <div class="gbox"><div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
@@ -430,7 +433,8 @@
       const hlr = ui.hl && ui.hl.pilots.has(p.id);
       h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点击：为此人临时请假 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
-      for (let d = 1; d <= C.DAYS; d++) h += (p.leave || []).includes(d) ? '<div class="lv" title="请假"></div>' : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="备份（Standby）">${cw >= 30 && rh >= 18 ? '<span>备份</span>' : ''}</div>` : '<div></div>';
+      const trd = (st.training || {})[p.id] || [];
+      for (let d = 1; d <= C.DAYS; d++) h += (p.leave || []).includes(d) ? '<div class="lv" title="请假/休假"></div>' : trd.includes(d) ? `<div class="tr" title="培训">${cw >= 30 && rh >= 18 ? '<span>培训</span>' : ''}</div>` : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="备份（Standby）">${cw >= 30 && rh >= 18 ? '<span>备份</span>' : ''}</div>` : '<div></div>';
       h += '</div>';
       for (const pr of idx.sched[p.id]) {
         const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id);
@@ -456,6 +460,7 @@
     if ($('#hlClr')) { $('#hlClr').onclick = () => { ui.hl = null; rGantt(); }; $('#hlUndo').onclick = undoLeave; }
     $('#gq').oninput = e => { ui.gq = e.target.value; const pos = e.target.selectionStart; rGantt(); $('#gq').focus(); $('#gq').setSelectionRange(pos, pos); };
     $('#gg').onchange = e => { ui.gg = e.target.value; rGantt(); };
+    bindExportButtons();
     const curP = () => ui.cw / BASE_CW * 100;
     $('#zIn').onclick = () => setZoom((ZSTEPS.find(z => z > curP() + 0.5) || 160) * BASE_CW / 100);
     $('#zOut').onclick = () => setZoom(([...ZSTEPS].reverse().find(z => z < curP() - 0.5) || 4) * BASE_CW / 100);
@@ -605,7 +610,7 @@
     const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 公司手册回测摘要 <small>R8 · ${COM.rev || 'EU.COM'} · ${COM.re12 || 'RE12'}</small></h3>
       <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、4连续值勤日后第5日不飞、7日FDP≤${R.sevenDayFdpH}h、月FDP≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编）<br>
       <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="回测/公司手册回测报告.md" target="_blank" rel="noopener">公司手册报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/公司手册回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
-    let h = ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${p.id}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
+    let h = demoFillBanner() + exportBarHtml() + ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${p.id}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
       + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
       ${card('任务覆盖率（满员）', (s.coverage * 100).toFixed(1) + '%', `${s.full}/${s.total} 个任务 · ${s.totalHours.toFixed(0)} 任务飞行小时`, s.coverage === 1 ? 'ok' : 'bad')}
       ${card('硬性规则违规', s.hard, s.hard ? '需处理，见下表' : '全部合规 ✔（座位搭配/特殊机场/休息/请假/≤${S.hardMaxHours || 100}h）', s.hard ? 'bad' : 'ok')}
@@ -633,6 +638,7 @@
     $('#main').innerHTML = h;
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
     document.querySelectorAll('tr.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
+    bindExportButtons();
   }
 
   function fdpReportPanel() {
@@ -1128,8 +1134,11 @@
         <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
         <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 授权机场 ${nAuth} 个</span>
-        <button class="btn sm" id="roExp" style="margin-left:auto">导出 CSV</button>
+        <button class="btn sm" id="roExp" style="margin-left:auto">导出人员 CSV</button>
+        <button class="btn sm primary" id="exMonthRoster">全月班表</button>
+        <button class="btn sm primary" id="exPersonalZip">个人月历包</button>
       </div>
+      ${demoFillBanner()}
       <div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div></div>
       <div class="panel scroll" style="max-height:calc(100vh - 220px);padding:0"><table class="rost"><thead><tr>
         <th>员工号</th><th>姓名</th><th>级别</th><th>中队</th><th>健康限制</th>
@@ -1179,6 +1188,7 @@
       dl('人员总览_授权与健康_2026-11.csv', csv(rows));
       toast('✔ 已导出人员总览 CSV');
     };
+    bindExportButtons();
   }
   function openRosterEdit(pid) {
     C.migratePilots(st);
@@ -1248,6 +1258,68 @@
       prefs[i] = v; p.prefs = [...new Set(prefs.filter(Boolean))].sort((a, b) => a - b); refresh(); toast('已保存。重新“一键自动填人”可按新意向排班'); });
   }
 
+
+  // ---------------- 全月班表 / 个人月历导出 ----------------
+  function exportMonthRoster() {
+    const rows = C.monthRosterRows(st);
+    dl('全月班表_2026-11.csv', csv(rows));
+    toast('✔ 已导出全月班表 CSV（任务×航段×机组）');
+  }
+  function exportPersonalCombined() {
+    const pack = C.personalMonthPack(st);
+    const rows = [['员工号', '姓名', '级别', '中队', '日期', '星期', '状态', '任务号', '机型', '机号', '航班摘要', '当日飞行小时', '本月累计小时']];
+    pack.forEach(f => f.rows.slice(1).forEach(r => rows.push(r)));
+    dl('个人月历汇总_2026-11.csv', csv(rows));
+    toast('✔ 已导出个人月历汇总 CSV（含人员列）');
+  }
+  async function exportPersonalZip() {
+    const pack = C.personalMonthPack(st);
+    if (typeof JSZip === 'undefined') {
+      exportPersonalCombined();
+      toast('未加载 JSZip，已改为汇总 CSV', 4000);
+      return;
+    }
+    toast('正在打包个人月历…');
+    const zip = new JSZip();
+    const folder = zip.folder('个人月历_2026-11');
+    pack.forEach(f => {
+      const safe = String(f.name).replace(/[\\/:*?"<>|]/g, '_');
+      folder.file(f.id + '_' + safe + '_' + f.rank + '.csv', csv(f.rows));
+    });
+    const sumRows = [['员工号', '姓名', '级别', '中队', '本月飞行小时', '培训天数', '备份天数', '休假天数']];
+    const idx = C.buildIndex(st);
+    st.pilots.forEach(p => {
+      sumRows.push([p.id, p.name, p.rank, p.squad || '', (idx.hours[p.id] || 0).toFixed(2),
+        ((st.training || {})[p.id] || []).length, ((st.standby || {})[p.id] || []).length, (p.leave || []).length]);
+    });
+    folder.file('_汇总_工时培训备份.csv', csv(sumRows));
+    const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = '个人月历包_2026-11.zip';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+    toast('✔ 已导出个人月历包 ZIP（' + pack.length + ' 人）');
+  }
+  function demoFillBanner() {
+    const note = (st.sampleMeta && st.sampleMeta.demoFill) || (C.SAMPLE_META && C.SAMPLE_META.demoFill) || '';
+    if (!st.sample || !note) return '';
+    return '<div class="demo-fill-note">📌 ' + esc(note) + ' · 任务 ' + st.pairings.length + ' 组已铺满 1–' + C.DAYS + ' 日</div>';
+  }
+  function exportBarHtml(extra) {
+    return '<div class="export-bar">'
+      + '<button type="button" class="btn primary" id="exMonthRoster">📥 导出全月班表</button>'
+      + '<button type="button" class="btn primary" id="exPersonalZip">📦 导出个人月历包</button>'
+      + '<button type="button" class="btn" id="exPersonalCsv">导出个人月历汇总 CSV</button>'
+      + (extra || '') + '</div>';
+  }
+  function bindExportButtons() {
+    const a = $('#exMonthRoster'), b = $('#exPersonalZip'), c = $('#exPersonalCsv');
+    if (a) a.onclick = exportMonthRoster;
+    if (b) b.onclick = () => { exportPersonalZip().catch(e => toast('导出失败：' + e.message)); };
+    if (c) c.onclick = exportPersonalCombined;
+  }
+
   // ---------------- 导入导出 ----------------
   function csv(rows) { return '\ufeff' + rows.map(r => r.map(x => { x = String(x == null ? '' : x); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }).join(',')).join('\r\n'); }
   function dl(name, text, type) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/csv;charset=utf-8' })); a.download = name; a.click(); }
@@ -1262,7 +1334,9 @@
   const tm = (m, base) => { const dd = Math.floor(m / C.DAY) - base; return C.fmtT(m) + (dd > 0 ? '+' + dd : ''); };
   const pairRows = () => [PR_H, ...st.pairings.flatMap(pr => pr.legs.map(l => { const day = Math.floor(l.dep / C.DAY); return [pr.id, l.d, l.flt, l.from, l.to, day + 1, C.fmtT(l.dep), tm(l.arr, day), l.ac]; }))];
   function rData() {
-    $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>导出</h3><div class="note">CSV 为 UTF-8 BOM 格式，可直接用 Excel 打开。</div><div style="margin-top:10px;line-height:3">
+    $('#main').innerHTML = `${demoFillBanner()}<div class="grid g2"><div class="panel"><h3>导出</h3><div class="note">CSV 为 UTF-8 BOM 格式，可直接用 Excel 打开。全月班表与个人月历包可离线导出。</div>
+      ${exportBarHtml()}
+      <div style="margin-top:10px;line-height:3">
       <button class="btn" id="exRoster">排班表（按航段，含机组）</button><button class="btn" id="exHours">人员工时统计</button><button class="btn" id="exViol">校验问题清单</button><br>
       <button class="btn" id="exPil">人员数据</button><button class="btn" id="exPr">任务数据</button><button class="btn" id="exJson">完整备份(JSON)</button></div></div>
       <div class="panel"><h3>导入</h3><div class="note">导入将替换对应数据并清空现有排班。可先下载模板。</div><div style="margin-top:10px;line-height:3">
@@ -1295,6 +1369,7 @@
         .map(p => (p.ndays = Math.max(p.ndays, ...p.legs.map(l => l.d)), p)).sort((a, b) => a.legs[0].dep - b.legs[0].dep);
       st.sample = false; refresh(); toast(`已导入 ${st.pairings.length} 个任务`); });
     read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings)); refresh(); toast('备份已恢复'); });
+    bindExportButtons();
   }
 
   // ---------------- 设置 ----------------
