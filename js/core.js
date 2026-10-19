@@ -135,7 +135,7 @@
   }
 
   function defaultHealth() {
-    return { noFly: false, noPlateau: false, noNight: false, bpNote: '', medExamExpiry: '', note: '' };
+    return { noFly: false, noPlateau: false, noNight: false, maxMonthH: null, noSoleCaptain: false, bpNote: '', medExamExpiry: '', note: '' };
   }
   function authAirports(st) {
     const A = (st && st.airports) || AIRPORTS;
@@ -150,13 +150,18 @@
     if (h.noFly) f.push('暂时不适飞');
     if (h.noPlateau) f.push('限制高原');
     if (h.noNight) f.push('限制夜间');
+    if (h.maxMonthH != null && h.maxMonthH > 0) f.push('月≤' + h.maxMonthH + 'h');
+    if (h.noSoleCaptain) f.push('非唯一机长');
     if (h.bpNote) f.push('血压备注');
     if (h.medExamExpiry) f.push('体检' + h.medExamExpiry);
-    if (h.note && !h.noFly && !h.noPlateau && !h.noNight) f.push('有备注');
+    const flagged = h.noFly || h.noPlateau || h.noNight || h.noSoleCaptain || (h.maxMonthH != null && h.maxMonthH > 0);
+    if (h.note && !flagged) f.push('有备注');
     return f;
   }
   function hasHealthRestriction(h) {
-    h = h || {}; return !!(h.noFly || h.noPlateau || h.noNight || (h.bpNote && h.bpNote.trim()) || (h.medExamExpiry && h.medExamExpiry.trim()) || (h.note && h.note.trim()));
+    h = h || {};
+    return !!(h.noFly || h.noPlateau || h.noNight || h.noSoleCaptain || (h.maxMonthH != null && h.maxMonthH > 0)
+      || (h.bpNote && h.bpNote.trim()) || (h.medExamExpiry && h.medExamExpiry.trim()) || (h.note && h.note.trim()));
   }
   function isPlateauAirport(c, st) { return ['LHASA', 'HIGH', 'PLATEAU'].includes(apCat(c, st)); }
   function migratePilots(st) {
@@ -170,11 +175,14 @@
     });
     return st;
   }
-  function healthBlocks(p, pr, st) {
+  function healthBlocks(p, pr, st, opt) {
+    opt = opt || {};
     const h = p.health || {}; const rs = [];
     if (h.noFly) rs.push('暂时不适飞');
     if (h.noPlateau && pr.legs.some(l => isPlateauAirport(l.from, st) || isPlateauAirport(l.to, st))) rs.push('限制高原（任务含高原/拉萨类机场）');
     if (h.noNight && pr.legs.some(isNightLeg)) rs.push('限制夜间（任务含夜航段）');
+    // 体检合格证「不能作为唯一机长」：禁止担任 C 位（唯一人机长席）；可任 F/T
+    if (h.noSoleCaptain && opt.slot === 'C') rs.push('不能作为唯一机长（禁止担任C位）');
     if (h.medExamExpiry) {
       const exp = new Date(h.medExamExpiry + 'T23:59:59');
       if (!isNaN(exp)) {
@@ -183,6 +191,61 @@
       }
     }
     return rs;
+  }
+
+
+  // 体检合格证特殊运行限制 · 匿名演示样本（26 人；不含真实姓名）
+  // 类型计数（脱敏）：月≤60h 仅×6；非唯一机长仅×14；月≤60h+非唯一机长×5；月≤60h+非唯一机长+禁夜×1
+  function medRestrictionNote(h) {
+    const parts = [];
+    if (h.maxMonthH) parts.push('每月飞行时间不超过' + h.maxMonthH + '小时');
+    if (h.noSoleCaptain) parts.push('不能作为唯一机长在航空器上行使职责');
+    if (h.noNight) parts.push('禁止夜间飞行');
+    return parts.join('，');
+  }
+  function medRestrictionSeed() {
+    // 与源表行序对应的限制字段（姓名已抹除）
+    const specs = [
+      { maxMonthH: 60 }, { maxMonthH: 60 },
+      { maxMonthH: 60, noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true },
+      { noSoleCaptain: true },
+      { noSoleCaptain: true }, { noSoleCaptain: true }, { noSoleCaptain: true }, { noSoleCaptain: true },
+      { noSoleCaptain: true }, { noSoleCaptain: true },
+      { maxMonthH: 60, noSoleCaptain: true },
+      { noSoleCaptain: true }, { noSoleCaptain: true },
+      { maxMonthH: 60 },
+      { noSoleCaptain: true },
+      { maxMonthH: 60 },
+      { maxMonthH: 60, noSoleCaptain: true, noNight: true },
+      { noSoleCaptain: true },
+      { maxMonthH: 60 },
+      { noSoleCaptain: true },
+      { maxMonthH: 60, noSoleCaptain: true },
+      { noSoleCaptain: true },
+      { maxMonthH: 60 },
+      { noSoleCaptain: true }
+    ];
+    const captRanks = ['J3', 'J2', 'J1', 'J3', 'US', 'J2', 'J3', '机长A', 'J1', 'J2', 'J3', 'US', 'J2', 'J3', 'J1', 'J2', 'J3', '机长B', 'J2'];
+    const foRanks = ['F7', 'F6', 'F5', 'F8', 'F4', 'F6', 'F7'];
+    let ci = 0, fi = 0;
+    return specs.map((spec, i) => {
+      const n = i + 1;
+      const needCapt = !!spec.noSoleCaptain;
+      const rank = needCapt ? captRanks[ci++ % captRanks.length] : foRanks[fi++ % foRanks.length];
+      const health = Object.assign(defaultHealth(), spec, { note: medRestrictionNote(spec) });
+      // 机长类给常见授权；副驾驶给高原类部分授权
+      let auth = [];
+      const specialAll = Object.keys(AIRPORTS).filter(c => AUTH_CATS.includes(AIRPORTS[c][3]));
+      if (isCaptClass(rank)) auth = specialAll.filter(c => AIRPORTS[c][3] !== 'LHASA');
+      else auth = specialAll.filter(c => ['PLATEAU', 'ZBCF'].includes(AIRPORTS[c][3]));
+      return {
+        id: 'MED' + String(n).padStart(2, '0'),
+        name: '限-' + String(n).padStart(2, '0'),
+        rank, auth, prefs: [], leave: [],
+        squad: ['一大队', '二大队', '三大队'][i % 3],
+        health
+      };
+    });
   }
 
   function generateSample(seed, opt) {
@@ -272,6 +335,8 @@
       { i: 24, h: { noPlateau: true, noNight: true, note: '综合健康限制（演示）' } }
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
+    // 合并匿名体检限制演示人员（限-01…限-26），不写入真实姓名
+    medRestrictionSeed().forEach(p => pilots.push(p));
     return { version: 1, sample: true, settings: S, pilots, pairings, fills: [], demoAnomaliesApplied: false, demoAnomalies: [] };
   }
 
@@ -485,7 +550,15 @@
   }
 
   const hardCap = st => st.settings.hardMaxHours || 100;
+  // 个人月飞行硬上限：取公司 hardMaxHours 与体检 maxMonthH 的更严者
+  function pilotHardCap(p, st) {
+    const base = hardCap(st);
+    const m = p && p.health && p.health.maxMonthH;
+    if (m != null && m > 0) return Math.min(base, m);
+    return base;
+  }
   // 某人能否执行某任务（不含组合规则）。返回 [ok, reasons[] ]
+  // opt.slot：座位 C/F/T，用于「非唯一机长」禁 C 位
   function personCheck(p, pr, st, idx, opt) {
     opt = opt || {}; const rs = []; const S = st.settings;
     const dt = daysTouched(pr, st);
@@ -498,8 +571,12 @@
       if (oa < b && a < ob) { rs.push('时间冲突(' + o.id + ')'); continue; }
       if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) rs.push('休息不足' + S.minRestH + 'h(' + o.id + ')'); }
     const h = pairingHours(pr), already = idx.sched[p.id].includes(pr);
-    const cap = hardCap(st); if (!already && idx.hours[p.id] + h > cap + 1e-9) rs.push('超出月飞行小时硬上限' + cap + 'h');
-    healthBlocks(p, pr, st).forEach(x => rs.push(x));
+    const cap = pilotHardCap(p, st);
+    if (!already && idx.hours[p.id] + h > cap + 1e-9) {
+      const personal = p.health && p.health.maxMonthH > 0 && p.health.maxMonthH < hardCap(st);
+      rs.push(personal ? ('超出个人月飞行上限' + cap + 'h') : ('超出月飞行小时硬上限' + cap + 'h'));
+    }
+    healthBlocks(p, pr, st, opt).forEach(x => rs.push(x));
     if (!opt.skipFtl) ftlCheckPerson(p, pr, st, idx, opt).forEach(x => rs.push(x));
     return [rs.length === 0, rs];
   }
@@ -550,13 +627,13 @@
     function fillOne(pr, ignorePrefs) {
       const gdc = {}; const gd = p => gdc[p.id] != null ? gdc[p.id] : (gdc[p.id] = gw * (gapCost(p, idx.sched[p.id].concat([pr]), st) - gapCost(p, idx.sched[p.id], st)));
       const free = s => !pr.crew[s];
-      const ok = (p) => personCheck(p, pr, st, idx, { ignorePrefs })[0];
+      const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs, slot })[0];
       const cur = { C: pr.crew.C && idx.pm[pr.crew.C], F: pr.crew.F && idx.pm[pr.crew.F], T: pr.crew.T && idx.pm[pr.crew.T] };
       const inCrew = id => Object.values(pr.crew).includes(id);
       const sortR = arr => arr.sort((a, b) => ratio(a.id) - ratio(b.id));
-      const capt = free('C') ? sortR(pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p))).slice(0, 12) : [cur.C];
-      const fos = sortR(pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p)));
-      const capT = sortR(pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p)));
+      const capt = free('C') ? sortR(pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C'))).slice(0, 12) : [cur.C];
+      const fos = sortR(pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')));
+      const capT = sortR(pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'T')));
       let best = null;
       for (const c of capt) {
         const Fl = free('F') ? fos.filter(x => x !== c).slice(0, 10) : [cur.F];
@@ -614,7 +691,7 @@
             const sc0 = idx.sched[curId], sq0 = idx.sched[q.id];
             gain -= gwX * (gapCost(cp, sc0.filter(x => x !== pr), st) - gapCost(cp, sc0, st) + gapCost(q, sq0.concat([pr]), st) - gapCost(q, sq0, st));
             if (gain <= bestGain + 1e-6) continue;
-            if (!personCheck(q, pr, st, idx, { ignorePrefs: !S.honorPrefs })[0]) continue;
+            if (!personCheck(q, pr, st, idx, { ignorePrefs: !S.honorPrefs, slot: s })[0]) continue;
             const crew = ['C', 'F', 'T'].map(x => x === s ? q : idx.pm[pr.crew[x]]);
             if (isNew(cp.rank) !== isNew(q.rank) && s !== 'T' && false) continue;
             if (crewIssue(pr, crew, st)) continue;
@@ -641,8 +718,8 @@
               const g0 = gapCost(a, idx.sched[a.id], st) + gapCost(b, idx.sched[b.id], st);
               const sy = Y && slotOf(Y, b.id);
               assign(X, sx, b.id); if (Y) assign(Y, sy, a.id);
-              const ok = personCheck(b, X, st, idx, { ignorePrefs: !S.honorPrefs })[0] && idx.hours[b.id] <= hardCap(st) + 1e-9 &&
-                (!Y || personCheck(a, Y, st, idx, { ignorePrefs: !S.honorPrefs })[0]) &&
+              const ok = personCheck(b, X, st, idx, { ignorePrefs: !S.honorPrefs, slot: sx })[0] && idx.hours[b.id] <= pilotHardCap(b, st) + 1e-9 &&
+                (!Y || personCheck(a, Y, st, idx, { ignorePrefs: !S.honorPrefs, slot: sy })[0]) &&
                 !crewIssue(X, ['C', 'F', 'T'].map(k => idx.pm[X.crew[k]]), st) && (!Y || !crewIssue(Y, ['C', 'F', 'T'].map(k => idx.pm[Y.crew[k]]), st)) &&
                 gapCost(a, idx.sched[a.id], st) + gapCost(b, idx.sched[b.id], st) - g0 <= 0.6;
               if (ok) { done = true; sw++; break; }
@@ -654,7 +731,7 @@
     if (st.pairings.some(pr => !(pr.crew.C && pr.crew.F && pr.crew.T))) {
       for (const pr of st.pairings) { const t = pr.crew.T && idx.pm[pr.crew.T]; if (!t || !isCaptClass(t.rank)) continue;
         const fos = pilots.filter(q => isFO(q.rank) && !Object.values(pr.crew).includes(q.id)).sort((a, b) => ratio(a.id) - ratio(b.id));
-        for (const q of fos) { if (!personCheck(q, pr, st, idx, { ignorePrefs: !S.honorPrefs })[0]) continue;
+        for (const q of fos) { if (!personCheck(q, pr, st, idx, { ignorePrefs: !S.honorPrefs, slot: 'T' })[0]) continue;
           if (crewIssue(pr, [idx.pm[pr.crew.C], idx.pm[pr.crew.F], q], st)) continue; assign(pr, 'T', q.id); break; } }
     }
     // 均衡后再次尝试补齐剩余空缺
@@ -669,14 +746,14 @@
       const order = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
       for (const pr of order) {
         const free = s => !pr.crew[s];
-        const ok = (p) => personCheck(p, pr, st, idx, { ignorePrefs: true })[0];
+        const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
         const inCrew = id => Object.values(pr.crew).includes(id);
         const sortR = arr => arr.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
-        if (free('C')) { const c = sortR(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p)))[0]; if (c) { pr.crew.C = c.id; idx.sched[c.id].push(pr); idx.hours[c.id] += pairingHours(pr); } }
-        if (free('F')) { const f = sortR(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p)))[0]; if (f) { pr.crew.F = f.id; idx.sched[f.id].push(pr); idx.hours[f.id] += pairingHours(pr); } }
+        if (free('C')) { const c = sortR(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C')))[0]; if (c) { pr.crew.C = c.id; idx.sched[c.id].push(pr); idx.hours[c.id] += pairingHours(pr); } }
+        if (free('F')) { const f = sortR(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')))[0]; if (f) { pr.crew.F = f.id; idx.sched[f.id].push(pr); idx.hours[f.id] += pairingHours(pr); } }
         if (free('T') && pr.crew.C && pr.crew.F) {
           const needInstr = isNew(idx.pm[pr.crew.C].rank);
-          const t = sortR(st.pilots.filter(p => !inCrew(p.id) && ok(p) && (!needInstr || isInstr(p.rank))))[0];
+          const t = sortR(st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank))))[0];
           if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) { pr.crew.T = t.id; idx.sched[t.id].push(pr); idx.hours[t.id] += pairingHours(pr); } }
         }
       }
@@ -817,11 +894,11 @@
       if (crew.some(x => !x)) add('未满员', 'hard', `${pr.id} 缺 ${['C', 'F', 'T'].filter((s, i) => !crew[i]).map(s => SLOT_NAME[s]).join('/')}`, pr);
       ['C', 'F', 'T'].forEach((s, i) => { const p = crew[i]; if (!p) return;
         if (!slotRankOK(s, p.rank)) add('岗位级别不符', 'hard', `${pr.id} ${SLOT_NAME[s]}位 ${p.name}(${p.rank}) 级别不符`, pr, p.id);
-        const [ok, rs] = personCheck(p, pr, st, idx, { ignorePrefs: true, skipFtl: true });
+        const [ok, rs] = personCheck(p, pr, st, idx, { ignorePrefs: true, skipFtl: true, slot: s });
         rs.forEach(r => { const t = r.startsWith('请假') ? '请假冲突' : r.startsWith('时间') ? '时间重叠' : r.startsWith('休息') ? '休息不足'
-            : (r.includes('144h') ? '144h内48h休息' : r.includes('第5日') ? '连续4日后第5日飞行' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : r.includes('月飞行小时') ? '月小时超法规上限' : null);
+            : (r.includes('144h') ? '144h内48h休息' : r.includes('第5日') ? '连续4日后第5日飞行' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : (r.includes('月飞行小时') || r.includes('个人月飞行上限')) ? '月小时超法规上限' : null);
           if (t) add(t, 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
-          else if (r.includes('不适飞') || r.includes('体检已过期')) add('健康限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('不适飞') || r.includes('体检已过期') || r.includes('不能作为唯一机长')) add('健康限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
           else if (r.includes('限制高原') || r.includes('限制夜间')) add('健康限制', 'soft', `${pr.id} ${p.name}：${r}`, pr, p.id);
           else if (/144h|第5日|连续7日|月飞行值勤|年飞行/.test(r)) add('飞行时间限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id); });
         const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
@@ -854,7 +931,15 @@
     const addFtl = (type, msg, pr, pid) => { const k = type + '|' + pid + '|' + msg; if (ftlSeen.has(k)) return; ftlSeen.add(k); ded.push({ type, level: 'hard', msg, pairing: pr && pr.id, pilot: pid }); };
     st.pilots.forEach(p => {
       const h = idx.hours[p.id];
-      if (h > hardCap(st) + 1e-9) ded.push({ type: '月小时超法规上限', level: 'hard', msg: `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${hardCap(st)}h（公司/法规月上限 ${CCAR121.monthFlightH}h）`, pilot: p.id });
+      const pCap = pilotHardCap(p, st);
+      if (h > pCap + 1e-9) {
+        const personal = p.health && p.health.maxMonthH > 0 && p.health.maxMonthH < hardCap(st);
+        ded.push({ type: '月小时超法规上限', level: 'hard',
+          msg: personal
+            ? `${p.name}(${p.rank}) ${h.toFixed(1)}h > 个人月上限 ${pCap}h（体检限制）`
+            : `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${pCap}h（公司/法规月上限 ${CCAR121.monthFlightH}h）`,
+          pilot: p.id });
+      }
       const ytd = +(p.ytdFlightH || 0);
       if (ytd + h > CCAR121.yearFlightH + 1e-9) addFtl('年飞行超限', `${p.name} YTD+本月 ${(ytd + h).toFixed(1)}h > ${CCAR121.yearFlightH}h`, null, p.id);
       const sched = idx.sched[p.id] || [];
@@ -914,7 +999,7 @@
       const other = ['C', 'F', 'T'].filter(s => s !== slot).map(s => pr.crew[s]);
       if (other.includes(p.id)) rs.push('已在本任务');
       if (!rs.length) {
-        const [, r2] = personCheck(p, pr, st, idx, { ignorePrefs: true }); rs.push(...r2);
+        const [, r2] = personCheck(p, pr, st, idx, { ignorePrefs: true, slot }); rs.push(...r2);
         const crew = ['C', 'F', 'T'].map(s => s === slot ? p : (pr.crew[s] && idx.pm[pr.crew[s]]));
         const iss = crewIssue(pr, crew, st); if (iss) rs.push(iss);
       }
@@ -1045,10 +1130,12 @@
     const fleetN = Math.max(regs.size, Object.values(FLEET).flat().length);
     const flyingN = regs.size || fleetN;
     let blockH = 0; st.pairings.forEach(p => { blockH += pairingHours(p); });
-    // 可用剩余运力：每人 (hard - assigned) 之和（下限 0）
-    let remain = 0, assigned = 0, overN = 0;
-    st.pilots.forEach(p => { const h = idx.hours[p.id] || 0; assigned += h; remain += Math.max(0, hard - h); if (h > hard + 1e-9) overN++; });
-    const capacityTotal = nPilots * hard;
+    // 可用剩余运力：每人 (个人硬上限 - assigned) 之和（下限 0；含体检 maxMonthH）
+    let remain = 0, assigned = 0, overN = 0, capacityTotal = 0;
+    st.pilots.forEach(p => {
+      const h = idx.hours[p.id] || 0; const cap = pilotHardCap(p, st);
+      assigned += h; capacityTotal += cap; remain += Math.max(0, cap - h); if (h > cap + 1e-9) overN++;
+    });
     const unfilled = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T));
     const risk = fdpRiskSummary(st);
     const highRiskDays = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over' || r.risk === 'med');
@@ -1137,12 +1224,12 @@
       .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
     for (const q of qs) {
       if (out.length >= (max || 3) || tries > 80) break;
-      const [, rs] = personCheck(q, pr, w, idx, { ignorePrefs: true }); if (!rs.length) continue;
-      const ids = [...new Set(rs.map(r => (r.match(/\((PR\d+)\)/) || [])[1]))]; if (ids.length !== 1 || !ids[0] || rs.some(r => !/\(PR\d+\)/.test(r) && !/超出月上限/.test(r))) continue;
+      const [, rs] = personCheck(q, pr, w, idx, { ignorePrefs: true, slot }); if (!rs.length) continue;
+      const ids = [...new Set(rs.map(r => (r.match(/\((PR\d+)\)/) || [])[1]))]; if (ids.length !== 1 || !ids[0] || rs.some(r => !/\(PR\d+\)/.test(r) && !/超出.*月.*上限/.test(r))) continue;
       const Q = prOf(w, ids[0]); const sQ = ['C', 'F', 'T'].find(x => Q.crew[x] === q.id); if (!sQ || ban.has('PR:' + Q.id)) continue; tries++;
       Q.crew[sQ] = null; const idx2 = buildIndex(w);
-      const [ok2] = personCheck(q, pr, w, idx2, { ignorePrefs: true }); const crew = ['C', 'F', 'T'].map(x => x === slot ? q : (pr.crew[x] && idx2.pm[pr.crew[x]]));
-      if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > hardCap(w))) {
+      const [ok2] = personCheck(q, pr, w, idx2, { ignorePrefs: true, slot }); const crew = ['C', 'F', 'T'].map(x => x === slot ? q : (pr.crew[x] && idx2.pm[pr.crew[x]]));
+      if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > pilotHardCap(q, w))) {
         pr.crew[slot] = q.id;
         const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id).sort((a, b) => (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
         pr.crew[slot] = null;
@@ -1226,7 +1313,7 @@
       const newPr = idx.sched[id].filter(pr => !bIdx.sched[id].some(o => o.id === pr.id));
       const prefHit = [...new Set(newPr.flatMap(pr => daysTouched(pr, w)).filter(d => (p.prefs || []).includes(d)))];
       const rb = rhythmCost(p, bIdx.sched[id], w), ra = rhythmCost(p, idx.sched[id], w);
-      return { id, name: p.name, rank: p.rank, hb, ha, overHard: ha > hardCap(w) + 1e-9, prefHit, rhythm: ra - rb }; });
+      return { id, name: p.name, rank: p.rank, hb, ha, overHard: ha > pilotHardCap(p, w) + 1e-9, prefHit, rhythm: ra - rb }; });
     const days = [...new Set(steps.flatMap(x => daysTouched(prOf(w, x.pairing), w)))].sort((a, b) => a - b);
     const sbLeft = days.map(d => ({ d, n: w.pilots.filter(p => ((w.standby || {})[p.id] || []).includes(d)).length }));
     const unresolved = steps.filter(x => x.type === 'manual').length;
@@ -1415,7 +1502,7 @@
         const q = seatPr.crew[s] && idx.pm[seatPr.crew[s]];
         if (!q || !isInstr(q.rank)) continue;
         if (s === 'C') continue; // 保留新机长在机位
-        const fo = st.pilots.find(p => isFO(p.rank) && !Object.values(seatPr.crew).includes(p.id) && personCheck(p, seatPr, st, idx, { ignorePrefs: true })[0]);
+        const fo = st.pilots.find(p => isFO(p.rank) && !Object.values(seatPr.crew).includes(p.id) && personCheck(p, seatPr, st, idx, { ignorePrefs: true, slot: s })[0]);
         if (fo) { seatPr.crew[s] = fo.id; break; }
       }
       // 若仍有教员，再清一次
@@ -1463,7 +1550,7 @@
   }
 
 
-    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, injectDemoAnomalies, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };

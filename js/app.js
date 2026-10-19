@@ -1018,17 +1018,19 @@
     if (ui.rh === '不适飞') ps = ps.filter(p => p.health && p.health.noFly);
     if (ui.rh === '限制高原') ps = ps.filter(p => p.health && p.health.noPlateau);
     if (ui.rh === '限制夜间') ps = ps.filter(p => p.health && p.health.noNight);
+    if (ui.rh === '月≤60h') ps = ps.filter(p => p.health && p.health.maxMonthH === 60);
+    if (ui.rh === '非唯一机长') ps = ps.filter(p => p.health && p.health.noSoleCaptain);
     if (ui.rq) { const q = ui.rq.trim(); ps = ps.filter(p => (p.name + p.id + p.rank + (p.squad || '') + (p.health && p.health.note || '')).includes(q)); }
     const squads = ['全部', ...new Set(st.pilots.map(p => p.squad).filter(Boolean))];
     const nAuth = authList.length;
     const nRest = st.pilots.filter(p => C.hasHealthRestriction(p.health)).length;
-    let h = `<div class="panel"><h3>人员总览 · 特殊机场授权与健康限制 <small>授权机场与规章校验一致（RE12 需授权类）；健康限制参与候选人过滤与校验（不适飞/体检过期为硬性，高原/夜航限制为软性提示）</small></h3>
+    let h = `<div class="panel"><h3>人员总览 · 特殊机场授权与健康限制 <small>授权机场与规章校验一致（RE12 需授权类）；健康限制参与候选人过滤与校验（不适飞/体检过期/个人月上限/非唯一机长为硬性，高原/夜航限制为软性提示）</small></h3>
       <div class="flex" style="flex-wrap:wrap;gap:8px">
         <input id="rq" placeholder="搜索姓名/员工号/备注" value="${esc(ui.rq)}" style="width:180px">
         <select id="rg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.rg ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="rs">${squads.map(g => `<option ${g === ui.rs ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
-        <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
+        <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 授权机场 ${nAuth} 个</span>
         <button class="btn sm" id="roExp" style="margin-left:auto">导出 CSV</button>
       </div>
@@ -1041,7 +1043,8 @@
       const flags = C.healthFlags(p.health);
       const badges = flags.length
         ? flags.map(f => {
-            const cls = f.includes('不适飞') || f.includes('体检') ? 'hb bad' : f.includes('高原') || f.includes('夜间') ? 'hb warn' : 'hb';
+            const cls = f.includes('不适飞') || f.includes('体检') || f.includes('非唯一机长') ? 'hb bad'
+              : f.includes('高原') || f.includes('夜间') || f.includes('月≤') ? 'hb warn' : 'hb';
             return `<span class="${cls}">${esc(f)}</span>`;
           }).join(' ')
         : '<span class="mut">—</span>';
@@ -1071,10 +1074,10 @@
     });
     document.querySelectorAll('.rorow').forEach(r => r.ondblclick = () => openRosterEdit(r.dataset.pid));
     $('#roExp').onclick = () => {
-      const rows = [['员工号', '姓名', '级别', '组别', '大队', '暂时不适飞', '限制高原', '限制夜间', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
+      const rows = [['员工号', '姓名', '级别', '组别', '大队', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
       st.pilots.forEach(p => {
         const h = p.health || C.defaultHealth();
-        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
+        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.maxMonthH != null ? h.maxMonthH : '', h.noSoleCaptain ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
           ...authList.map(c => (p.auth || []).includes(c) ? '✓' : ''), (p.auth || []).filter(c => authList.includes(c)).length]);
       });
       dl('人员总览_授权与健康_2026-11.csv', csv(rows));
@@ -1097,6 +1100,11 @@
         <label><input type="checkbox" id="edNoFly" ${h.noFly ? 'checked' : ''}> 暂时不适飞</label>
         <label><input type="checkbox" id="edNoPl" ${h.noPlateau ? 'checked' : ''}> 限制高原（拉萨/高原类）</label>
         <label><input type="checkbox" id="edNoNi" ${h.noNight ? 'checked' : ''}> 限制夜间</label>
+        <label><input type="checkbox" id="edNoSole" ${h.noSoleCaptain ? 'checked' : ''}> 非唯一机长（禁止C位）</label>
+      </div>
+      <div class="grid g2" style="margin-top:8px">
+        <div><label class="lab">个人月飞行上限（小时，空=不限）</label><input type="number" id="edMaxMH" min="1" max="100" step="1" value="${h.maxMonthH != null && h.maxMonthH > 0 ? h.maxMonthH : ''}" placeholder="如 60"></div>
+        <div class="note" style="align-self:end">体检合格证特殊运行限制：月≤Nh 为硬性；非唯一机长不可排 C 位，可排副驾/三。备注建议写完整限制原文。</div>
       </div>
       <div style="margin-top:8px"><label class="lab">血压相关备注</label><input id="edBp" style="width:100%" value="${esc(h.bpNote || '')}" placeholder="如：血压偏高随访、须带记录本"></div>
       <div style="margin-top:8px"><label class="lab">其他备注</label><input id="edNote" style="width:100%" value="${esc(h.note || '')}"></div>
@@ -1108,8 +1116,11 @@
     document.querySelectorAll('.edA').forEach(b => b.onclick = () => b.classList.toggle('on'));
     $('#edSave').onclick = () => {
       p.squad = $('#edSquad').value;
+      const mhRaw = $('#edMaxMH').value.trim();
+      const mh = mhRaw === '' ? null : Math.max(1, Math.min(100, parseInt(mhRaw, 10) || 0));
       p.health = {
         noFly: $('#edNoFly').checked, noPlateau: $('#edNoPl').checked, noNight: $('#edNoNi').checked,
+        noSoleCaptain: $('#edNoSole').checked, maxMonthH: mh && mh > 0 ? mh : null,
         bpNote: $('#edBp').value.trim(), medExamExpiry: $('#edMed').value || '', note: $('#edNote').value.trim()
       };
       const on = new Set([...document.querySelectorAll('.edA.on')].map(x => x.dataset.c));

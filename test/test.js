@@ -162,7 +162,8 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('hole cand light', c0 && ['green', 'amber', 'red'].includes(c0.light), c0 && c0.light);
   chk('hole cand fields', c0 && c0.hoursAfter >= c0.hoursBefore && Array.isArray(c0.prefHit), JSON.stringify(c0 && { h: c0.hoursBefore, a: c0.hoursAfter }));
   const m = C.opsMetrics(st);
-  chk('ops remain', m.remainHours > 0 && m.capacityTotal === st.pilots.length * m.hardMaxHours);
+  const capSum = st.pilots.reduce((s, x) => s + C.pilotHardCap(x, st), 0);
+  chk('ops remain', m.remainHours > 0 && m.capacityTotal === capSum, 'cap=' + m.capacityTotal + ' sum=' + capSum);
   chk('ops util', m.aircraftUtilPct > 0 && m.aircraftUtilPct < 100, m.aircraftUtilPct);
   chk('ops pilotsPerAc', m.pilotsPerAircraft > 1, m.pilotsPerAircraft);
   chk('ops formulas', m.formulas && m.formulas.util);
@@ -256,4 +257,46 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('no aug default', C.defaultSettings().fdpAugmented === false);
   const mig = C.migrateSettings({ hardMaxHours: 90, fdpAugmented: true });
   chk('migrate 90→100 and kill aug', mig.hardMaxHours === 100 && mig.fdpAugmented === false);
+}
+
+// ---- 体检合格证特殊运行限制（匿名演示样本）----
+{ const chk = (n, ok, info) => { console.log('MED ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
+  const dh = C.defaultHealth();
+  chk('defaultHealth fields', dh.maxMonthH === null && dh.noSoleCaptain === false && dh.noNight === false);
+  const seed = C.medRestrictionSeed();
+  chk('seed 26', seed.length === 26);
+  chk('anonymized names', seed.every(p => /^限-\d{2}$/.test(p.name) && /^MED\d{2}$/.test(p.id)));
+  const c = { m60: 0, sole: 0, both: 0, night: 0 };
+  seed.forEach(p => {
+    const h = p.health;
+    if (h.maxMonthH === 60 && h.noSoleCaptain && h.noNight) c.night++;
+    else if (h.maxMonthH === 60 && h.noSoleCaptain) c.both++;
+    else if (h.maxMonthH === 60) c.m60++;
+    else if (h.noSoleCaptain) c.sole++;
+  });
+  chk('type counts', c.m60 === 6 && c.sole === 14 && c.both === 5 && c.night === 1, JSON.stringify(c));
+  const st = C.generateSample();
+  chk('sample merges MED', st.pilots.filter(p => p.id.startsWith('MED')).length === 26);
+  const sole = st.pilots.find(p => p.id === 'MED06');
+  const pr = st.pairings[0];
+  const idx = C.buildIndex(st);
+  const [, rsC] = C.personCheck(sole, pr, st, idx, { ignorePrefs: true, skipFtl: true, slot: 'C' });
+  const [, rsT] = C.personCheck(sole, pr, st, idx, { ignorePrefs: true, skipFtl: true, slot: 'T' });
+  chk('noSole blocks C', rsC.some(x => x.includes('不能作为唯一机长')));
+  chk('noSole allows T seat check', !rsT.some(x => x.includes('不能作为唯一机长')));
+  chk('pilotHardCap 60', C.pilotHardCap(st.pilots.find(p => p.id === 'MED01'), st) === 60);
+  chk('pilotHardCap default', C.pilotHardCap(st.pilots.find(p => !p.id.startsWith('MED') && !(p.health && p.health.maxMonthH)), st) === 100);
+  // validate hard when sole on C
+  pr.crew = { C: sole.id, F: null, T: null };
+  const v = C.validate(st).filter(x => x.pilot === sole.id && x.type === '健康限制');
+  chk('validate hard noSole', v.some(x => x.level === 'hard' && x.msg.includes('不能作为唯一机长')), v.map(x => x.level + x.msg).join('|'));
+  // personal month hard via personCheck
+  const m01 = st.pilots.find(p => p.id === 'MED01');
+  idx.hours[m01.id] = 58;
+  const fat = JSON.parse(JSON.stringify(st.pairings[1]));
+  fat.legs.forEach(l => { l.arr = l.dep + 180; });
+  const [, rsH] = C.personCheck(m01, fat, st, idx, { ignorePrefs: true, skipFtl: true, slot: 'F' });
+  chk('personal maxMonthH', rsH.some(x => x.includes('个人月飞行上限60h')), rsH.join('|'));
+  const flags = C.healthFlags(st.pilots.find(p => p.id === 'MED19').health);
+  chk('MED19 badges', flags.includes('月≤60h') && flags.includes('非唯一机长') && flags.includes('限制夜间'), flags.join(','));
 }
