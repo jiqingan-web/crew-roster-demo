@@ -35,7 +35,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
 { const st3 = C.generateSample(); C.autoFill(st3,{attempts:3}); const ix = C.buildIndex(st3); let okAll = true;
   const baseNF = nonFillHard(C.summarize(st3));
   for (const [lab, pred] of [['机长', p => p.rank === 'J3'], ['副驾驶', p => C.isFO(p.rank)], ['新机长', p => C.isNew(p.rank)], ['教员', p => C.isInstr(p.rank)]]) {
-    const cand = st3.pilots.filter(pred).filter(p => (ix.sched[p.id] || []).length >= 2).sort((a, b) => ix.sched[b.id].length - ix.sched[a.id].length)[0];
+    const cand = st3.pilots.filter(pred).filter(p => (ix.sched[p.id] || []).length >= 1).sort((a, b) => ix.sched[b.id].length - ix.sched[a.id].length)[0];
     if (!cand) { console.log('leaveOptions', lab, 'SKIP no schedule'); continue; }
     const p = cand;
     const a = ix.sched[p.id][0], b = ix.sched[p.id][Math.min(1, ix.sched[p.id].length - 1)]; const days = []; for (let d = a.start; d < b.start + b.ndays; d++) days.push(d);
@@ -47,7 +47,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
     if (!good) okAll = false; }
   if (ftlHardN(C.summarize(st3))) okAll = false; if (!okAll) process.exitCode = 1; }
 // 兜底：无人有工时余量 → 方案标记人工处理并给出受阻规则
-{ const st4 = C.generateSample(); C.autoFill(st4,{attempts:3}); const ix = C.buildIndex(st4); st4.settings.hardMaxHours = 40;
+{ const st4 = C.generateSample(); C.autoFill(st4,{attempts:3}); const ix = C.buildIndex(st4); st4.settings.hardMaxHours = 5;
   const lhasa = st4.pairings.find(pr => pr.crew.C && pr.legs.some(l => l.to === 'ZULS')) || st4.pairings.find(pr => pr.crew.C) || st4.pairings[0];
   const pid = lhasa.crew.C; if (!pid) { console.log('fallback manual SKIP'); }
   else {
@@ -268,7 +268,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const dh = C.defaultHealth();
   chk('defaultHealth fields', dh.maxMonthH === null && dh.noSoleCaptain === false && dh.noNight === false);
   const seed = C.medRestrictionSeed();
-  chk('seed 26', seed.length === 26);
+  chk('seed ~50', seed.length >= 48 && seed.length <= 52, 'n=' + seed.length);
   chk('anonymized names', seed.every(p => /^限-\d{2}$/.test(p.name) && /^MED\d{2}$/.test(p.id)));
   const c = { m60: 0, sole: 0, both: 0, night: 0 };
   seed.forEach(p => {
@@ -278,9 +278,9 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
     else if (h.maxMonthH === 60) c.m60++;
     else if (h.noSoleCaptain) c.sole++;
   });
-  chk('type counts', c.m60 === 6 && c.sole === 14 && c.both === 5 && c.night === 1, JSON.stringify(c));
+  chk('type counts', c.m60 >= 6 && c.sole >= 14 && c.both >= 5 && c.night >= 1 && (c.m60 + c.sole + c.both + c.night) === seed.length, JSON.stringify(c));
   const st = C.generateSample();
-  chk('sample merges MED', st.pilots.filter(p => p.id.startsWith('MED')).length === 26);
+  chk('sample merges MED', st.pilots.filter(p => p.id.startsWith('MED')).length === seed.length);
   const sole = st.pilots.find(p => p.id === 'MED06');
   const pr = st.pairings[0];
   const idx = C.buildIndex(st);

@@ -1053,7 +1053,7 @@
       </div>
       <div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div></div>
       <div class="panel scroll" style="max-height:calc(100vh - 220px);padding:0"><table class="rost"><thead><tr>
-        <th>员工号</th><th>姓名</th><th>级别</th><th>大队</th><th>健康限制</th>
+        <th>员工号</th><th>姓名</th><th>级别</th><th>中队</th><th>健康限制</th>
         ${authList.map(c => `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`).join('')}
         <th>授权数</th><th></th></tr></thead><tbody>`;
     for (const p of ps) {
@@ -1091,7 +1091,7 @@
     });
     document.querySelectorAll('.rorow').forEach(r => r.ondblclick = () => openRosterEdit(r.dataset.pid));
     $('#roExp').onclick = () => {
-      const rows = [['员工号', '姓名', '级别', '组别', '大队', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
+      const rows = [['员工号', '姓名', '级别', '组别', '中队', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
       st.pilots.forEach(p => {
         const h = p.health || C.defaultHealth();
         rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.maxMonthH != null ? h.maxMonthH : '', h.noSoleCaptain ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
@@ -1106,10 +1106,10 @@
     const p = st.pilots.find(x => x.id === pid); if (!p) return;
     const authList = C.authAirports(st);
     const h = Object.assign(C.defaultHealth(), p.health || {});
-    const squads = ['一大队', '二大队', '三大队', '教学中队'];
+    const squads = C.ALL_SQUADS || ['空客一中队','空客二中队','空客三中队','空客四中队','空客五中队','空客六中队','空客七中队','空客八中队','C909一中队','C909二中队','C909三中队'];
     let box = `<div class="flex"><h3 style="margin:0">人员档案 · ${esc(p.name)} ${pill(p.rank)} <span class="mut">${p.id}</span></h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
       <div class="grid g2" style="margin-top:12px">
-        <div><label class="lab">大队</label><select id="edSquad">${squads.map(x => `<option ${x === p.squad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+        <div><label class="lab">中队</label><select id="edSquad">${squads.map(x => `<option ${x === p.squad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
         <div><label class="lab">体检到期日</label><input type="date" id="edMed" value="${esc(h.medExamExpiry || '')}"></div>
       </div>
       <h3 style="margin-top:14px">健康 / 身体限制</h3>

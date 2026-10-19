@@ -1,11 +1,17 @@
 /* 机组排班助手 - 核心模块（数据生成 / 规则 / 求解器 / 校验 / 指标）
  * 浏览器中挂载到 window.RosterCore，在 Node 中可 require()。 */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory();
-  else root.RosterCore = factory();
-})(typeof self !== 'undefined' ? self : this, function () {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'));
+  else root.RosterCore = factory(root.RosterSampleData || null);
+})(typeof self !== 'undefined' ? self : this, function (SampleData) {
   'use strict';
   const YEAR = 2026, MONTH = 11, DAYS = 30, DAY = 1440;
+  const SD = SampleData || {};
+  const SAMPLE_WEEK_PATHS = SD.SAMPLE_WEEK_PATHS || [];
+  const SAMPLE_META = SD.SAMPLE_META || {};
+  const SQUADS_AIRBUS = ['空客一中队', '空客二中队', '空客三中队', '空客四中队', '空客五中队', '空客六中队', '空客七中队', '空客八中队'];
+  const SQUADS_C909 = ['C909一中队', 'C909二中队', 'C909三中队'];
+  const ALL_SQUADS = SQUADS_AIRBUS.concat(SQUADS_C909);
 
   // ---------- 级别 ----------
   const RANK_VAL = { F1: 1, F2: 2, F3: 3, F4: 4, F5: 5, F6: 6, F7: 7, F8: 8,
@@ -40,8 +46,11 @@
 
   // ---------- 机场 ----------
   // cat: LHASA / HIGH / PLATEAU / ZBCF / J1 / US / NONE ; auth=需授权
-  const AIRPORTS = {
-    ZUUU: ['成都', 30.58, 103.95], ZBAA: ['北京', 40.08, 116.58], ZSPD: ['上海浦东', 31.14, 121.8],
+  // 基础表 + sample-data 扩展（天府/疆内/东北等）；勿把真实 xlsx 提交仓库
+  const AIRPORTS_BASE = {
+    ZUUU: ['成都双流', 30.58, 103.95], ZUTF: ['成都天府', 30.31, 104.44],
+    ZBAA: ['北京', 40.08, 116.58], ZBAD: ['北京大兴', 39.51, 116.41],
+    ZSPD: ['上海浦东', 31.14, 121.8], ZSSS: ['上海虹桥', 31.2, 121.34],
     ZGGG: ['广州', 23.39, 113.3], ZGSZ: ['深圳', 22.64, 113.81], ZGHA: ['长沙', 28.19, 113.22],
     ZJSY: ['三亚', 18.3, 109.41], ZJHK: ['海口', 19.93, 110.46], ZSHC: ['杭州', 30.23, 120.43],
     ZSNJ: ['南京', 31.74, 118.86], ZHHH: ['武汉', 30.78, 114.21], ZLXY: ['西安', 34.45, 108.75],
@@ -50,13 +59,14 @@
     ZBYN: ['太原', 37.75, 112.63], ZHCC: ['郑州', 34.52, 113.84], ZSJN: ['济南', 36.86, 117.22],
     ZGOW: ['揭阳', 23.55, 116.5], ZSFZ: ['福州', 25.93, 119.66], ZLLL: ['兰州', 36.52, 103.62],
     ZBHH: ['呼和浩特', 40.85, 111.82], ZUGY: ['贵阳', 26.54, 106.8], ZYYJ: ['延吉', 42.88, 129.45],
-    ZSSS: ['上海虹桥', 31.2, 121.34], ZYTX: ['沈阳', 41.64, 123.48], ZSWX: ['无锡', 31.49, 120.43],
+    ZYTX: ['沈阳', 41.64, 123.48], ZSWX: ['无锡', 31.49, 120.43],
     ZULS: ['拉萨', 29.3, 90.91, 'LHASA'], ZPLJ: ['丽江', 26.68, 100.25, 'HIGH'], ZPJH: ['西双版纳', 21.97, 100.76, 'HIGH'],
     ZUXC: ['西昌', 27.99, 102.18, 'HIGH'], ZLXN: ['西宁', 36.53, 102.04, 'HIGH'], ZYTL: ['大连', 38.97, 121.54, 'HIGH'],
     ZPDQ: ['迪庆', 27.79, 99.68, 'PLATEAU'], ZUDC: ['稻城亚丁', 29.32, 100.05, 'PLATEAU'], ZUJZ: ['九寨', 32.85, 103.68, 'PLATEAU'],
     ZBCF: ['赤峰', 42.24, 118.91, 'ZBCF'], ZWKM: ['克拉玛依', 45.47, 84.95, 'J1'], ZUMT: ['茅台', 27.81, 106.33, 'US'],
     ZBLL: ['吕梁', 37.68, 111.14, 'US'], ZBXZ: ['忻州', 38.6, 112.97, 'US'],
   };
+  const AIRPORTS = Object.assign({}, AIRPORTS_BASE, SD.SAMPLE_AIRPORTS || {});
   const CAT_DESC = {
     LHASA: '拉萨：两名飞行员均需 J3 及以上', HIGH: '高原/复杂机场：J2/J3+F6以上，或教员+F5以上',
     PLATEAU: '一般高原机场：J2/J3+F5以上，或教员+F4以上', ZBCF: '赤峰：J2/J3/教员 + F4以上',
@@ -172,11 +182,13 @@
   function isPlateauAirport(c, st) { return ['LHASA', 'HIGH', 'PLATEAU'].includes(apCat(c, st)); }
   function migratePilots(st) {
     if (!st || !st.pilots) return st;
-    const squads = ['一大队', '二大队', '三大队', '教学中队'];
+    const legacy = { '一大队': '空客一中队', '二大队': '空客二中队', '三大队': '空客三中队', '教学中队': '空客一中队' };
     st.pilots.forEach((p, i) => {
       if (!p.health) p.health = defaultHealth();
       else p.health = Object.assign(defaultHealth(), p.health);
-      if (!p.squad) p.squad = isInstr(p.rank) ? '教学中队' : squads[i % 3];
+      if (p.squad && legacy[p.squad]) p.squad = legacy[p.squad];
+      if (!p.squad) p.squad = ALL_SQUADS[i % ALL_SQUADS.length];
+      if (!p.fleet) p.fleet = SQUADS_C909.includes(p.squad) ? 'C909' : 'A320';
       if (!Array.isArray(p.auth)) p.auth = [];
     });
     return st;
@@ -200,8 +212,8 @@
   }
 
 
-  // 体检合格证特殊运行限制 · 匿名演示样本（26 人；不含真实姓名）
-  // 类型计数（脱敏）：月≤60h 仅×6；非唯一机长仅×14；月≤60h+非唯一机长×5；月≤60h+非唯一机长+禁夜×1
+  // 体检合格证特殊运行限制 · 匿名演示样本（约 50 人；不含真实姓名）
+  // 类型：月≤60h / 非唯一机长 / 禁夜 及其组合（与源表类型一致，姓名已抹除）
   function medRestrictionNote(h) {
     const parts = [];
     if (h.maxMonthH) parts.push('每月飞行时间不超过' + h.maxMonthH + '小时');
@@ -210,7 +222,7 @@
     return parts.join('，');
   }
   function medRestrictionSeed() {
-    // 与源表行序对应的限制字段（姓名已抹除）
+    // 扩至约 50：保持原类型比例并追加同类组合
     const specs = [
       { maxMonthH: 60 }, { maxMonthH: 60 },
       { maxMonthH: 60, noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true },
@@ -229,60 +241,115 @@
       { maxMonthH: 60, noSoleCaptain: true },
       { noSoleCaptain: true },
       { maxMonthH: 60 },
-      { noSoleCaptain: true }
+      { noSoleCaptain: true },
+      // ---- expand to ~50 ----
+      { maxMonthH: 60 }, { maxMonthH: 60 }, { maxMonthH: 60 },
+      { noSoleCaptain: true }, { noSoleCaptain: true }, { noSoleCaptain: true }, { noSoleCaptain: true },
+      { noSoleCaptain: true }, { noSoleCaptain: true }, { noSoleCaptain: true },
+      { maxMonthH: 60, noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true },
+      { maxMonthH: 60, noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true },
+      { maxMonthH: 60 }, { maxMonthH: 60 },
+      { noSoleCaptain: true }, { noSoleCaptain: true },
+      { maxMonthH: 60, noSoleCaptain: true, noNight: true },
+      { noSoleCaptain: true }, { maxMonthH: 60 },
+      { noSoleCaptain: true }, { maxMonthH: 60, noSoleCaptain: true },
+      { maxMonthH: 60 }
     ];
     const captRanks = ['J3', 'J2', 'J1', 'J3', 'US', 'J2', 'J3', '机长A', 'J1', 'J2', 'J3', 'US', 'J2', 'J3', 'J1', 'J2', 'J3', '机长B', 'J2'];
-    const foRanks = ['F7', 'F6', 'F5', 'F8', 'F4', 'F6', 'F7'];
+    const foRanks = ['F7', 'F6', 'F5', 'F8', 'F4', 'F6', 'F7', 'F5', 'F4', 'F3'];
     let ci = 0, fi = 0;
+    const specialAll = Object.keys(AIRPORTS).filter(c => AUTH_CATS.includes(AIRPORTS[c][3]));
     return specs.map((spec, i) => {
       const n = i + 1;
       const needCapt = !!spec.noSoleCaptain;
       const rank = needCapt ? captRanks[ci++ % captRanks.length] : foRanks[fi++ % foRanks.length];
       const health = Object.assign(defaultHealth(), spec, { note: medRestrictionNote(spec) });
-      // 机长类给常见授权；副驾驶给高原类部分授权
       let auth = [];
-      const specialAll = Object.keys(AIRPORTS).filter(c => AUTH_CATS.includes(AIRPORTS[c][3]));
-      if (isCaptClass(rank)) auth = specialAll.filter(c => AIRPORTS[c][3] !== 'LHASA');
-      else auth = specialAll.filter(c => ['PLATEAU', 'ZBCF'].includes(AIRPORTS[c][3]));
+      if (isInstr(rank) || rank === 'J3') auth = specialAll.slice();
+      else if (['J2', 'J1', 'SPIC', 'US', 'J0', '机长A', '机长B'].includes(rank)) auth = [];
+      else if (RANK_VAL[rank] >= 6) auth = specialAll.slice();
+      else if (RANK_VAL[rank] >= 4) auth = specialAll.filter(c => c === 'ZULS' || AIRPORTS[c][3] === 'PLATEAU' || AIRPORTS[c][3] === 'ZBCF');
+      const squad = ALL_SQUADS[i % ALL_SQUADS.length];
       return {
         id: 'MED' + String(n).padStart(2, '0'),
         name: '限-' + String(n).padStart(2, '0'),
         rank, auth, prefs: [], leave: [],
-        squad: ['一大队', '二大队', '三大队'][i % 3],
+        squad,
+        fleet: SQUADS_C909.includes(squad) ? 'C909' : 'A320',
         health
       };
     });
+  }
+
+  // 按级别分配特殊机场授权（用户 2026-10-20）
+  function assignAuthForRank(rk, r, specialAll, byCat) {
+    if (isInstr(rk) || rk === 'J3') return specialAll.slice();
+    if (['J2', 'J1', 'SPIC', 'US', 'J0', '机长A', '机长B'].includes(rk)) return [];
+    const v = RANK_VAL[rk];
+    if (v >= 6) { // F7/F6：一般全特殊；少数留洞
+      if (r() < 0.12) {
+        const miss = specialAll.filter(() => r() < 0.35);
+        return specialAll.filter(c => !miss.includes(c));
+      }
+      return specialAll.slice();
+    }
+    if (v >= 4) { // F5/F4：必有拉萨；多数再带高原/赤峰；少数缺个别
+      let auth = ['ZULS'];
+      byCat('PLATEAU').forEach(c => { if (r() < 0.75) auth.push(c); });
+      byCat('ZBCF').forEach(c => { if (r() < 0.7) auth.push(c); });
+      byCat('HIGH').forEach(c => { if (r() < 0.35) auth.push(c); });
+      if (r() < 0.1) auth = auth.filter(c => c === 'ZULS' || r() < 0.5); // 少数缺洞
+      return [...new Set(auth)];
+    }
+    // F3 及以下：基本无授权，极少数高原洞填
+    if (v >= 3 && r() < 0.15) return byCat('PLATEAU').filter(() => r() < 0.5);
+    return [];
+  }
+
+  // 每中队级别编制（约 100 人；比例参考一中队名单）
+  function squadronRankMix() {
+    return [
+      ['TC', 1], ['TB', 2], ['TL', 3], ['J3', 16],
+      ['SPIC', 1], ['US', 2], ['J0', 1], ['机长A', 2], ['机长B', 2],
+      ['F8', 2], ['F7', 14], ['F6', 12], ['F5', 12], ['F4', 9], ['F3', 15], ['F2', 2], ['F1', 1]
+    ]; // ≈97
   }
 
   function generateSample(seed, opt) {
     opt = opt || {};
     const r = rng(seed || 20261101);
     const pick = a => a[Math.floor(r() * a.length)];
-    // 人员池略增（尤其副驾驶与 J3/教员）便于洞填与冗余演示；含匿名体检限制人员后仍有充足无限制备员
-    const comp = [['TC', 2], ['TB', 3], ['TL', 7], ['J3', 28], ['SPIC', 1], ['US', 3], ['J0', 1], ['机长A', 2], ['机长B', 2],
-      ['F8', 3], ['F7', 16], ['F6', 14], ['F5', 14], ['F4', 10], ['F3', 18], ['F2', 3], ['F1', 1]];
-    const used = new Set(); const pilots = []; let no = 10230;
-    const specialAll = Object.keys(AIRPORTS).filter(c => AUTH_CATS.includes(AIRPORTS[c][3]));
+    const specialAll = Object.keys(AIRPORTS).filter(c => AUTH_CATS.includes((AIRPORTS[c] && AIRPORTS[c][3]) || 'NONE'));
     const byCat = c => specialAll.filter(x => AIRPORTS[x][3] === c);
-    comp.forEach(([rk, n]) => { for (let i = 0; i < n; i++) {
-      let nm; do { nm = pick(SUR) + pick(GIV); } while (used.has(nm)); used.add(nm);
-      no += 1 + Math.floor(r() * 37);
-      let auth = [];
-      if (isInstr(rk)) auth = specialAll.slice();
-      else if (rk === 'J3') auth = r() < 0.75 ? specialAll.slice() : specialAll.filter(x => AIRPORTS[x][3] !== 'LHASA' && r() < 0.7);
-      else if (isNew(rk)) auth = byCat('PLATEAU').filter(() => r() < 0.4);
-      else { const v = RANK_VAL[rk];
-        if (v >= 6) auth = specialAll.filter(x => AIRPORTS[x][3] !== 'LHASA' && r() < 0.85);
-        else if (v >= 4) auth = specialAll.filter(x => ['PLATEAU', 'ZBCF'].includes(AIRPORTS[x][3]) && r() < 0.6); }
-      // 大队按序号固定分配，避免额外消耗随机数（保持与历史示例种子一致）
-      const squad = isInstr(rk) ? '教学中队' : ['一大队', '二大队', '三大队'][pilots.length % 3];
-      pilots.push({ id: 'E' + no, name: nm, rank: rk, auth, prefs: [], leave: [], squad, health: defaultHealth() });
-    } });
-    // 请假（少量）+ 意向休息日，遵守同日上限
+    const used = new Set(); const pilots = []; let no = 10230;
+    const mix = squadronRankMix();
+
+    ALL_SQUADS.forEach((squad, si) => {
+      const fleet = SQUADS_C909.includes(squad) ? 'C909' : 'A320';
+      mix.forEach(([rk, n]) => {
+        for (let i = 0; i < n; i++) {
+          let nm; do { nm = pick(SUR) + pick(GIV); } while (used.has(nm)); used.add(nm);
+          no += 1 + Math.floor(r() * 17);
+          const auth = assignAuthForRank(rk, r, specialAll, byCat);
+          // 每中队：确保 F4/F5 拉萨授权充足（再补一次）
+          if ((rk === 'F4' || rk === 'F5') && !auth.includes('ZULS')) auth.push('ZULS');
+          pilots.push({ id: 'E' + no, name: nm, rank: rk, auth, prefs: [], leave: [], squad, fleet, health: defaultHealth() });
+        }
+      });
+      // 每中队留 2–4 名副驾缺部分授权（洞填演示）
+      const fos = pilots.filter(p => p.squad === squad && isFO(p.rank) && RANK_VAL[p.rank] >= 4);
+      const holeN = 2 + Math.floor(r() * 3);
+      for (let h = 0; h < holeN && fos.length; h++) {
+        const p = fos[Math.floor(r() * fos.length)];
+        if (p.auth.length > 1) p.auth = p.auth.filter((c, idx) => idx === 0 || r() < 0.4);
+      }
+    });
+
+    // 请假（少量）+ 意向休息日
     const S = defaultSettings();
     const offCount = { C: Array(DAYS + 1).fill(0), F: Array(DAYS + 1).fill(0) };
     const lim = p => isFO(p.rank) ? S.maxOffFO : S.maxOffCapt; const key = p => isFO(p.rank) ? 'F' : 'C';
-    const leaveP = pilots.filter(() => r() < 0.07);
+    const leaveP = pilots.filter(() => r() < 0.04);
     leaveP.forEach(p => { const s = 1 + Math.floor(r() * 25), n = 3 + Math.floor(r() * 3);
       for (let d = s; d < s + n && d <= DAYS; d++) if (offCount[key(p)][d] < lim(p)) { p.leave.push(d); offCount[key(p)][d]++; } });
     pilots.forEach(p => { let tries = 0; while (p.prefs.length < 2 && tries++ < 50) {
@@ -290,50 +357,11 @@
       if (p.prefs.includes(d) || p.leave.includes(d) || offCount[key(p)][d] >= lim(p)) continue;
       p.prefs.push(d); offCount[key(p)][d]++; } p.prefs.sort((a, b) => a - b); });
 
-    // 任务（pairing）
-    const normal = Object.keys(AIRPORTS).filter(c => c !== 'ZUUU' && !AIRPORTS[c][3]);
-    const special = Object.keys(AIRPORTS).filter(c => AIRPORTS[c][3] && AIRPORTS[c][3] !== 'LHASA');
-    const fltNo = {}; let fbase = 2201;
-    const fn = (a, b) => { const k = a + b; if (!fltNo[k]) { const kr = b + a;
-      if (fltNo[kr]) fltNo[k] = 'EU' + (parseInt(fltNo[kr].slice(2)) + 1); else { fltNo[k] = 'EU' + fbase; fbase += 2 + 2 * Math.floor(r() * 30); if (fbase > 9900) fbase = 1101; } } return fltNo[k]; };
-    const pairings = []; let pid = 1; let total = 0; const target = opt.targetHours || 1880;
-    const nearC = {};
-    const near = (c, n) => (nearC[c + n] = nearC[c + n] || Object.keys(AIRPORTS).filter(x => x !== c && x !== 'ZUUU' && AIRPORTS[x][3] !== 'LHASA').sort((x, y) => blockMin(c, x) - blockMin(c, y)).slice(0, n));
-    const pickNear = (c, n, excl) => { const pool = near(c, n).filter(x => !excl.includes(x)); const sp = pool.filter(x => AIRPORTS[x][3]), nm = pool.filter(x => !AIRPORTS[x][3]);
-      return (r() < 0.2 && sp.length) ? pick(sp) : pick(nm.length ? nm : pool); };
-    while (total < target) {
-      const u = r(); const nd = u < 0.07 ? 1 : u < 0.20 ? 2 : u < 0.65 ? 3 : 4; // 略减4日占比，兼顾48h休息
-      const start = 1 + Math.floor(r() * (DAYS - nd + 1));
-      const legs = []; const ac = r() < 0.08 ? 'A321' : 'A320';
-      const lhasa = r() < 0.04;
-      const stations = ['ZUUU']; for (let i = 1; i < nd; i++) stations.push(pickNear(stations[i - 1], i === 1 ? 26 : 12, [stations[i - 1]])); stations.push('ZUUU');
-      const redeye = nd === 1 && !lhasa && r() < 0.3;
-      for (let k = 0; k < nd; k++) {
-        const a = stations[k], b = stations[k + 1];
-        let seq;
-        if (lhasa && k === 0) seq = a === b ? ['ZUUU', 'ZULS', 'ZUUU'] : ['ZUUU', 'ZULS', 'ZUUU', b];
-        else {
-          const v = r(); const nl = redeye ? 2 : v < 0.5 ? 2 : v < 0.82 ? 3 : 4;
-          for (let tries = 0; tries < 6; tries++) {
-            seq = [a]; let cur = a;
-            for (let i = 0; i < nl - 1; i++) { const x = (i % 2 === 1 && cur !== a && r() < 0.6 && a !== b) ? a : pickNear(cur, 10, [cur, b]); seq.push(x); cur = x; }
-            if (cur !== b) seq.push(b); else seq.push(pickNear(cur, 8, [cur]), b);
-            seq = seq.filter((s2, i) => i === 0 || s2 !== seq[i - 1]);
-            let bt = 0; for (let i = 0; i < seq.length - 1; i++) bt += blockMin(seq[i], seq[i + 1]);
-            if (bt <= 450) break; if (tries === 5) seq = a === b ? [a, pickNear(a, 6, [a]), b] : [a, b];
-          }
-        }
-        let t = (start - 1 + k) * DAY + (redeye ? 1230 + 5 * Math.floor(r() * 18) : 400 + 5 * Math.floor(r() * 66));
-        for (let i = 0; i < seq.length - 1; i++) { const bm = blockMin(seq[i], seq[i + 1]);
-          legs.push({ d: k + 1, flt: fn(seq[i], seq[i + 1]), from: seq[i], to: seq[i + 1], dep: t, arr: t + bm, ac }); t += bm + (pid % 7 === 3 && seq.length >= 5 ? 95 : 50); }
-      }
-      const p = { id: 'PR' + String(pid++).padStart(3, '0'), start, ndays: nd, ac, legs, crew: { C: null, F: null, T: null } };
-      total += pairingHours(p); pairings.push(p);
-    }
-    pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
-    pairings.forEach((p, i) => p.id = 'PR' + String(i + 1).padStart(3, '0'));
+    // 任务：由真实一周路径模板铺到整月（半机队规模，见 SAMPLE_META）
+    const pairings = buildPairingsFromWeek(r, opt);
     assignAircraftRegs(pairings);
-    // 固定下标写入演示用健康限制（不消耗 RNG）
+
+    // 少量演示用健康限制（不消耗 RNG 语义；固定下标）
     const H = [
       { i: 4, h: { noPlateau: true, note: '高原机场暂不适任（演示）' } },
       { i: 9, h: { noNight: true, bpNote: '血压偏高随访中', note: '限制夜航（演示）' } },
@@ -342,16 +370,123 @@
       { i: 24, h: { noPlateau: true, noNight: true, note: '综合健康限制（演示）' } }
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
-    // 合并匿名体检限制演示人员（限-01…限-26），不写入真实姓名
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, settings: S, pilots, pairings, fills: [], demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [] };
+    return { version: 1, sample: true, settings: S, pilots, pairings, fills: [],
+      demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
+      sampleMeta: SAMPLE_META };
   }
 
+  function weekdayJS(y, m, d) { // Mon=0..Sun=6 matching sample-data
+    const dt = new Date(y, m - 1, d);
+    return (dt.getDay() + 6) % 7;
+  }
+  function buildPairingsFromWeek(r, opt) {
+    const paths = SAMPLE_WEEK_PATHS;
+    const meta = SAMPLE_META || {};
+    const abRegs = new Set(meta.sampleRegsAirbus || []);
+    const c9Regs = new Set(meta.sampleRegsC909 || []);
+    const byReg = {};
+    paths.forEach(p => {
+      if (!abRegs.has(p.r) && !c9Regs.has(p.r)) return;
+      (byReg[p.r] = byReg[p.r] || {})[p.w] = p;
+    });
+    const BASES = { ZUUU: 1, ZUTF: 1 };
+    // 将真实一日机径切成合法机组值勤段：≤4 段、飞行≤7.5h、FDP粗算≤12.5h
+    function splitDuty(icao, flts, std, ac, reg, dayAbs) {
+      const segs = [];
+      let i = 0;
+      while (i < icao.length - 1) {
+        let tmin = (dayAbs - 1) * DAY + (segs.length ? Math.max(std, 6 * 60) : std);
+        const legs = [];
+        let flight = 0;
+        while (i < icao.length - 1 && legs.length < 4) {
+          const a = icao[i], b = icao[i + 1];
+          if (!AIRPORTS[a] || !AIRPORTS[b]) { i++; break; }
+          const bm = blockMin(a, b);
+          // 预估 FDP：报到95 + 飞行 + 过站50*(n-1) + 退场30
+          const nextFlight = flight + bm;
+          const nextN = legs.length + 1;
+          const estFdp = 95 + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
+          if (legs.length && (nextFlight > 450 || estFdp > 12.5 * 60)) break;
+          const flt = flts[i] || flts[flts.length - 1] || 'EU0000';
+          legs.push({ d: 0, flt, from: a, to: b, dep: tmin, arr: tmin + bm, ac, reg });
+          tmin += bm + 50; flight = nextFlight; i++;
+        }
+        if (!legs.length) { i++; continue; }
+        segs.push(legs);
+        // 同日历日第二段：从下一起飞时刻继续（演示用，避免超长机径拖垮规则）
+        if (i < icao.length - 1 && segs.length >= 2) break; // 每日最多切 2 个机组任务
+      }
+      return segs;
+    }
+    // reg -> [{day, legs}...] 按日历日展开的值勤段（一段= pairing 的一日）
+    const duties = {}; // reg -> [{day, legs}]
+    Object.keys(byReg).forEach(reg => {
+      duties[reg] = [];
+      for (let d = 1; d <= DAYS; d++) {
+        const wd = weekdayJS(YEAR, MONTH, d);
+        const t = byReg[reg][wd];
+        if (!t) continue;
+        const segs = splitDuty(t.i, t.f, t.s, t.a, reg, d);
+        segs.forEach(legs => duties[reg].push({ day: d, legs }));
+      }
+    });
+    const pairings = []; let pid = 1;
+    Object.keys(duties).forEach(reg => {
+      // 按日历日合并同日多段（取首段，避免同日两段并入超长值勤）
+      const byDay = {};
+      duties[reg].forEach(du => { if (!byDay[du.day]) byDay[du.day] = du; });
+      const days = Object.keys(byDay).map(Number).sort((a, b) => a - b);
+      let i = 0;
+      while (i < days.length) {
+        const targetLen = (i % 5 === 0) ? 4 : 3; // 交替 3/4 日节奏
+        const chunkDays = [days[i]];
+        while (chunkDays.length < targetLen) {
+          const want = chunkDays[chunkDays.length - 1] + 1;
+          if (byDay[want]) chunkDays.push(want);
+          else break;
+        }
+        // 若只有 1 日且后面还有，尽量拼到 2
+        if (chunkDays.length === 1 && byDay[days[i] + 1]) chunkDays.push(days[i] + 1);
+        const endBase = d => BASES[byDay[d].legs.slice(-1)[0].to];
+        if (chunkDays.length >= 3 && !endBase(chunkDays[chunkDays.length - 1])) {
+          // 优先落到基地：能延长则延长，否则裁到基地日
+          const nxt = chunkDays[chunkDays.length - 1] + 1;
+          if (byDay[nxt] && endBase(nxt) && chunkDays.length < 4) chunkDays.push(nxt);
+          else {
+            while (chunkDays.length > 2 && !endBase(chunkDays[chunkDays.length - 1])) chunkDays.pop();
+          }
+        }
+        const legs = [];
+        chunkDays.forEach((d, di) => {
+          byDay[d].legs.forEach(L => {
+            const x = Object.assign({}, L); x.d = di + 1; legs.push(x);
+          });
+        });
+        pairings.push({
+          id: 'PR' + String(pid).padStart(3, '0'),
+          start: chunkDays[0], ndays: chunkDays.length,
+          ac: legs[0].ac, legs, crew: { C: null, F: null, T: null }
+        });
+        pid++;
+        const last = chunkDays[chunkDays.length - 1];
+        while (i < days.length && days[i] <= last) i++;
+      }
+    });
+    const maxP = opt.maxPairings || 200;
+    pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep || a.id.localeCompare(b.id));
+    const out = pairings.slice(0, maxP);
+    out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
+    return out;
+  }
+
+
   // 机号（机尾号）示例机队；同机型池内按时间贪心分配，保证同机号航段不重叠
-  const FLEET = {
+  const FLEET = Object.assign({
     A320: ['B-32GV','B-32HC','B-30A1','B-30C8','B-30E2','B-32JF','B-32KH','B-30F6','B-32LM','B-30G9','B-32NP','B-30H3','B-32QR','B-30J5','B-32ST','B-30K7','B-32UV','B-30L1'],
-    A321: ['B-32WX','B-30M4','B-32YZ']
-  };
+    A321: ['B-32WX','B-30M4','B-32YZ'],
+    C909: ['B-3386','B-3387','B-602A','B-603M','B-603P','B-603Z','B-604C','B-604D']
+  }, SD.SAMPLE_FLEET || {});
   function assignAircraftRegs(pairings) {
     const busy = {}; // reg -> last arr minute
     Object.values(FLEET).flat().forEach(r => busy[r] = -1e9);
@@ -362,6 +497,12 @@
     items.sort((a, b) => a.l.dep - b.l.dep || a.pr.id.localeCompare(b.pr.id) || a.i - b.i);
     const lastReg = {}; // pr.id#d -> reg
     items.forEach(({ pr, l }) => {
+      if (l.reg) { // 保留真实机号模板
+        const pk0 = pr.id + '#' + l.d; lastReg[pk0] = l.reg;
+        if (busy[l.reg] == null) busy[l.reg] = -1e9;
+        busy[l.reg] = Math.max(busy[l.reg], l.arr);
+        return;
+      }
       const pool = FLEET[l.ac] || FLEET.A320;
       const pk = pr.id + '#' + l.d;
       const prefer = lastReg[pk];
@@ -447,7 +588,7 @@
       if (cat === 'NONE') continue;
       if (AUTH_CATS.includes(cat) && (!L.auth.includes(c) || !R.auth.includes(c))) return false;
       if (!catOK(cat, L.rank, R.rank)) return false; }
-    if (leg.ac === 'A321' && !isJ2plus(L.rank)) return false;
+    if ((leg.ac === 'A321' || leg.ac === 'A21N') && !isJ2plus(L.rank)) return false;
     return true;
   }
   function crewIssue(p, crewPilots, st) {
@@ -568,6 +709,12 @@
   // opt.slot：座位 C/F/T，用于「非唯一机长」禁 C 位
   function personCheck(p, pr, st, idx, opt) {
     opt = opt || {}; const rs = []; const S = st.settings;
+    // 机队资质：空客中队飞 A3xx，C909 中队飞 C909
+    if (p.fleet && pr.ac) {
+      const needC9 = pr.ac === 'C909';
+      const isC9 = p.fleet === 'C909';
+      if (needC9 !== isC9) rs.push(needC9 ? '非C909机队资质' : '非空客机队资质');
+    }
     const dt = daysTouched(pr, st);
     const lv = dt.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
     const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.join(',') + '日)');
@@ -1594,7 +1741,7 @@
   }
 
 
-    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS,
+    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
