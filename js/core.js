@@ -371,7 +371,7 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 3, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }

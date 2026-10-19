@@ -12,7 +12,30 @@
   const CW_MIN = 6, CW_MAX = 240, BASE_CW = 150;
   const ZSTEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 67, 80, 90, 100, 110, 125, 150, 160];
 
-  function load() { try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && s.pilots) { st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st); st.fills = st.fills || []; return; } } catch (e) {} reset(false); }
+  function load() {
+    try {
+      const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.pilots) {
+        // 在 migratePilots 改写中队名之前检测旧示例（一大队等）
+        const LEGACY = new Set(['一大队', '二大队', '三大队', '教学中队']);
+        const isSampleish = s.sample === true;
+        const stale = (s.pilots.length < 500)
+          || s.pilots.some(p => LEGACY.has(p.squad))
+          || !s.sampleSchema || s.sampleSchema < 3;
+        if (isSampleish && stale) {
+          reset(false);
+          toast('示例数据已升级为 11 中队约千人编制，已自动重置');
+          return;
+        }
+        st = s;
+        st.settings = Object.assign(C.defaultSettings(), st.settings);
+        C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st);
+        st.fills = st.fills || [];
+        return;
+      }
+    } catch (e) {}
+    reset(false);
+  }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
   function refresh() { sum = C.summarize(st); renderKpis(); updateIssueBadge(); render(); save(); }
@@ -1286,7 +1309,7 @@
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMore(); });
   $('#btnAuto').onclick = () => runAuto();
   $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; refresh(); } };
-  $('#btnReset').onclick = () => { if (confirm('重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
+  $('#btnReset').onclick = () => { if (confirm('重置为示例数据（约1100人 / 11中队）？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
   $('#btnIssues').onclick = e => { e.stopPropagation(); toggleIssuePanel(); };
   $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
   const hp = location.hash.slice(1).split('&'); if (hp[0]) tab = hp[0];
