@@ -181,7 +181,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const st0 = C.generateSample();
   chk('pairings scaled', st0.pairings.length >= 300, st0.pairings.length);
   chk('regs scaled', (() => { const r = new Set(); st0.pairings.forEach(p => p.legs.forEach(l => r.add(l.reg))); return r.size >= 40; })(), 'regs');
-  chk('schema4', st0.sampleSchema === 5, st0.sampleSchema);
+  chk('schema6', st0.sampleSchema === 6, st0.sampleSchema);
 }
 
 // ---- CCAR-121-R8 回测回归（P章 表A/表B/累积限制；出处见 回测/121回测报告.md）----

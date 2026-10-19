@@ -21,10 +21,10 @@
         const isSampleish = s.sample === true;
         const stale = (s.pilots.length < 500)
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 5;
+          || !s.sampleSchema || s.sampleSchema < 6;
         if (isSampleish && stale) {
           reset(false);
-          toast('示例数据已升级（机队扩量 + 运营看板），已自动重置');
+          toast('示例数据已升级（30天完整日机径扩量），已自动重置');
           return;
         }
         st = s;

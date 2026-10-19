@@ -357,7 +357,7 @@
       if (p.prefs.includes(d) || p.leave.includes(d) || offCount[key(p)][d] >= lim(p)) continue;
       p.prefs.push(d); offCount[key(p)][d]++; } p.prefs.sort((a, b) => a - b); });
 
-    // 任务：由真实一周路径模板铺到整月（SAMPLE_META 机号；缺路径的机号克隆同机型模板）
+    // 任务：由真实完整日机径模板铺到整月（SAMPLE_META 机号；缺路径的机号克隆同机型模板）
     const pairings = buildPairingsFromWeek(r, opt);
     assignAircraftRegs(pairings);
 
@@ -371,7 +371,7 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, sampleSchema: 5, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 6, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -384,7 +384,7 @@
     const meta = SAMPLE_META || {};
     const abRegs = new Set(meta.sampleRegsAirbus || []);
     const c9Regs = new Set(meta.sampleRegsC909 || []);
-    // 周模板仅覆盖部分机号；对 SAMPLE_META 中额外机号按同机型捐赠模板克隆，以放大月任务量
+    // 日径模板仅覆盖部分机号；对 SAMPLE_META 中额外机号按同机型捐赠模板克隆，以放大月任务量
     const paths = [];
     const donorsAb = [], donorsC9 = [];
     const byDonor = {};
@@ -402,15 +402,21 @@
     function hashReg(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
     (meta.sampleRegsAirbus || []).forEach(reg => addReg(reg, donorsAb));
     (meta.sampleRegsC909 || []).forEach(reg => addReg(reg, donorsC9));
-    // byReg[reg][srcWeek 0|1][weekday] = path；铺月时日历周奇偶交替，缺则回退另一周
+    // byReg[reg][src][weekday] = path；src=完整日索引(0..15)。铺月按同星期在多模板间循环（不伪造空窗日）
     const byReg = {};
+    const srcByWd = {}; // weekday -> [src,...] 有序去重
+    const completeWd = Array.isArray(meta.completeWeekdays) ? meta.completeWeekdays : null;
     paths.forEach(p => {
       if (!abRegs.has(p.r) && !c9Regs.has(p.r)) return;
-      const src = p.src == null ? 0 : (+p.src ? 1 : 0);
+      const src = p.src == null ? 0 : (+p.src || 0);
       byReg[p.r] = byReg[p.r] || {};
       byReg[p.r][src] = byReg[p.r][src] || {};
       byReg[p.r][src][p.w] = p;
+      const wd = completeWd && completeWd[src] != null ? completeWd[src] : p.w;
+      (srcByWd[wd] = srcByWd[wd] || []);
+      if (!srcByWd[wd].includes(src)) srcByWd[wd].push(src);
     });
+    Object.keys(srcByWd).forEach(wd => srcByWd[wd].sort((a, b) => a - b));
     const BASES = { ZUUU: 1, ZUTF: 1 };
     // 将真实一日机径切成合法机组值勤段：≤4 段、飞行≤7.5h、FDP粗算≤12.5h
     function splitDuty(icao, flts, std, ac, reg, dayAbs) {
@@ -440,15 +446,29 @@
       }
       return segs;
     }
+    function pickPath(bag, wd, dayAbs) {
+      const pool = (srcByWd[wd] && srcByWd[wd].length) ? srcByWd[wd] : Object.keys(bag).map(Number).sort((a, b) => a - b);
+      if (!pool.length) return null;
+      const weekIdx = Math.floor((dayAbs - 1) / 7);
+      // 同星期多模板按日历周循环；缺该机号当日模板则回退同星期其他 src
+      for (let k = 0; k < pool.length; k++) {
+        const src = pool[(weekIdx + k) % pool.length];
+        const t = bag[src] && bag[src][wd];
+        if (t) return t;
+      }
+      // 最后兜底：任意 src 的同星期
+      for (const src of Object.keys(bag)) {
+        if (bag[src][wd]) return bag[src][wd];
+      }
+      return null;
+    }
     // reg -> [{day, legs}...] 按日历日展开的值勤段（一段= pairing 的一日）
     const duties = {}; // reg -> [{day, legs}]
     Object.keys(byReg).forEach(reg => {
       duties[reg] = [];
       for (let d = 1; d <= DAYS; d++) {
         const wd = weekdayJS(YEAR, MONTH, d);
-        const parity = Math.floor((d - 1) / 7) % 2; // 0/1 交替两周模板
-        const bag = byReg[reg];
-        const t = (bag[parity] && bag[parity][wd]) || (bag[1 - parity] && bag[1 - parity][wd]) || null;
+        const t = pickPath(byReg[reg], wd, d);
         if (!t) continue;
         const segs = splitDuty(t.i, t.f, t.s, t.a, reg, d);
         segs.forEach(legs => duties[reg].push({ day: d, legs }));
@@ -496,7 +516,7 @@
         while (i < days.length && days[i] <= last) i++;
       }
     });
-    const maxP = opt.maxPairings || 360;
+    const maxP = opt.maxPairings || 400;
     pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep || a.id.localeCompare(b.id));
     const out = pairings.slice(0, maxP);
     out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
