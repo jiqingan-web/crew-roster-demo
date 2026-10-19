@@ -21,10 +21,10 @@
         const isSampleish = s.sample === true;
         const stale = (s.pilots.length < 500)
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 3;
+          || !s.sampleSchema || s.sampleSchema < 5;
         if (isSampleish && stale) {
           reset(false);
-          toast('示例数据已升级为 11 中队约千人编制，已自动重置');
+          toast('示例数据已升级（机队扩量 + 运营看板），已自动重置');
           return;
         }
         st = s;
@@ -281,18 +281,69 @@
 
 
   // ---------------- 运营看板 ----------------
+  function copyOpsBrief() {
+    const m = C.opsMetrics(st); const t = m.briefText || '';
+    const done = () => toast('今日简报已复制');
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(t).then(done).catch(() => fallbackCopy(t, done));
+    else fallbackCopy(t, done);
+  }
+  function fallbackCopy(t, done) {
+    const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) { toast('复制失败，请手动导出 txt'); }
+    ta.remove();
+  }
+  function exportOpsBrief() {
+    const m = C.opsMetrics(st); const t = m.briefText || '';
+    const blob = new Blob([t], { type: 'text/plain;charset=utf-8' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    a.download = `今日简报_2026-11-${String(m.focusDate).padStart(2, '0')}.txt`;
+    a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1500);
+    toast('已导出今日简报');
+  }
   function rOps() {
     const m = C.opsMetrics(st); const S = st.settings;
+    const zoneCls = { ideal: 'z-ideal', idle: 'z-idle', alert: 'z-alert', critical: 'z-critical' }[m.zone] || 'z-idle';
+    let h = `<div class="panel"><h3>运营看板 <small>基于当前排班快照 · 本月机号 ${m.nAircraft}（模板池 ${m.fleetTemplate}）· 任务 ${m.nPairings} 组</small></h3>
+      <div class="satrow">
+        <div class="satcard ${zoneCls}">
+          <div class="olab">饱和度</div>
+          <div class="oval big">${m.satPct}<small>%</small></div>
+          <div class="omut">已排 ${m.assignedHours.toFixed(0)}h ÷ 容量 ${m.capacityTotal.toFixed(0)}h</div>
+        </div>
+        <div class="satcard ${zoneCls}">
+          <div class="olab">韧性度</div>
+          <div class="oval big">${m.resiliPct}<small>%</small></div>
+          <div class="omut">剩余可排 ${m.remainHours.toFixed(0)}h ÷ 容量</div>
+        </div>
+        <div class="satcard zonebadge ${zoneCls}">
+          <div class="olab">四象限</div>
+          <div class="oval big">${esc(m.zoneLabel)}</div>
+          <div class="omut">${esc(m.zoneHint)}</div>
+        </div>
+      </div>
+      <div class="note">饱和度 ≈ 已排飞行小时 / Σ个人硬上限（小时口径，贴近人天占用比）；韧性度 ≈ 剩余可排小时 / Σ个人硬上限。理想区：饱和 80–90% 且韧性 ≥10%。本演示编制约千人、机队按周模板扩量，饱和度常落在「低效」——表示运力相对任务有冗余，便于补位演示。</div>
+    </div>`;
+
+    h += `<div class="panel todaystrip"><div class="todayhd"><h3>今日运营 <small>焦点日 11/${String(m.focusDate).padStart(2, '0')}（执勤风险条目最多）</small></h3>
+      <div class="briefbtns"><button class="btn sm" id="btnBriefCopy">复制今日简报</button><button class="btn sm prim" id="btnBriefExport">导出 txt</button></div></div>
+      <div class="opskpi">
+        <div class="okpi"><div class="olab">未满员任务</div><div class="oval">${m.day.unfilled}</div><div class="omut">${m.day.unfilledIds && m.day.unfilledIds.length ? esc(m.day.unfilledIds.join('、')) : '无'}</div></div>
+        <div class="okpi"><div class="olab">高 FDP 风险</div><div class="oval">${m.day.fdpHigh}</div><div class="omut">含超限；中风险计 ${m.day.fdpRisk}</div></div>
+        <div class="okpi"><div class="olab">待补位空洞</div><div class="oval">${m.day.pendingFills}</div><div class="omut">未满员/演示预留空洞</div></div>
+        <div class="okpi"><div class="olab">备份缺口</div><div class="oval">${m.day.standbyGap}</div><div class="omut">当日备份 ${m.day.standby} · 请假 ${m.day.leave}</div></div>
+      </div></div>`;
+
     const kpis = [
-      ['剩余运力', m.remainHours.toFixed(0) + 'h', `系统月上限 ${m.hardMaxHours}h × ${m.nPilots} 人 − 已排；已用 ${(m.usedPct * 100).toFixed(1)}%`],
+      ['剩余运力', m.remainHours.toFixed(0) + 'h', `系统月上限 ${m.hardMaxHours}h × ${m.nPilots} 人 − 已排；已用 ${m.satPct}%`],
       ['人机比', m.pilotsPerAircraft, `${m.nPilots} 人 / ${m.nAircraft} 机`],
       ['人均轮挡', m.blockPerPilot + 'h', '总轮挡 ÷ 飞行员'],
       ['单机轮挡', m.blockPerAircraft + 'h', '总轮挡 ÷ 机号'],
       ['飞机利用率', m.aircraftUtilPct + '%', `轮挡 ÷ (机数×${C.DAYS}天×${m.opsDayWindowH}h)`],
       ['未满员任务', m.unfilled, m.unfilled ? m.unfilledIds.join('、') : '全部满员']
     ];
-    let h = `<div class="panel"><h3>运营看板 <small>基于当前排班快照 · 机队按本月出现机号（示例机队模板 ${m.fleetTemplate} 架）</small></h3>
+    h += `<div class="panel"><h3>规模 KPI</h3>
       <div class="opskpi">${kpis.map(([a, b, c]) => `<div class="okpi"><div class="olab">${a}</div><div class="oval">${b}</div><div class="omut">${esc(c)}</div></div>`).join('')}</div></div>`;
+
     h += `<div class="grid g2">
       <div class="panel"><h3>运力与工时</h3>
         ${CH.bars([
@@ -325,17 +376,22 @@
           { label: '备份缺口', value: m.standbyLeft, color: m.standbyLeft ? '#ff5a6a' : '#2ecc8f' },
           { label: '请假人日', value: m.leavePersonDays, color: '#a78bfa' }
         ], { w: 520, h: 200, values: true })}</div></div>`;
-    h += `<div class="panel"><h3>焦点日 11/${String(m.focusDate).padStart(2, '0')} <small>取执勤风险条目最多的一天</small></h3>
-      <div class="opskpi">
-        <div class="okpi"><div class="olab">当日未满员</div><div class="oval">${m.day.unfilled}</div></div>
-        <div class="okpi"><div class="olab">当日风险值勤</div><div class="oval">${m.day.fdpRisk}</div></div>
-        <div class="okpi"><div class="olab">当日备份</div><div class="oval">${m.day.standby}</div></div>
-        <div class="okpi"><div class="olab">当日请假</div><div class="oval">${m.day.leave}</div></div>
-      </div></div>`;
+
+    // 分中队饱和/韧性（可选）
+    const sq = (m.bySquadron || []).slice();
+    h += `<div class="panel"><h3>分中队饱和度 / 韧性度 <small>可选下钻</small></h3>
+      <div class="sqgrid">${sq.map(x => `<div class="sqcard z-${esc(x.zone)}"><div class="sqlab">${esc(x.squad)}</div>
+        <div class="sqvals"><span>饱和 <b>${x.satPct}%</b></span><span>韧性 <b>${x.resiliPct}%</b></span></div>
+        <div class="omut">${x.nPilots} 人 · ${esc(x.zoneLabel)} · 已排 ${x.assignedHours}h</div></div>`).join('')}</div></div>`;
+
+    const fname = { sat: '饱和度', resili: '韧性度', zone: '四象限', remain: '剩余运力', pilotsPerAc: '人机比', blockPerPilot: '人均轮挡', blockPerAc: '单机轮挡', util: '飞机利用率', legsPerAcDay: '机日航段' };
     h += `<div class="panel"><h3>指标公式</h3><table class="solt"><tr><th>指标</th><th>公式</th></tr>
-      ${Object.entries(m.formulas).map(([k, v]) => `<tr><td>${esc({ remain: '剩余运力', pilotsPerAc: '人机比', blockPerPilot: '人均轮挡', blockPerAc: '单机轮挡', util: '飞机利用率', legsPerAcDay: '机日航段' }[k] || k)}</td><td>${esc(v)}</td></tr>`).join('')}
+      ${Object.entries(m.formulas).map(([k, v]) => `<tr><td>${esc(fname[k] || k)}</td><td>${esc(v)}</td></tr>`).join('')}
       </table></div>`;
     $('#main').innerHTML = h;
+    const bc = $('#btnBriefCopy'), be = $('#btnBriefExport');
+    if (bc) bc.onclick = copyOpsBrief;
+    if (be) be.onclick = exportOpsBrief;
   }
 
   // ---------------- 人员视图 ----------------

@@ -357,7 +357,7 @@
       if (p.prefs.includes(d) || p.leave.includes(d) || offCount[key(p)][d] >= lim(p)) continue;
       p.prefs.push(d); offCount[key(p)][d]++; } p.prefs.sort((a, b) => a - b); });
 
-    // 任务：由真实一周路径模板铺到整月（半机队规模，见 SAMPLE_META）
+    // 任务：由真实一周路径模板铺到整月（SAMPLE_META 机号；缺路径的机号克隆同机型模板）
     const pairings = buildPairingsFromWeek(r, opt);
     assignAircraftRegs(pairings);
 
@@ -371,7 +371,7 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, sampleSchema: 3, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 5, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -381,14 +381,35 @@
     return (dt.getDay() + 6) % 7;
   }
   function buildPairingsFromWeek(r, opt) {
-    const paths = SAMPLE_WEEK_PATHS;
     const meta = SAMPLE_META || {};
     const abRegs = new Set(meta.sampleRegsAirbus || []);
     const c9Regs = new Set(meta.sampleRegsC909 || []);
+    // 周模板仅覆盖部分机号；对 SAMPLE_META 中额外机号按同机型捐赠模板克隆，以放大月任务量
+    const paths = [];
+    const donorsAb = [], donorsC9 = [];
+    const byDonor = {};
+    SAMPLE_WEEK_PATHS.forEach(p => {
+      (byDonor[p.r] = byDonor[p.r] || []).push(p);
+      if (p.a === 'C909') { if (!donorsC9.includes(p.r)) donorsC9.push(p.r); }
+      else if (!donorsAb.includes(p.r)) donorsAb.push(p.r);
+    });
+    function addReg(reg, donors) {
+      if (byDonor[reg]) { byDonor[reg].forEach(p => paths.push(p)); return; }
+      if (!donors.length) return;
+      const donor = donors[Math.abs(hashReg(reg)) % donors.length];
+      (byDonor[donor] || []).forEach(p => paths.push(Object.assign({}, p, { r: reg })));
+    }
+    function hashReg(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
+    (meta.sampleRegsAirbus || []).forEach(reg => addReg(reg, donorsAb));
+    (meta.sampleRegsC909 || []).forEach(reg => addReg(reg, donorsC9));
+    // byReg[reg][srcWeek 0|1][weekday] = path；铺月时日历周奇偶交替，缺则回退另一周
     const byReg = {};
     paths.forEach(p => {
       if (!abRegs.has(p.r) && !c9Regs.has(p.r)) return;
-      (byReg[p.r] = byReg[p.r] || {})[p.w] = p;
+      const src = p.src == null ? 0 : (+p.src ? 1 : 0);
+      byReg[p.r] = byReg[p.r] || {};
+      byReg[p.r][src] = byReg[p.r][src] || {};
+      byReg[p.r][src][p.w] = p;
     });
     const BASES = { ZUUU: 1, ZUTF: 1 };
     // 将真实一日机径切成合法机组值勤段：≤4 段、飞行≤7.5h、FDP粗算≤12.5h
@@ -425,7 +446,9 @@
       duties[reg] = [];
       for (let d = 1; d <= DAYS; d++) {
         const wd = weekdayJS(YEAR, MONTH, d);
-        const t = byReg[reg][wd];
+        const parity = Math.floor((d - 1) / 7) % 2; // 0/1 交替两周模板
+        const bag = byReg[reg];
+        const t = (bag[parity] && bag[parity][wd]) || (bag[1 - parity] && bag[1 - parity][wd]) || null;
         if (!t) continue;
         const segs = splitDuty(t.i, t.f, t.s, t.a, reg, d);
         segs.forEach(legs => duties[reg].push({ day: d, legs }));
@@ -473,7 +496,7 @@
         while (i < days.length && days[i] <= last) i++;
       }
     });
-    const maxP = opt.maxPairings || 200;
+    const maxP = opt.maxPairings || 360;
     pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep || a.id.localeCompare(b.id));
     const out = pairings.slice(0, maxP);
     out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
@@ -1275,6 +1298,48 @@
 
 
   // ---------- 运营看板指标 ----------
+  // 饱和度/韧性度改编自行业「双轴四象限」思路，适配本补位演示：小时口径（已排/剩余相对个人硬上限）
+  function opsZone(satPct, resiliPct) {
+    // satPct / resiliPct：0–100
+    if (satPct >= 80 && satPct <= 90 && resiliPct >= 10) return { id: 'ideal', label: '理想', hint: '维持配置，持续监控' };
+    if (satPct > 90 && resiliPct < 5) return { id: 'critical', label: '高危', hint: '强制干预，切断非关键任务' };
+    if (satPct > 90 || (satPct > 95)) return { id: 'alert', label: '警戒', hint: '主动降负荷，恢复安全缓冲' };
+    if (satPct < 80) return { id: 'idle', label: '低效', hint: '任务量相对编制偏少；可增班或优化串接释放冗余价值' };
+    // 80–90 但韧性 <10（小时口径下少见，因 resili≈100−sat）
+    return { id: 'alert', label: '警戒', hint: '缓冲偏薄，关注扰动' };
+  }
+  function squadOpsMetrics(st, idx, hard) {
+    const by = {};
+    st.pilots.forEach(p => {
+      const sq = p.squad || '未分中队';
+      if (!by[sq]) by[sq] = { squad: sq, nPilots: 0, assigned: 0, capacity: 0, remain: 0 };
+      const h = idx.hours[p.id] || 0; const cap = pilotHardCap(p, st);
+      by[sq].nPilots++; by[sq].assigned += h; by[sq].capacity += cap; by[sq].remain += Math.max(0, cap - h);
+    });
+    return Object.values(by).map(x => {
+      const sat = x.capacity ? x.assigned / x.capacity : 0;
+      const resili = x.capacity ? x.remain / x.capacity : 0;
+      const satPct = +(sat * 100).toFixed(1), resiliPct = +(resili * 100).toFixed(1);
+      const zone = opsZone(satPct, resiliPct);
+      return {
+        squad: x.squad, nPilots: x.nPilots,
+        assignedHours: +x.assigned.toFixed(1), capacityTotal: +x.capacity.toFixed(1), remainHours: +x.remain.toFixed(1),
+        satPct, resiliPct, zone: zone.id, zoneLabel: zone.label
+      };
+    }).sort((a, b) => a.squad.localeCompare(b.squad, 'zh'));
+  }
+  function opsBriefText(m, st) {
+    const d = String(m.focusDate).padStart(2, '0');
+    const lines = [
+      `【今日简报】2026-11-${d}（焦点日 · 执勤风险条目最多）`,
+      `中队编制 ${m.nPilots} 人 · 本月机号 ${m.nAircraft} · 任务 ${m.nPairings} 组 · 轮挡 ${m.blockHours}h`,
+      `饱和度 ${m.satPct}% · 韧性度 ${m.resiliPct}% · 四象限「${m.zoneLabel}」——${m.zoneHint}`,
+      `今日运营：未满员 ${m.day.unfilled} · 高/中/超限执勤 ${m.day.fdpRisk} · 待补位空洞 ${m.day.pendingFills} · 备份缺口 ${m.day.standbyGap}`,
+      `月度：未满员 ${m.unfilled} · FDP风险日 ${m.fdpRiskDays} · 备份缺口 ${m.standbyLeft} 人日 · 请假 ${m.leavePersonDays} 人日`,
+      `公式：饱和度=已排飞行小时/Σ个人硬上限；韧性度=剩余可排小时/Σ个人硬上限（演示口径）`
+    ];
+    return lines.join('\n');
+  }
   function opsMetrics(st) {
     const S = st.settings || defaultSettings(); const idx = buildIndex(st);
     const hard = hardCap(st); const dayWin = S.opsDayWindowH || 14;
@@ -1293,6 +1358,7 @@
     const unfilled = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T));
     const risk = fdpRiskSummary(st);
     const highRiskDays = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over' || r.risk === 'med');
+    const hiOnly = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over');
     // 备份：本月已排备份人日 vs 需求 DAYS * standbyPerDay
     const sbNeed = DAYS * (S.standbyPerDay == null ? 1 : S.standbyPerDay);
     let sbUsed = 0; st.pilots.forEach(p => { sbUsed += ((st.standby || {})[p.id] || []).length; });
@@ -1302,20 +1368,38 @@
     // 当日（默认取高风险最多的一天或 15 日）
     const byDate = {}; highRiskDays.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + 1; });
     let focusDate = 15; let best = -1; Object.keys(byDate).forEach(d => { if (byDate[d] > best) { best = byDate[d]; focusDate = +d; } });
-    const dayUnfilled = st.pairings.filter(p => daysTouched(p, st).includes(focusDate) && !(p.crew.C && p.crew.F && p.crew.T)).length;
+    const dayUnfilledList = st.pairings.filter(p => daysTouched(p, st).includes(focusDate) && !(p.crew.C && p.crew.F && p.crew.T));
+    const dayUnfilled = dayUnfilledList.length;
     const dayRisk = highRiskDays.filter(r => r.date === focusDate).length;
+    const dayHiRisk = hiOnly.filter(r => r.date === focusDate).length;
     const daySb = st.pilots.filter(p => ((st.standby || {})[p.id] || []).includes(focusDate)).length;
     const dayLeave = st.pilots.filter(p => (p.leave || []).includes(focusDate)).length;
+    const sbPerDay = S.standbyPerDay == null ? 1 : S.standbyPerDay;
+    const daySbGap = Math.max(0, sbPerDay - daySb);
+    // 待补位：焦点日未满员 + 演示空洞（仍空）
+    const demoOpen = (st.demoHoles || []).filter(h => {
+      const pr = st.pairings.find(p => p.id === h.pairingId);
+      return pr && daysTouched(pr, st).includes(focusDate) && !(pr.crew.C && pr.crew.F && pr.crew.T);
+    }).length;
+    const dayPending = Math.max(dayUnfilled, demoOpen);
     // 飞机利用率
     const util = flyingN && dayWin ? blockH / (flyingN * DAYS * dayWin) : 0;
     // 每机日航段
     let legs = 0; st.pairings.forEach(p => { legs += p.legs.length; });
     const legsPerAcDay = flyingN ? legs / (flyingN * DAYS) : 0;
-    return {
+    const usedPct = capacityTotal ? assigned / capacityTotal : 0;
+    const resili = capacityTotal ? remain / capacityTotal : 0;
+    const satPct = +(usedPct * 100).toFixed(1);
+    const resiliPct = +(resili * 100).toFixed(1);
+    const zone = opsZone(satPct, resiliPct);
+    const bySquadron = squadOpsMetrics(st, idx, hard);
+    const out = {
       hardMaxHours: hard, opsDayWindowH: dayWin,
       nPilots, nAircraft: flyingN, fleetTemplate: fleetN, nPairings: st.pairings.length, nLegs: legs,
       blockHours: +blockH.toFixed(1), assignedHours: +assigned.toFixed(1),
-      capacityTotal, remainHours: +remain.toFixed(1), usedPct: capacityTotal ? assigned / capacityTotal : 0,
+      capacityTotal, remainHours: +remain.toFixed(1), usedPct,
+      satPct, resiliPct, sat: usedPct, resili,
+      zone: zone.id, zoneLabel: zone.label, zoneHint: zone.hint,
       overHardPilots: overN,
       pilotsPerAircraft: flyingN ? +(nPilots / flyingN).toFixed(2) : 0,
       blockPerPilot: nPilots ? +(blockH / nPilots).toFixed(2) : 0,
@@ -1326,8 +1410,17 @@
       fdpRisk: risk.cnt, fdpRiskDays: highRiskDays.length,
       standbyNeed: sbNeed, standbyUsed: sbUsed, standbyLeft: sbLeft,
       leavePersonDays: leaveDays,
-      focusDate, day: { unfilled: dayUnfilled, fdpRisk: dayRisk, standby: daySb, leave: dayLeave },
+      focusDate,
+      day: {
+        unfilled: dayUnfilled, fdpRisk: dayRisk, fdpHigh: dayHiRisk,
+        standby: daySb, leave: dayLeave, standbyGap: daySbGap, pendingFills: dayPending,
+        unfilledIds: dayUnfilledList.slice(0, 8).map(p => p.id)
+      },
+      bySquadron,
       formulas: {
+        sat: '饱和度 = 已排飞行小时 ÷ Σ个人硬上限（≈ usedPct；人天口径演示中用小时等价）',
+        resili: '韧性度 = Σ max(0, 个人硬上限 − 已排) ÷ Σ个人硬上限（可排冗余运力占比）',
+        zone: '理想：饱和80–90%且韧性≥10%；低效：饱和<80%；警戒：饱和>90%；高危：饱和>90%且韧性<5%',
         remain: 'Σ max(0, 法规月上限 − 已排飞行小时)',
         pilotsPerAc: '飞行员人数 ÷ 本月出现过的机号数',
         blockPerPilot: '总轮挡小时 ÷ 飞行员人数',
@@ -1336,6 +1429,8 @@
         legsPerAcDay: '总航段数 ÷ (机号数 × 日历天数)'
       }
     };
+    out.briefText = opsBriefText(out, st);
+    return out;
   }
 
   // ---------- 请假调配 ----------
@@ -1744,5 +1839,5 @@
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, defaultSettings, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, shareFor, SLOT_NAME, slotRankOK, blockMin };
+    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });

@@ -168,7 +168,20 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('ops remain', m.remainHours > 0 && m.capacityTotal === capSum, 'cap=' + m.capacityTotal + ' sum=' + capSum);
   chk('ops util', m.aircraftUtilPct > 0 && m.aircraftUtilPct < 100, m.aircraftUtilPct);
   chk('ops pilotsPerAc', m.pilotsPerAircraft > 1, m.pilotsPerAircraft);
-  chk('ops formulas', m.formulas && m.formulas.util);
+  chk('ops formulas', m.formulas && m.formulas.util && m.formulas.sat && m.formulas.resili);
+  chk('ops sat/resili', m.satPct >= 0 && m.resiliPct >= 0 && Math.abs(m.satPct + m.resiliPct - 100) < 1.5, 'sat=' + m.satPct + ' resili=' + m.resiliPct);
+  chk('ops zone', ['ideal', 'idle', 'alert', 'critical'].includes(m.zone) && m.zoneLabel, m.zone + '/' + m.zoneLabel);
+  chk('ops brief', m.briefText && m.briefText.indexOf('今日简报') >= 0 && m.briefText.indexOf('饱和度') >= 0, (m.briefText || '').slice(0, 40));
+  chk('ops day strip', m.day && 'pendingFills' in m.day && 'standbyGap' in m.day && 'fdpHigh' in m.day, JSON.stringify(m.day));
+  chk('ops bySquadron', Array.isArray(m.bySquadron) && m.bySquadron.length >= 3, m.bySquadron && m.bySquadron.length);
+  chk('ops volume', m.nPairings >= 300 && m.nAircraft >= 30, 'pr=' + m.nPairings + ' ac=' + m.nAircraft);
+}
+
+{ const chk = (n, ok, info) => { console.log('SCALE ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
+  const st0 = C.generateSample();
+  chk('pairings scaled', st0.pairings.length >= 300, st0.pairings.length);
+  chk('regs scaled', (() => { const r = new Set(); st0.pairings.forEach(p => p.legs.forEach(l => r.add(l.reg))); return r.size >= 40; })(), 'regs');
+  chk('schema4', st0.sampleSchema === 5, st0.sampleSchema);
 }
 
 // ---- CCAR-121-R8 回测回归（P章 表A/表B/累积限制；出处见 回测/121回测报告.md）----
