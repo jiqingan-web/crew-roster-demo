@@ -372,3 +372,18 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const cs2 = C.candidates(st, Object.assign({}, pr2, { crew: { C: nc.id, F: tl.id, T: null } }), 'T').filter(c => c.ok);
   chk('seat3 many when instr on F', cs2.filter(c => !C.isInstr(c.p.rank)).length >= 10, cs2.length);
 }
+
+// ===== 候选人搜索 + 单人月历 =====
+{ const chk = (n, ok, info) => { console.log('SEARCH ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
+  const st = C.generateSample(); const p = st.pilots[123];
+  chk('match id', C.pilotMatches(p, p.id) && C.filterByPilot(st.pilots, p.id, x => x).length === 1);
+  chk('match name', C.filterByPilot(st.pilots, p.name, x => x).some(x => x.id === p.id));
+  const f6 = C.filterByPilot(st.pilots, 'F6', x => x); chk('match rank', f6.length > 0 && f6.every(x => x.rank === 'F6'), f6.length);
+  const sq = C.filterByPilot(st.pilots, '空客二中队', x => x); chk('match squad', sq.length > 50 && sq.every(x => x.squad === '空客二中队'), sq.length);
+  chk('multi-token', C.filterByPilot(st.pilots, 'F6 空客二中队', x => x).every(x => x.rank === 'F6' && x.squad === '空客二中队'));
+  chk('empty q all', C.filterByPilot(st.pilots, '', x => x).length === st.pilots.length);
+  const pr = st.pairings[0]; const cs = C.candidates(st, pr, 'F'); const fc = C.filterByPilot(cs, 'F5');
+  chk('candidates filter', fc.length > 0 && fc.every(c => c.p.rank === 'F5'), fc.length);
+  const rows = C.personalMonthRows(st, p.id);
+  chk('single export', rows.length === C.DAYS + 1 && rows.slice(1).every(r => r[0] === p.id) && rows[0][6] === '状态', rows.length);
+}

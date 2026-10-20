@@ -508,6 +508,7 @@
         <button class="btn" id="mCancel">取消</button></div>`;
     $('#modalBox').innerHTML = h; $('#modal').classList.remove('hidden');
     $('#mClose').onclick = $('#mCancel').onclick = closeModal;
+    const drawSlots_q = { C: '', F: '', T: '' };
     const dirty = () => ['C', 'F', 'T'].some(s => (draft[s] || null) !== (orig[s] || null));
     const diffHtml = () => {
       if (!dirty()) return '尚未选择变更 · 点选下拉仅预览，须点「确定」写入各甘特';
@@ -516,14 +517,19 @@
         return `<b>${C.SLOT_NAME[s]}</b> ${esc(a)} → <b class="okc">${esc(b)}</b>`;
       }).join('　·　');
     };
+    const slotQ = drawSlots_q;
+    const optHtml = (ok, slot, cur, changed) => ok.map(c => `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''}>${esc(c.p.name)} ${c.p.rank} · ${c.p.id}${c.p.squad ? ' · ' + esc(c.p.squad) : ''} · 本月${c.hours.toFixed(1)}h${c.standby && c.standby.length ? ' · ★备份可调用' : ''}${c.warn ? ' · ⚠' + c.warn : ''}${c.crewWarn ? ' · ⚠机组:' + esc(c.crewWarn) : ''}${!c.ok && c.p.id !== orig[slot] ? ' · ✖' + c.reasons.join('；') : ''}${c.p.id === orig[slot] && changed ? ' · 原任' : ''}</option>`).join('');
+    const slotCache = {};
     const drawSlots = () => {
       let s = '';
       for (const slot of ['C', 'F', 'T']) {
         const cs = C.candidates(st, pr, slot); const cur = draft[slot];
-        const ok = cs.filter(c => c.ok || c.p.id === cur || c.p.id === orig[slot]);
+        const okAll = cs.filter(c => c.ok || c.p.id === cur || c.p.id === orig[slot]);
+        slotCache[slot] = okAll;
+        const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, slotQ[slot]));
         const bad = cs.filter(c => !c.ok && c.p.id !== cur && c.p.id !== orig[slot] && C.slotRankOK(slot, c.p.rank));
         const changed = (draft[slot] || null) !== (orig[slot] || null);
-        s += `<div class="slotbox ${changed ? 'pending' : ''}"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位')}</b><select data-slot="${slot}"><option value="">— 空缺 —</option>${ok.map(c => `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''}>${esc(c.p.name)} ${c.p.rank} · ${c.p.id} · 本月${c.hours.toFixed(1)}h${c.standby && c.standby.length ? ' · ★备份可调用' : ''}${c.warn ? ' · ⚠' + c.warn : ''}${c.crewWarn ? ' · ⚠机组:' + esc(c.crewWarn) : ''}${!c.ok && c.p.id !== orig[slot] ? ' · ✖' + c.reasons.join('；') : ''}${c.p.id === orig[slot] && changed ? ' · 原任' : ''}</option>`).join('')}</select>${changed ? '<span class="pendtag">待确定</span>' : ''}</div>
+        s += `<div class="slotbox ${changed ? 'pending' : ''}"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位')}</b><input class="candq" data-q="${slot}" placeholder="搜索姓名/工号/级别/中队" value="${esc(slotQ[slot] || '')}" style="width:170px"><span class="mut candn" data-n="${slot}">${ok.length}/${okAll.length}</span><select data-slot="${slot}"><option value="">— 空缺 —</option>${optHtml(ok, slot, cur, changed)}</select>${changed ? '<span class="pendtag">待确定</span>' : ''}</div>
           <details style="margin:-4px 0 10px 68px"><summary>${ok.length} 名候选；${bad.length} 名不合规 — 查看原因</summary><div class="inel"><table>${bad.map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>`;
       }
       $('#slots').innerHTML = s;
@@ -538,6 +544,15 @@
       document.querySelectorAll('#slots select').forEach(sel => sel.onchange = () => {
         draft[sel.dataset.slot] = sel.value || null;
         drawSlots();
+      });
+      document.querySelectorAll('#slots .candq').forEach(inp => inp.oninput = () => {
+        const slot = inp.dataset.q; slotQ[slot] = inp.value; const cur = draft[slot];
+        const okAll = slotCache[slot] || []; const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, inp.value));
+        const changed = (draft[slot] || null) !== (orig[slot] || null);
+        const sel = document.querySelector(`#slots select[data-slot="${slot}"]`);
+        sel.innerHTML = '<option value="">— 空缺 —</option>' + optHtml(ok, slot, cur, changed);
+        if (!cur && ok.length && inp.value) sel.selectedIndex = 0;
+        document.querySelector(`#slots .candn[data-n="${slot}"]`).textContent = ok.length + '/' + okAll.length;
       });
     };
     $('#mConfirm').onclick = () => {
@@ -973,7 +988,8 @@
     const tog = `<span class="seg" id="lvView"><button type="button" data-v="holes" class="${leaveView === 'holes' ? 'on' : ''}">空洞换人</button><button type="button" data-v="cards" class="${leaveView === 'cards' ? 'on' : ''}">多方案卡片</button><button type="button" data-v="history" class="${leaveView === 'history' ? 'on' : ''}">补位历史</button></span>`;
     let h = `<div class="panel"><h3>临时请假 · 调配 <small>先看「空洞换人」：空缺座位 + 推荐候选人与合规灯；完整多方案在右侧/次要视图</small></h3>
       <div class="flex" style="flex-wrap:wrap;gap:8px">${tog}
-        <select id="lvP">${caps.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
+        <input id="lvQ" placeholder="搜索姓名/工号/级别/中队" value="${esc(ui.lvq || '')}" style="width:170px"><span class="mut" id="lvQn"></span>
+        <select id="lvP">${caps.filter(c => c.id === leaveSel.pid || C.pilotMatches(c, ui.lvq)).map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
         <span>日期</span><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>至</span><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>日</span>
         <button class="btn primary" id="lvGo">生成推荐</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
       <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'}
@@ -988,14 +1004,14 @@
         const empty = `<div class="hole-seat empty"><span class="clight red"></span><b>${hh.slotName}位 · 空缺</b><div class="mut">${esc(p.name)} 请假腾出</div></div>`;
         const left = hh.crewLeft.map(c => c.id ? `<div class="hole-seat"><b>${C.SLOT_NAME[c.slot]} ${esc(c.name)}</b> ${pill(c.rank)}</div>` : `<div class="hole-seat mut">${C.SLOT_NAME[c.slot]} 空</div>`).join('');
         const chips = (hh.legChips || []).map(l => `<span class="legchip">D${l.d} ${esc(l.flt)} <span class="${l.spFrom ? 'sp' : ''}">${esc(l.fromName)}</span>-<span class="${l.spTo ? 'sp' : ''}">${esc(l.toName)}</span></span>`).join('');
-        const cands = hh.candidates.map((c, ci) => `<button type="button" class="cand ${c.light === 'red' ? 'redish' : ''} ${holePrev && holePrev.hi === hi && holePrev.ci === ci ? 'on' : ''}" data-hi="${hi}" data-ci="${ci}">
+        const cands = hh.candidates.map((c, ci) => `<button type="button" data-s="${esc([c.name, c.id, c.rank, (st.pilots.find(x => x.id === c.id) || {}).squad].join(' '))}" class="cand ${c.light === 'red' ? 'redish' : ''} ${holePrev && holePrev.hi === hi && holePrev.ci === ci ? 'on' : ''}" data-hi="${hi}" data-ci="${ci}">
           <span class="clight ${c.light}"></span><span class="av">${esc((c.name || '??').slice(-2))}</span>
           <span class="cn"><b>${esc(c.name)}</b> ${pill(c.rank)}<br><span class="mut">${c.hoursBefore}h${c.fromStandby ? ' · ★备份' : ''}${c.warn ? ' · ⚠休息' : ''}${c.light === 'red' && c.reasons[0] ? ' · ' + esc(c.reasons[0].slice(0, 18)) : ''}</span></span></button>`).join('') || '<span class="mut">无候选</span>';
         const psteps = (hh.planSteps || []).map(x => x.type === 'chain' ? `链式：${x.to ? '←新机长位' : ''} ${esc(x.type)}` : `${esc(x.type)}${x.to ? '→…' : ''}`).join('；');
         return `<div class="holec" id="hole${hi}"><div class="holehd"><b>${hh.id}</b><span class="holemeta">${dateOf(hh.start)}起 ${hh.ndays} 天 · ${hh.ac} · ${hh.hours}h · 机号 ${(hh.reg || []).join('/') || '—'}</span></div>
           <div class="holeroute">${chips}</div>
           <div class="holeseats">${empty}${left}</div>
-          <div class="candrow"><span class="lab">推荐</span>${cands}</div>
+          <div class="candrow"><span class="lab">推荐</span><input class="holeq" data-hi="${hi}" placeholder="搜索姓名/工号/级别/中队" style="width:160px"><span class="mut holen" data-hi="${hi}">${hh.candidates.length}/${hh.candidates.length}</span>${cands}</div>
           ${hh.nGreen === 0 && holes.plan ? `<div class="note warnc" style="margin-top:8px">直接合规候选人不足；请用整案「${esc(holes.plan.name)}」或点选候选人查看原因。${psteps ? ' · ' + esc(psteps) : ''}</div>` : ''}
           </div>`;
       }).join('')}</div></div>`;
@@ -1054,6 +1070,18 @@
     const regen = () => { if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; genLeave(); rLeave(); };
     document.querySelectorAll('#lvView button').forEach(b => b.onclick = () => { leaveView = b.dataset.v; rLeave(); });
     $('#lvP').onchange = e => { leaveSel.pid = e.target.value; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); };
+    { const q = $('#lvQ'), sel = $('#lvP'), n = $('#lvQn');
+      const caps = st.pilots.filter(p => C.isCaptClass(p.rank)).concat(st.pilots.filter(p => C.isFO(p.rank))); const ix = C.buildIndex(st);
+      const draw = () => { const list = caps.filter(c => c.id === leaveSel.pid || C.pilotMatches(c, ui.lvq));
+        sel.innerHTML = list.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${ix.hours[c.id].toFixed(1)}h</option>`).join('');
+        n.textContent = '匹配 ' + list.length + '/' + caps.length; };
+      if (q) { n.textContent = '匹配 ' + sel.options.length + '/' + caps.length;
+        q.oninput = () => { ui.lvq = q.value; draw(); };
+        q.onkeydown = e => { if (e.key === 'Enter') { const m = caps.find(c => c.id !== leaveSel.pid && C.pilotMatches(c, ui.lvq)); if (m) { leaveSel.pid = m.id; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); } } }; } }
+    document.querySelectorAll('.holeq').forEach(inp => inp.oninput = () => {
+      const row = inp.closest('.candrow'); const t = inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean); let n = 0, all = 0;
+      row.querySelectorAll('.cand').forEach(b => { all++; const ok = t.every(x => (b.dataset.s || '').toLowerCase().includes(x)); b.style.display = ok ? '' : 'none'; if (ok) n++; });
+      row.querySelector('.holen').textContent = n + '/' + all; });
     $('#lvF').onchange = e => { leaveSel.from = +e.target.value; if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; leaveOpts = null; leaveHoles = null; rLeave(); };
     $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; leaveHoles = null; rLeave(); };
     document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });
@@ -1137,6 +1165,7 @@
         <button class="btn sm" id="roExp" style="margin-left:auto">导出人员 CSV</button>
         <button class="btn sm primary" id="exMonthRoster">全月班表</button>
         <button class="btn sm primary" id="exPersonalZip">个人月历包</button>
+        ${onePersonPicker()}
       </div>
       ${demoFillBanner()}
       <div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div></div>
@@ -1159,7 +1188,7 @@
         <td class="hcell">${badges}</td>
         ${authList.map(c => `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`).join('')}
         <td>${authN}/${nAuth}</td>
-        <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button> <button class="btn sm roLeave" data-pid="${p.id}">请假</button></td></tr>`;
+        <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button> <button class="btn sm roLeave" data-pid="${p.id}">请假</button> <button class="btn sm roCal" data-pid="${p.id}" title="导出此人月历 CSV">月历</button></td></tr>`;
     }
     if (!ps.length) h += '<tr><td colspan="20" class="note">无匹配人员</td></tr>';
     h += '</tbody></table></div>';
@@ -1311,9 +1340,31 @@
       + '<button type="button" class="btn primary" id="exMonthRoster">📥 导出全月班表</button>'
       + '<button type="button" class="btn primary" id="exPersonalZip">📦 导出个人月历包</button>'
       + '<button type="button" class="btn" id="exPersonalCsv">导出个人月历汇总 CSV</button>'
+      + onePersonPicker()
       + (extra || '') + '</div>';
   }
+  function exportOnePerson(pid) {
+    const p = st.pilots.find(x => x.id === pid); if (!p) { toast('未找到该人员，请从下拉中选择'); return; }
+    const safe = String(p.name).replace(/[\\/:*?"<>|]/g, '_');
+    dl('个人月历_' + p.id + '_' + safe + '_' + p.rank + '_2026-11.csv', csv(C.personalMonthRows(st, p.id)));
+    toast('✔ 已导出 ' + esc(p.name) + '（' + p.id + '）个人月历 CSV');
+  }
+  function onePersonPicker() {
+    return '<span class="onepick"><input id="exOneQ" list="exOneDL" placeholder="搜索姓名/工号/级别/中队 → 单人月历" style="width:240px">'
+      + '<datalist id="exOneDL">' + st.pilots.map(p => `<option value="${p.id} ${esc(p.name)} ${p.rank} ${esc(p.squad || '')}"></option>`).join('') + '</datalist>'
+      + '<button type="button" class="btn" id="exOneBtn">导出此人月历 CSV</button><span class="mut" id="exOneN"></span></span>';
+  }
+  function bindOnePerson() {
+    const q = $('#exOneQ'), b = $('#exOneBtn'), n = $('#exOneN'); if (!q || !b) return;
+    const resolve = () => { const v = q.value.trim(); const id = v.split(/\s+/)[0];
+      return st.pilots.find(p => p.id === id) || (v ? st.pilots.filter(p => C.pilotMatches(p, v))[0] : null); };
+    q.oninput = () => { const v = q.value.trim(); n.textContent = v ? '匹配 ' + st.pilots.filter(p => C.pilotMatches(p, v)).length + ' 人' : ''; };
+    b.onclick = () => { const p = resolve(); if (p) exportOnePerson(p.id); else toast('请输入并选择一名人员'); };
+    q.onkeydown = e => { if (e.key === 'Enter') b.onclick(); };
+  }
   function bindExportButtons() {
+    bindOnePerson();
+    document.querySelectorAll('.roCal').forEach(x => x.onclick = e => { e.stopPropagation(); exportOnePerson(x.dataset.pid); });
     const a = $('#exMonthRoster'), b = $('#exPersonalZip'), c = $('#exPersonalCsv');
     if (a) a.onclick = exportMonthRoster;
     if (b) b.onclick = () => { exportPersonalZip().catch(e => toast('导出失败：' + e.message)); };

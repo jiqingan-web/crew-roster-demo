@@ -2043,6 +2043,15 @@
 
 
 
+
+  // ---------- 人员搜索（候选人/选人通用） ----------
+  function pilotMatches(p, q) {
+    q = String(q || '').trim().toLowerCase(); if (!q) return true;
+    const hay = [p.name, p.id, p.rank, p.squad, rankGroup(p.rank), p.fleet].filter(Boolean).join(' ').toLowerCase();
+    return q.split(/\s+/).every(t => hay.includes(t));
+  }
+  function filterByPilot(list, q, get) { get = get || (x => x.p || x); return q ? list.filter(x => pilotMatches(get(x), q)) : list; }
+
   // ---------- 导出（全月班表 / 个人月历） ----------
   function monthRosterRows(st) {
     const pm = {}; st.pilots.forEach(p => { pm[p.id] = p; });
@@ -2119,6 +2128,6 @@
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
-    generateSample, defaultSettings, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });
