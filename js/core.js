@@ -2,7 +2,7 @@
  * 浏览器中挂载到 window.RosterCore，在 Node 中可 require()。 */
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'));
-  else root.RosterCore = factory(root.RosterSampleData || null);
+  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
 })(typeof self !== 'undefined' ? self : this, function (SampleData) {
   'use strict';
   const YEAR = 2026, MONTH = 11, DAYS = 30, DAY = 1440;
@@ -781,13 +781,14 @@
     const others = (idx.sched[p.id] || []).filter(o => o.id !== ex);
     const allPr = extra ? others.concat([pr]) : others.slice();
     // 1) 每一飞行任务报到前 144h 内须有连续 48h 休息
-    allPr.forEach(o => {
+    const ivP = allPr.map(x => [report(x, st), release(x, st)]);
+    const ivS = []; ((st.standby || {})[p.id] || []).forEach(d => { if (d >= 1 && d <= DAYS) ivS.push([(d - 1) * DAY, d * DAY]); });
+    for (let oi = 0; oi < allPr.length; oi++) {
       const iv = [];
-      allPr.forEach(x => { if (x !== o) iv.push([report(x, st), release(x, st)]); });
-      ((st.standby || {})[p.id] || []).forEach(d => { if (d >= 1 && d <= DAYS) iv.push([(d - 1) * DAY, d * DAY]); });
-      iv.sort((a, b) => a[0] - b[0]);
-      if (!has48hRestBefore(iv, report(o, st))) rs.push('144h内无连续48h休息(121.495/3.6.10)');
-    });
+      for (let xi = 0; xi < allPr.length; xi++) if (xi !== oi && allPr[xi] !== allPr[oi]) iv.push(ivP[xi]);
+      for (const v of ivS) iv.push(v);
+      if (!has48hRestBefore(iv, ivP[oi][0])) rs.push('144h内无连续48h休息(121.495/3.6.10)');
+    }
     // 2) 任一飞行日：若前 4 个日历日均为飞行值勤或主备份，则违规
     const flags = dutyDayFlags(p, st, idx, ex, extra);
     const flew = Array(DAYS + 2).fill(false);
@@ -823,6 +824,7 @@
   // 某人能否执行某任务（不含组合规则）。返回 [ok, reasons[] ]
   // opt.slot：座位 C/F/T，用于「非唯一机长」禁 C 位
   function personCheck(p, pr, st, idx, opt) {
+    progBeat();
     opt = opt || {}; const rs = []; const S = st.settings;
     // 机队资质：空客中队飞 A3xx，C909 中队飞 C909
     if (p.fleet && pr.ac) {
@@ -885,11 +887,44 @@
   const SOFT_MAX = 70, SOFT_AIM = 63; let SOFT_NEW = 36; // 轻量版教员/新机长比例高，autoFill 内放宽
   // ---------- 求解器 ----------
   // 多次随机扰动求解，取最优（硬违规最少 → 软违规最少 → 节奏/工时更均衡）
+  // ---------- 进度上报（Worker/主线程共用）：阶段 + 节流心跳 ----------
+  let PROG = null; let PROG_N = 0;
+  function progStage(key, detail) { if (PROG) PROG.stage(key, detail); }
+  function progBeat(detail) { if (PROG && ((++PROG_N & 63) === 0 || detail)) PROG.beat(detail); }
+  // 阶段相对耗时（Node 实测，单轮）；用于把阶段映射成连续百分比与 ETA
+  const STAGE_LABEL = { init: '准备', fill: '组合航段', refill: '补位重排', phase: '工时均衡', swap: '互换优化', repairFtl: 'FTL 修复', repairCrewIssues: '机组搭配修复',
+    bandBalance: '工时带调整', liftFoBand: '副驾工时提升', bandPull: '工时带拉齐', fairConcentrate: '公平调整', refillAfterConcentrate: '公平后补洞',
+    fillBandHoles: '补洞', spreadInstrT: '教员观察位分摊', rhythmRepair: '节奏优化(3飞3–4休)', swapNewCaptHoles: '新机长缺口互换', topUpNewCapt: '新机长补班',
+    assignStandby: '备份编排', assignTraining: '培训', summarize: '汇总校验' };
+  // 阶段实测耗时序列（Node，单轮；scripts 重测后更新）
+  const STAGE_SEQ_MAIN = [["init",14],["fill",3796],["refill",263],["phase",7624],["swap",2294],["bandPull",9734],["liftFoBand",60],["repairFtl",37],["refill",537],["repairFtl",10],["repairCrewIssues",3],["bandBalance",36],["liftFoBand",25],["bandPull",2686],["fairConcentrate",1040],["repairCrewIssues",1],["repairFtl",10],["refillAfterConcentrate",2131],["repairCrewIssues",2],["repairFtl",11],["fairConcentrate",387],["repairCrewIssues",2],["repairFtl",10],["fairConcentrate",134],["bandBalance",0],["fillBandHoles",1616],["repairCrewIssues",2],["repairFtl",11],["spreadInstrT",2],["repairFtl",11],["rhythmRepair",550],["repairFtl",11],["swapNewCaptHoles",15],["topUpNewCapt",550],["fairConcentrate",444],["swapNewCaptHoles",11],["fillBandHoles",1422],["repairCrewIssues",2],["repairFtl",12],["assignStandby",47],["assignTraining",6],["summarize",53]];
+  const STAGE_SEQ_LITE = [["init",8],["fill",502],["refill",7],["phase",508],["swap",59],["bandPull",29],["liftFoBand",1],["repairFtl",5],["refill",0],["repairFtl",4],["repairCrewIssues",1],["bandBalance",0],["liftFoBand",0],["bandPull",7],["fairConcentrate",0],["repairCrewIssues",0],["repairFtl",5],["refillAfterConcentrate",3],["repairCrewIssues",0],["repairFtl",5],["fairConcentrate",0],["repairCrewIssues",0],["repairFtl",2],["fairConcentrate",0],["bandBalance",1],["fillBandHoles",1],["repairCrewIssues",0],["repairFtl",2],["spreadInstrT",1],["repairFtl",1],["rhythmRepair",24],["repairFtl",2],["swapNewCaptHoles",1],["topUpNewCapt",0],["fairConcentrate",0],["swapNewCaptHoles",0],["fillBandHoles",0],["repairCrewIssues",1],["repairFtl",1],["assignStandby",7],["assignTraining",2],["summarize",12]];
+  function makeProgress(cb, K, seq) {
+    // seq：[[阶段键, 实测 ms], ...] 按出现顺序；权重取实测耗时，运行中按已完成部分的实际速度重标定（ETA）
+    seq = (seq || []).filter(x => x[0] !== 'init' && x[0] !== 'done');
+    const t0 = Date.now(); const wAt = j => (seq[j] ? Math.max(1, seq[j][1]) : 1);
+    const W = seq.reduce((a, x) => a + Math.max(1, x[1]), 0);
+    let round = 0, i = -1, key = 'init', detail = '', stT = t0, doneW = 0, lastEmit = 0, msPerW = null;
+    const pctNow = () => { const w = wAt(Math.max(0, i)); const exp = msPerW ? msPerW * w : w;
+      const inStage = Math.min(0.97, (Date.now() - stT) / Math.max(1, exp));
+      return Math.min(0.995, (round * W + doneW + w * inStage) / (K * W)); };
+    const emit = force => { const now = Date.now(); if (!force && now - lastEmit < 150) return; lastEmit = now;
+      const pct = pctNow(), el = (now - t0) / 1000;
+      cb({ pct, round: round + 1, rounds: K, stage: STAGE_LABEL[key] || key, key, detail, elapsed: el, eta: pct > 0.02 ? el * (1 - pct) / pct : null }); };
+    return {
+      round(r) { round = r; i = -1; doneW = 0; emit(true); },
+      stage(k, d) { const now = Date.now(); if (i >= 0) { const wPrev = wAt(i); doneW += wPrev; const spent = now - t0; const wDone = round * W + doneW; msPerW = spent / Math.max(1, wDone); }
+        i++; key = k; detail = d || ''; stT = now; emit(true); },
+      beat(d) { if (d) detail = d; emit(false); },
+      done() { cb({ pct: 1, round: K, rounds: K, stage: '完成', key: 'done', detail: '', elapsed: (Date.now() - t0) / 1000, eta: 0 }); }
+    };
+  }
   function autoFill(st, opts) {
     opts = opts || {};
     const big = (st.pairings || []).length > 800;
     const K = opts.attempts != null ? opts.attempts : (big ? 3 : st.lite ? 1 : 8); let best = null;
     FDP_PLAN_CACHE = new WeakMap(); const softNew0 = SOFT_NEW; if (st.lite) SOFT_NEW = 58;
+    PROG = opts.onStatus ? makeProgress(opts.onStatus, K, opts.stageSeq || (st.lite ? STAGE_SEQ_LITE : STAGE_SEQ_MAIN)) : null; PROG_N = 0;
     try {
     const score = s => {
       const fly = (s.per || []).filter(x => x.hours > 0.5);
@@ -897,6 +932,7 @@
       return s.hard * 1e6 + s.soft * 1e3 + (1 - (s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23)) * 90 + (1 - inBand) * 120 + s.all.std * 0.15;
     };
     for (let k = 0; k < K; k++) {
+      if (PROG) PROG.round(k);
       const res = autoFillOnce(st, Object.assign({}, opts, { noise: k ? rng(9173 * k + 7) : null,
         onProgress: opts.onProgress ? (x => opts.onProgress((k + x) / K)) : null }));
       const sc = score(res);
@@ -906,7 +942,7 @@
     st.pairings.forEach((p, i) => p.crew = best.crew[i]); st.standby = JSON.parse(best.sb);
     assignTraining(st);
     const out = summarize(st); out.attempt = best.k + 1; return out;
-    } finally { FDP_PLAN_CACHE = null; SOFT_NEW = softNew0; }
+    } finally { if (PROG) PROG.done(); PROG = null; FDP_PLAN_CACHE = null; SOFT_NEW = softNew0; }
   }
   function autoFillOnce(st, opts) {
     opts = opts || {}; const nz = opts.noise; const S = st.settings; const keep = !!opts.keepExisting;
@@ -1035,9 +1071,11 @@
     }
     let n = 0;
     // 主班优先；集中模式下主填+放宽意向均不开放后备，避免工时被摊薄到 ~23h
+    progStage('fill', '组合航段 0/' + order.length);
     for (const pr of order) { if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
       if (!fillOne(pr, !S.honorPrefs, true)) fillOne(pr, !S.honorPrefs, false);
-      n++; if (opts.onProgress) opts.onProgress(n / order.length * 0.55); }
+      n++; progBeat('组合航段 ' + n + '/' + order.length); if (opts.onProgress) opts.onProgress(n / order.length * 0.55); }
+    progStage('refill');
     for (const pr of order) { if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
       pr.crew = { C: null, F: null, T: null };
       Object.keys(idx.sched).forEach(id => { idx.sched[id] = idx.sched[id].filter(x => x !== pr); });
@@ -1051,6 +1089,7 @@
     const passes = opts.passes != null ? opts.passes : (big ? 2 : 6);
     const phases = big ? [[0, gw * 0.6]] : [[0, gw], [1, gw * 0.3]];
     const balPasses = concentrate ? Math.max(1, Math.floor(passes / 2)) : passes;
+    progStage('phase');
     for (const [phase, gwX] of phases) for (let it = 0; it < balPasses; it++) {
       let improved = 0;
       for (const pr of st.pairings) { const h = pairingHours(pr);
@@ -1086,6 +1125,7 @@
       if (opts.onProgress) opts.onProgress(0.6 + 0.2 * phase + 0.2 * (it + 1) / passes);
       if (!improved) break;
     }
+    progStage('swap');
     // 交换：高工时者与低工时者互换任务（同岗位），缩小组内差距（集中模式跳过）
     const slotOf = (pr, id) => ['C', 'F', 'T'].find(k => pr.crew[k] === id);
     for (let it = 0; it < (concentrate ? 1 : (big ? 2 : 4)); it++) { let sw = 0;
@@ -1127,12 +1167,16 @@
     }
     repairUnfilled(st);
     repairPrefs(st);
+    progStage('bandPull');
     bandPull(st, primary, target); // 回收碎片/非主班 → 主班 <50h
     if (!concentrate) trimPeaks(st);
     else trimPeaks(st); // 轻削峰，防单人尖峰
+    progStage('liftFoBand');
     liftFoBand(st, target, primary); // 各级内 >55→<40；观察员位机长→副驾
+    progStage('repairFtl');
     repairFtl(st);
     // FTL 卸员后尝试再填一轮空缺
+    progStage('refill');
     (function refill() {
       const idx = buildIndex(st);
       const order = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
@@ -1163,15 +1207,24 @@
         }
       }
     })();
+    progStage('repairFtl');
     repairFtl(st);
+    progStage('repairCrewIssues');
     repairCrewIssues(st);
+    progStage('bandBalance');
     bandBalance(st, target);
+    progStage('liftFoBand');
     liftFoBand(st, target, primary);
+    progStage('bandPull');
     for (let k = 0; k < 2; k++) bandPull(st, primary, target);
+    progStage('fairConcentrate');
     if (!st.lite) fairConcentrate(st); // 各职级按本级工时池浓缩到 ~40–55h 飞行者，闲置比例跨级相近
+    progStage('repairCrewIssues');
     repairCrewIssues(st);
+    progStage('repairFtl');
     repairFtl(st);
     // 浓缩后补洞：优先已飞/同级不足 55h 者
+    progStage('refillAfterConcentrate');
     (function refillAfterConcentrate() {
       const idx = buildIndex(st);
       const sortR = arr => arr.sort((a, b) => {
@@ -1192,31 +1245,55 @@
         }
       }
     })();
+    progStage('repairCrewIssues');
     repairCrewIssues(st);
+    progStage('repairFtl');
     repairFtl(st);
     // 补洞后再浓缩；禁止 repairUnfilled（会把工时重新摊回 0h 后备）
+    progStage('fairConcentrate');
     if (!st.lite) fairConcentrate(st);
+    progStage('repairCrewIssues');
     repairCrewIssues(st);
+    progStage('repairFtl');
     repairFtl(st);
+    progStage('fairConcentrate');
     if (!st.lite) fairConcentrate(st);
+    progStage('bandBalance');
     bandBalance(st, target);
     // 最后补洞：只要 18–55h 带内有人可上就不启用 0h 后备
+    progStage('fillBandHoles');
     fillBandHoles(st);
+    progStage('repairCrewIssues');
     repairCrewIssues(st);
+    progStage('repairFtl');
     repairFtl(st);
+    progStage('spreadInstrT');
     spreadInstrT(st); // 新机长观察员位：教员工时互助，压尖峰
+    progStage('repairFtl');
     repairFtl(st);
+    progStage('rhythmRepair');
     rhythmRepair(st);
+    progStage('repairFtl');
     repairFtl(st);
+    progStage('swapNewCaptHoles');
     swapNewCaptHoles(st);
+    progStage('topUpNewCapt');
     topUpNewCapt(st);
+    progStage('fairConcentrate');
     if (!st.lite) fairConcentrate(st); // 顶替后再按职级浓缩，避免副驾被摊薄
+    progStage('swapNewCaptHoles');
     swapNewCaptHoles(st);
+    progStage('fillBandHoles');
     fillBandHoles(st); // 合规卸员后再补一轮（只取当前合规候选）
+    progStage('repairCrewIssues');
     repairCrewIssues(st);
+    progStage('repairFtl');
     repairFtl(st);
+    progStage('assignStandby');
     assignStandby(st);
+    progStage('assignTraining');
     assignTraining(st);
+    progStage('summarize');
     return summarize(st);
   }
 
@@ -1731,7 +1808,7 @@
       for (const p of st.pilots) { const hp = idx.hours[p.id]; if (hp / shareFor(p) < gm[rankGroup(p.rank)] + 5) continue;
         for (const pr of idx.sched[p.id].slice().sort((a, b) => pairingHours(a) - pairingHours(b))) { const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === p.id); const h = pairingHours(pr);
           pr.crew[slot] = null;
-          const cands = candidates(st, pr, slot).filter(z => z.ok && !z.warn && z.p.id !== p.id && z.hours + h < hp - 1 && z.hours + h <= 60);
+          const cands = candidates(st, pr, slot, (q, ix) => q.id !== p.id && ix.hours[q.id] + h < hp - 1 && ix.hours[q.id] + h <= 60).filter(z => z.ok && !z.warn && z.p.id !== p.id && z.hours + h < hp - 1 && z.hours + h <= 60);
           // 优先已有一定工时者（避免把削峰结果倒给 0h 后备）
           cands.sort((a, b) => (a.hours < 8 ? 1 : 0) - (b.hours < 8 ? 1 : 0) || a.hours - b.hours);
           const c = cands[0];
@@ -1962,9 +2039,10 @@
   }
 
   // ---------- 候选人（手工编辑） ----------
-  function candidates(st, pr, slot) {
+  function candidates(st, pr, slot, pre) {
     const idx = buildIndex(st); const res = [];
     for (const p of st.pilots) {
+      if (pre && !pre(p, idx)) continue; // 求解器内：先用廉价工时条件预筛（结果与全量后过滤一致）
       const rs = []; let crewWarn = '';
       if (!slotRankOK(slot, p.rank)) rs.push('级别不适合' + SLOT_NAME[slot] + '位');
       const other = ['C', 'F', 'T'].filter(s => s !== slot).map(s => pr.crew[s]);

@@ -1460,28 +1460,78 @@
   }
 
   // ---------------- 自动填人 ----------------
-  function runAuto(cb) {
-    const p = $('#progress'); p.classList.remove('hidden'); $('#pfill').style.width = '0%';
-    let v = 0; const iv = setInterval(() => { v = Math.min(92, v + 7); $('#pfill').style.width = v + '%'; $('#ptext').textContent = v + '%'; }, 40);
-    setTimeout(() => { const t0 = performance.now(); C.autoFill(st);
-      let demoN = 0, holeN = 0;
-      if (st.sample) {
-        // 每次重新填人时允许再留洞 / 再注入（受设置开关控制）
-        st.demoHolesApplied = false; st.demoHoles = [];
-        st.demoAnomaliesApplied = false; st.demoAnomalies = [];
-        st.pairings.forEach(pr => { delete pr.demoHole; delete pr.demoAnomaly; delete pr.demoAnomalyNote; });
-        const holes = C.leaveDemoHoles(st) || [];
-        holeN = holes.length;
-        if (st.settings && st.settings.demoAnomalies) {
-          const d = C.injectDemoAnomalies(st) || [];
-          demoN = d.length;
-        }
+  // 自动排班放到 Web Worker（Blob URL，file:// 离线也可用）：主线程保持响应，进度连续上报；不支持时退回主线程
+  let workerURL = null, autoJob = null;
+  function makeAutoWorker() {
+    if (!window.Worker || !window.Blob || !window.URL || !window.RosterCoreFactory) return null;
+    try {
+      if (!workerURL) {
+        const src = 'self.RosterSampleData=' + JSON.stringify(window.RosterSampleData || null) + ';\n'
+          + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData);\n'
+          + 'self.onmessage=function(e){var d=e.data;try{C.autoFill(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
+          + 'self.postMessage({type:"done",crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null});}'
+          + 'catch(err){self.postMessage({type:"error",msg:String(err&&err.stack||err)});}};';
+        workerURL = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
       }
-      const s = C.summarize(st); lastSolveMs = Math.round(performance.now() - t0);
-      clearInterval(iv); $('#pfill').style.width = '100%'; $('#ptext').textContent = '100%';
-      setTimeout(() => { p.classList.add('hidden'); refresh();
-        const unf = s.total - s.full;
-        toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}` + (unf ? `（预留空洞 ${unf}）` : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 250); }, 350);
+      return new Worker(workerURL);
+    } catch (e) { return null; }
+  }
+  const fmtS = x => x == null ? '—' : (x < 60 ? x.toFixed(0) + ' s' : Math.floor(x / 60) + ' 分 ' + String(Math.round(x % 60)).padStart(2, '0') + ' 秒');
+  function showAutoStatus(x) {
+    const pct = Math.max(0, Math.min(1, x.pct || 0));
+    $('#pfill').style.width = (pct * 100).toFixed(1) + '%';
+    $('#ptext').innerHTML = `<b>${(pct * 100).toFixed(0)}%</b> · 第 ${x.round || 1}/${x.rounds || 1} 轮 · ${esc(x.stage || '')}${x.detail ? '（' + esc(x.detail) + '）' : ''}`
+      + `<br><span class="mut">已用 ${fmtS(x.elapsed)} · 预计剩余 ${x.eta != null && pct < 1 ? fmtS(x.eta) : '—'}</span>`;
+  }
+  function ensureCancelBtn() {
+    const box = document.querySelector('#progress .pbox'); if (!box) return null;
+    let b = $('#pcancel');
+    if (!b) { b = document.createElement('button'); b.id = 'pcancel'; b.className = 'btn sm'; b.type = 'button'; b.textContent = '取消'; b.style.marginTop = '10px'; box.appendChild(b); }
+    return b;
+  }
+  function finishAuto(t0, cb) {
+    let demoN = 0, holeN = 0;
+    if (st.sample) {
+      // 每次重新填人时允许再留洞 / 再注入（受设置开关控制）
+      st.demoHolesApplied = false; st.demoHoles = [];
+      st.demoAnomaliesApplied = false; st.demoAnomalies = [];
+      st.pairings.forEach(pr => { delete pr.demoHole; delete pr.demoAnomaly; delete pr.demoAnomalyNote; });
+      const holes = C.leaveDemoHoles(st) || [];
+      holeN = holes.length;
+      if (st.settings && st.settings.demoAnomalies) { const d = C.injectDemoAnomalies(st) || []; demoN = d.length; }
+    }
+    const s = C.summarize(st); lastSolveMs = Math.round(performance.now() - t0);
+    $('#pfill').style.width = '100%';
+    setTimeout(() => { $('#progress').classList.add('hidden'); refresh();
+      const unf = s.total - s.full;
+      toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}` + (unf ? `（预留空洞 ${unf}）` : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
+  }
+  function runAuto(cb) {
+    if (autoJob) return;
+    const p = $('#progress'); p.classList.remove('hidden');
+    showAutoStatus({ pct: 0, stage: '启动后台计算', elapsed: 0 });
+    const t0 = performance.now();
+    const cancelBtn = ensureCancelBtn();
+    const w = makeAutoWorker();
+    const runMain = () => { // 退回：主线程同步计算（界面在计算期间不会刷新）
+      if (cancelBtn) cancelBtn.style.display = 'none';
+      showAutoStatus({ pct: 0.02, stage: '后台线程不可用，主线程计算中…', elapsed: 0 });
+      setTimeout(() => { C.autoFill(st); autoJob = null; finishAuto(t0, cb); }, 60);
+    };
+    if (!w) { autoJob = { main: true }; runMain(); return; }
+    autoJob = { w };
+    let started = false;
+    if (cancelBtn) { cancelBtn.style.display = ''; cancelBtn.onclick = () => { if (!autoJob || !autoJob.w) return; autoJob.w.terminate(); autoJob = null; p.classList.add('hidden'); toast('已取消自动排班，排班未改变'); }; }
+    w.onmessage = e => { const m = e.data; if (!autoJob || autoJob.w !== w) return;
+      if (m.type === 'status') { started = true; showAutoStatus(m.x); return; }
+      w.terminate(); autoJob = null;
+      if (m.type === 'done') {
+        st.pairings.forEach((pr, i) => { pr.crew = m.crews[i]; }); st.standby = m.standby; st.training = m.training;
+        finishAuto(t0, cb);
+      } else { console.error(m.msg); if (!started) { autoJob = { main: true }; runMain(); } else { p.classList.add('hidden'); toast('自动排班出错：' + esc(String(m.msg).split('\n')[0])); } }
+    };
+    w.onerror = ev => { ev.preventDefault && ev.preventDefault(); if (!autoJob || autoJob.w !== w) return; w.terminate(); autoJob = { main: true }; runMain(); };
+    w.postMessage({ st: JSON.parse(JSON.stringify(st)), opts: {} });
   }
 
   // ---------------- 启动 ----------------
