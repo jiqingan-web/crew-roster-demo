@@ -181,7 +181,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const st0 = C.generateSample();
   chk('pairings scaled', st0.pairings.length >= 300, st0.pairings.length);
   chk('regs scaled', (() => { const r = new Set(); st0.pairings.forEach(p => p.legs.forEach(l => r.add(l.reg))); return r.size >= 40; })(), 'regs');
-  chk('schema8', st0.sampleSchema === 8, st0.sampleSchema);
+  chk('schema9', st0.sampleSchema === 9, st0.sampleSchema);
 }
 
 // ---- CCAR-121-R8 回测回归（P章 表A/表B/累积限制；出处见 回测/121回测报告.md）----
@@ -320,7 +320,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
 
 // ===== 整月演示补全 + 导出 =====
 { const st = C.generateSample();
-  const okSchema = st.sampleSchema >= 8;
+  const okSchema = st.sampleSchema >= 9;
   const dayCover = {}; for (let d = 1; d <= C.DAYS; d++) dayCover[d] = 0;
   st.pairings.forEach(p => { for (let d = p.start; d < p.start + p.ndays; d++) if (d >= 1 && d <= C.DAYS) dayCover[d]++; });
   const zero = Object.keys(dayCover).filter(d => !dayCover[d]);
@@ -401,18 +401,18 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
     const z = hrs.filter(h => h < 0.5).length / hrs.length;
     if (rk.startsWith('F')) foZ.push(z);
     const fmed = fly.length ? fly[(fly.length * 0.5) | 0] : 0;
-    const in35 = fly.filter(h => h >= 35 && h <= 60).length;
-    const in40 = fly.filter(h => h >= 40 && h <= 60).length;
-    chk(rk + ' flyMed>=35', fly.length >= Math.ceil(ps.length * 0.35) && fmed >= 35, 'flyN=' + fly.length + '/' + ps.length + ' med=' + fmed.toFixed(1) + ' zero%=' + (100 * z).toFixed(0));
+    const in35 = fly.filter(h => h >= 35 && h <= 70).length;
+    const in40 = fly.filter(h => h >= 40 && h <= 70).length;
+    chk(rk + ' flyMed>=45', fly.length >= Math.ceil(ps.length * 0.5) && fmed >= 45, 'flyN=' + fly.length + '/' + ps.length + ' med=' + fmed.toFixed(1) + ' zero%=' + (100 * z).toFixed(0));
     chk(rk + ' fly35>=50%', fly.length ? in35 / fly.length >= 0.5 : false, fly.length ? (100 * in35 / fly.length).toFixed(0) + '%' : '0');
     chk(rk + ' fly40>=40%', fly.length ? in40 / fly.length >= 0.4 : false, fly.length ? (100 * in40 / fly.length).toFixed(0) + '%' : '0');
-    chk(rk + ' noOver62', hrs.every(h => h <= 62), hrs.filter(h => h > 62).length);
+    chk(rk + ' noOver78', hrs.every(h => h <= 78), hrs.filter(h => h > 78).length); // 实飞校准软带 ~55–70h
     const idleTrain = ps.filter(p => ix.hours[p.id] < 0.5 && ((st.training || {})[p.id] || []).length > 0).length;
     chk(rk + ' idleNoTrain', idleTrain === 0, idleTrain);
   }
   chk('FO zero spread<=20pp', Math.max(...foZ) - Math.min(...foZ) <= 0.20, 'min=' + (100 * Math.min(...foZ)).toFixed(0) + ' max=' + (100 * Math.max(...foZ)).toFixed(0));
   // 运力不足时约半数 FO 闲置是刻意后备，但不得把某一级清成培训墙
-  chk('F5 zero<60%', foZ[2] < 0.60, (100 * foZ[2]).toFixed(0) + '%');
+  chk('F5 zero<45%', foZ[2] < 0.45, (100 * foZ[2]).toFixed(0) + '%');
   const holes = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length;
     for (const rk of ['TL', 'TB', 'TC']) {
     const ps = st.pilots.filter(p => p.rank === rk && !(p.health && p.health.noFly));
@@ -421,10 +421,41 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
     const fly = hrs.filter(h => h > 0.5).sort((a, b) => a - b);
     const fmed = fly.length ? fly[(fly.length * 0.5) | 0] : 0;
     const mx = Math.max(0, ...hrs);
-    chk(rk + ' flyMed 40-60', fmed >= 40 && fmed <= 60, 'med=' + fmed.toFixed(1) + ' max=' + mx.toFixed(1));
+    chk(rk + ' flyMed 50-72', fmed >= 50 && fmed <= 72, 'med=' + fmed.toFixed(1) + ' max=' + mx.toFixed(1));
     // 教员义务观察员位会叠工时；允许个别尖峰但须低于法规硬顶
     chk(rk + ' max<=hardCap', mx <= ((st.settings && st.settings.hardMaxHours) || 100) + 1e-9, mx.toFixed(1));
   }
-  chk('holes<=35', holes <= 35, holes);
-  chk('schema8', st.sampleSchema >= 8, st.sampleSchema);
+  chk('holes<=70', holes <= 70 && holes / st.pairings.length < 0.06, holes);
+  chk('schema9', st.sampleSchema >= 9, st.sampleSchema);
+}
+
+// ===== 节奏（实飞记录校准 2026-06/07：月值勤 12–14 天，飞 3 天为主，休 3–4 天为主，一日 2 段为主）=====
+{ const st = C.generateSample(); C.autoFill(st, { attempts: 1 });
+  const ix = C.buildIndex(st); const ds = C.dayStatus(st, ix);
+  const chk = (n, ok, info) => { console.log('RHYTHM ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
+  const med = a => { const s = a.slice().sort((x, y) => x - y); return s[s.length >> 1]; };
+  const blocks = {}, gaps = {}, byRank = {}; const all = [];
+  for (const p of st.pilots) { if (p.health && p.health.noFly) continue;
+    const dd = []; for (let d = 1; d <= C.DAYS; d++) if (ds[p.id][d] === 'D') dd.push(d);
+    if (!dd.length) continue; all.push(dd.length); (byRank[p.rank] = byRank[p.rank] || []).push(dd.length);
+    let s = dd[0], pv = dd[0];
+    for (let i = 1; i <= dd.length; i++) { if (i < dd.length && dd[i] === pv + 1) { pv = dd[i]; continue; }
+      blocks[pv - s + 1] = (blocks[pv - s + 1] || 0) + 1; if (i < dd.length) { const g = dd[i] - pv - 1; gaps[g] = (gaps[g] || 0) + 1; s = pv = dd[i]; } } }
+  const gT = Object.values(gaps).reduce((a, b) => a + b, 0), bT = Object.values(blocks).reduce((a, b) => a + b, 0);
+  const mode = +Object.entries(blocks).sort((a, b) => b[1] - a[1])[0][0];
+  const g34 = ((gaps[3] || 0) + (gaps[4] || 0)) / gT, g2 = (gaps[2] || 0) / gT, g1 = ((gaps[0] || 0) + (gaps[1] || 0)) / gT;
+  const b5 = Object.entries(blocks).filter(([k]) => +k >= 5).reduce((a, [, v]) => a + v, 0) / bT;
+  chk('dutyDays median 12-14', med(all) >= 12 && med(all) <= 14, med(all));
+  chk('block mode 3', mode === 3, JSON.stringify(blocks));
+  chk('rest 3-4 >= 45%', g34 >= 0.45, (100 * g34).toFixed(0) + '%');
+  chk('rest 2 minority', g2 < g34 && g2 <= 0.3, (100 * g2).toFixed(0) + '%');
+  chk('rest 0-1 <= 12%', g1 <= 0.12, (100 * g1).toFixed(0) + '%');
+  chk('no 5+ day blocks', b5 <= 0.01, (100 * b5).toFixed(1) + '%');
+  for (const [rk, xs] of Object.entries(byRank)) if (xs.length >= 20) chk(rk + ' dutyMed 10-15', med(xs) >= (C.NEW_CAPT.includes(rk) ? 8 : 10) && med(xs) <= 15, med(xs) + ' n=' + xs.length);
+  const lpd = {}; st.pairings.forEach(pr => { const b = {}; pr.legs.forEach(l => b[l.d] = (b[l.d] || 0) + 1); Object.values(b).forEach(n => lpd[n] = (lpd[n] || 0) + 1); });
+  const lT = Object.values(lpd).reduce((a, b) => a + b, 0);
+  chk('legs/day mostly 2', (lpd[2] || 0) / lT >= 0.7 && (lpd[4] || 0) === 0, JSON.stringify(lpd));
+  const tr = st.pilots.filter(p => ix.hours[p.id] > 0.5).map(p => ((st.training || {})[p.id] || []).length);
+  chk('training 1-2 days', tr.every(n => n >= 0 && n <= 2), Math.min(...tr) + '-' + Math.max(...tr));
+  chk('all pairings demoFill', st.pairings.every(p => p.demoFill), '');
 }

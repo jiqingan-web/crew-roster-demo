@@ -371,7 +371,7 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, sampleSchema: 8, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 9, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -423,11 +423,21 @@
     function splitDuty(icao, flts, std, ac, reg, dayAbs) {
       const segs = [];
       let i = 0;
+      let clock = (dayAbs - 1) * DAY + std;
       while (i < icao.length - 1) {
-        let tmin = (dayAbs - 1) * DAY + (segs.length ? Math.max(std, 6 * 60) : std);
+        // 同机第二个值勤段（晚班）接续早班落地+过站，避免同机号航段时间重叠
+        let tmin = clock;
         const legs = [];
         let flight = 0;
-        while (i < icao.length - 1 && legs.length < 4) {
+        while (i < icao.length - 1 && legs.length < 3) {
+          // 真实机组节奏：一日多为 2 段（往返），返基地或避免剩 1 段尾巴时才排第 3 段
+          if (legs.length === 2) {
+            const endBase = BASES[legs[1].to];
+            const left = icao.length - 1 - i;
+            const nextBack = BASES[icao[i + 1]];
+            if (endBase && left !== 1) break;
+            if (!endBase && !nextBack && left !== 1) break;
+          }
           const a = icao[i], b = icao[i + 1];
           if (!AIRPORTS[a] || !AIRPORTS[b]) { i++; break; }
           const bm = blockMin(a, b);
@@ -441,9 +451,10 @@
           tmin += bm + 50; flight = nextFlight; i++;
         }
         if (!legs.length) { i++; continue; }
+        clock = tmin;
         segs.push(legs);
         // 同日历日第二段：从下一起飞时刻继续（演示用，避免超长机径拖垮规则）
-        if (i < icao.length - 1 && segs.length >= 2) break; // 每日最多切 2 个机组任务
+        if (i < icao.length - 1 && segs.length >= 2) break; // 每机每日最多 2 个机组值勤（早/晚班）
       }
       return segs;
     }
@@ -478,12 +489,18 @@
     const pairings = []; let pid = 1;
     Object.keys(duties).forEach(reg => {
       // 按日历日合并同日多段（取首段，避免同日两段并入超长值勤）
+      const slotsOf = {};
+      duties[reg].forEach(du => { const k = (slotsOf[du.day] = (slotsOf[du.day] || 0) + 1) - 1; du.k = k; });
+      // 演示量：约 1/5 机号只取早班值勤（晚班不铺），使机长/教员运力有余量
+      const lateOK = Math.abs(hashReg(reg)) % 5 !== 0;
+      for (let K = 0; K < (lateOK ? 2 : 1); K++) {
       const byDay = {};
-      duties[reg].forEach(du => { if (!byDay[du.day]) byDay[du.day] = du; });
+      duties[reg].forEach(du => { if (du.k === K && !byDay[du.day]) byDay[du.day] = du; });
       const days = Object.keys(byDay).map(Number).sort((a, b) => a - b);
-      let i = 0;
+      let i = 0, nChunk = 0;
       while (i < days.length) {
-        const targetLen = (i % 5 === 0) ? 4 : 3; // 交替 3/4 日节奏
+        // 实飞记录校准：飞 3 天为主，约每 4 块穿插 1 个 2 天块（起点按机号/班次错开）
+        const targetLen = ((nChunk++ + K + reg.length) % 4 === 3) ? 2 : 3;
         const chunkDays = [days[i]];
         while (chunkDays.length < targetLen) {
           const want = chunkDays[chunkDays.length - 1] + 1;
@@ -496,9 +513,10 @@
         if (chunkDays.length >= 3 && !endBase(chunkDays[chunkDays.length - 1])) {
           // 优先落到基地：能延长则延长，否则裁到基地日
           const nxt = chunkDays[chunkDays.length - 1] + 1;
-          if (byDay[nxt] && endBase(nxt) && chunkDays.length < 4) chunkDays.push(nxt);
+          if (byDay[nxt] && endBase(nxt) && chunkDays.length < 3) chunkDays.push(nxt);
           else {
-            while (chunkDays.length > 2 && !endBase(chunkDays[chunkDays.length - 1])) chunkDays.pop();
+            // 仅当第 2 日恰好回基地时裁成 2 日；否则保留 3 日（演示补全，外站过夜后次日随机续飞）
+            if (chunkDays.length === 3 && endBase(chunkDays[1])) chunkDays.pop();
           }
         }
         const legs = [];
@@ -512,14 +530,15 @@
           start: chunkDays[0], ndays: chunkDays.length,
           ac: legs[0].ac, legs, crew: { C: null, F: null, T: null },
           demoSynth: synthRegSet.has(reg), // B-Dxxx 演示扩量
-          demoFill: true // 日历日由完整日模板按星期循环铺满（演示补全，非实飞）
+          dutySlot: K, demoFill: true // 日历日由完整日模板按星期循环铺满（演示补全，非实飞）
         });
         pid++;
         const last = chunkDays[chunkDays.length - 1];
         while (i < days.length && days[i] <= last) i++;
       }
+      }
     });
-    const maxP = opt.maxPairings || 900;
+    const maxP = opt.maxPairings || 1800;
     pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep || a.id.localeCompare(b.id));
     const out = pairings.slice(0, maxP);
     out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
@@ -793,9 +812,29 @@
     for (let i = 1; i < ds.length; i++) { let n = 0; for (let d = ds[i - 1][1] + 1; d < ds[i][0]; d++) if (!ex.has(d)) n++; g.push(n); }
     return g;
   }
-  const gapCostOne = g => g <= 0 ? 1.4 : g === 1 ? 0.95 : (g === 2 || g === 3) ? 0 : g === 4 ? 0.18 : 0.75 + 0.12 * (g - 5);
+  // 实飞记录校准（2026-06/07）：休 3–4 天为主，休 2 天偶有（约 2 次/两月），休 1 天应避免；≥5 天轻罚
+  const gapCostOne = g => g <= 0 ? 1.4 : g === 1 ? 1.0 : g === 2 ? 0.4 : (g === 3 || g === 4) ? 0 : g === 5 ? 0.25 : 0.5 + 0.1 * (g - 6);
   const gapCost = (p, list, st) => restGaps(p, list, st).reduce((s, g) => s + gapCostOne(g), 0);
 
+  // 节奏增量：加入 pr 后的休息间隔代价变化 + 飞行块长度偏好（3 天最佳）
+  function rhythmDelta(q, pr, st, idx) {
+    const sc = idx.sched[q.id] || [];
+    let d = gapCost(q, sc.concat([pr]), st) - gapCost(q, sc, st);
+    const days = new Set(); sc.forEach(x => daysTouched(x, st).forEach(v => days.add(v))); daysTouched(pr, st).forEach(v => days.add(v));
+    let lo = pr.start, hi = pr.start + pr.ndays - 1; while (days.has(lo - 1)) lo--; while (days.has(hi + 1)) hi++;
+    const len = hi - lo + 1;
+    d += len === 3 ? -0.45 : len === 2 ? -0.1 : len === 4 ? 0.35 : len >= 5 ? 1.2 : 0.2;
+    return d;
+  }
+  // 新机长任 C 需教员陪飞 → C 位工时软顶较低；任观察员(T)不需教员，按普通软顶
+  const softCapOf = (p, slot) => isNew(p.rank) && slot !== 'T' ? SOFT_NEW + 4 : SOFT_MAX;
+  // 先免 FTL 快检，通过后再做完整 FTL（R8/48h/第5日等硬规则不放松）
+  function pcOK(q, pr, st, idx, slot) {
+    if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot, skipFtl: true })[0]) return false;
+    return personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0];
+  }
+  // 软工时带（实飞校准：月值勤 12–14 天 × 2 段/日 ≈ 4–4.5h → 典型 45–64h；硬顶仍为法规 100h）
+  const SOFT_MAX = 70, SOFT_AIM = 63, SOFT_NEW = 36;
   // ---------- 求解器 ----------
   // 多次随机扰动求解，取最优（硬违规最少 → 软违规最少 → 节奏/工时更均衡）
   function autoFill(st, opts) {
@@ -805,7 +844,7 @@
     const score = s => {
       const fly = (s.per || []).filter(x => x.hours > 0.5);
       const inBand = fly.length ? fly.filter(x => x.hours >= 40 && x.hours <= 60).length / fly.length : 0;
-      return s.hard * 1e6 + s.soft * 1e3 + (1 - s.rhythm.gap23) * 90 + (1 - inBand) * 120 + s.all.std * 0.15;
+      return s.hard * 1e6 + s.soft * 1e3 + (1 - (s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23)) * 90 + (1 - inBand) * 120 + s.all.std * 0.15;
     };
     for (let k = 0; k < K; k++) {
       const res = autoFillOnce(st, Object.assign({}, opts, { noise: k ? rng(9173 * k + 7) : null,
@@ -865,6 +904,7 @@
       const gdc = {}; const gd = p => gdc[p.id] != null ? gdc[p.id] : (gdc[p.id] = gw * (gapCost(p, idx.sched[p.id].concat([pr]), st) - gapCost(p, idx.sched[p.id], st)));
       const free = s => !pr.crew[s];
       const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs, slot, skipFtl: big })[0];
+      const instrL = pilots.filter(x => isInstr(x.rank)); const instrBusy = instrL.filter(x => idx.hours[x.id] > SOFT_MAX - 8).length / Math.max(1, instrL.length);
       const cur = { C: pr.crew.C && idx.pm[pr.crew.C], F: pr.crew.F && idx.pm[pr.crew.F], T: pr.crew.T && idx.pm[pr.crew.T] };
       const inCrew = id => Object.values(pr.crew).includes(id);
       const pool = primaryOnly ? pilots.filter(p => primary[p.id]) : pilots;
@@ -872,7 +912,8 @@
       const CAPN = primaryOnly ? (big ? 14 : 18) : (big ? 8 : 12);
       const FON = primaryOnly ? (big ? 12 : 16) : (big ? 6 : 10);
       const TN = primaryOnly ? (big ? 10 : 14) : (big ? 5 : 8);
-      const capt = free('C') ? sortR(pool.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C'))).slice(0, CAPN) : [cur.C];
+      const newOK = p => !isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p); // 新机长受教员容量约束
+      const capt = free('C') ? sortR(pool.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && newOK(p) && ok(p, 'C'))).slice(0, CAPN) : [cur.C];
       const fos = sortR(pool.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')));
       const capT = sortR(pool.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'T')));
       let best = null;
@@ -894,12 +935,15 @@
             while (days.has(lo - 1)) lo--;
             while (days.has(hi + 1)) hi++;
             const len = hi - lo + 1;
-            if (len >= 2 && len <= 4) return -0.28;
-            if (len >= 5) return 0.85;
-            return 0.08;
+            if (len === 3) return -0.36; // 飞 3 天为主
+            if (len === 2) return -0.12;
+            if (len === 4) return 0.3;
+            if (len >= 5) return 1.0;
+            return 0.15;
           };
-          const act = p => {
+          const act = (p, asT) => {
             const h = idx.hours[p.id];
+            if (!asT && isNew(p.rank) && h > SOFT_NEW) return 1.4 + (h - SOFT_NEW) * 0.08; // 新机长受教员陪飞容量约束
             if (!primary[p.id]) {
               // 同职级主班未达 ~40h 前，后备极重罚（跨职级同一规则，不单杀某一级）
               const rk = p.rank;
@@ -915,17 +959,20 @@
             }
             if (h < 25) return -1.05;
             if (h < 40) return -0.7;
-            if (h <= 55) return -0.1;
-            if (h <= 62) return 0.55;
+            if (h <= (SOFT_MAX - 5)) return -0.1;
+            if (h <= (SOFT_MAX + 2)) return 0.55;
             return 1.15;
           };
           let sc = (free('C') ? ratio(c.id) + gd(c) + blk(c) + act(c) : 0)
             + (free('F') ? ratio(f.id) + gd(f) + blk(f) + act(f) : 0)
-            + (free('T') ? ratio(t.id) + gd(t) + blk(t) + act(t) : 0);
+            + (free('T') ? ratio(t.id) + gd(t) + blk(t) + act(t, true) : 0);
           if (isFO(f.rank) && isFO(t.rank)) { const a = RANK_VAL[f.rank], b = RANK_VAL[t.rank];
             if ((a >= 6 && b >= 6) || (a <= 4 && b <= 4)) sc += 0.08; }
           // 第三人：非新机长任务优先副驾驶，把机长工时留给 C 位（非歧视某副驾级别）
-          if (free('T') && isCaptClass(t.rank) && !isNew(c.rank)) sc += 1.2;
+          if (free('T') && isCaptClass(t.rank) && !isNew(c.rank)) sc += isNew(t.rank) ? 0.1 : 1.2; // 新机长可任观察员补足值勤天数（不占教员）
+          // 教员仅 ~6% 编制：新机长任 C 需教员陪飞，教员接近满载时少排新机长 C 位
+          if (free('C') && isNew(c.rank)) sc += 0.25 + 1.2 * instrBusy;
+          if (free('C') && isInstr(c.rank)) sc += 0.35 + 1.0 * instrBusy; // 教员优先留给新机长带飞 T 位
           if (nz) sc += nz() * 0.25;
           if (!best || sc < best.sc) best = { sc, c, f, t };
         }
@@ -1040,26 +1087,26 @@
       const order = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
       const sortR = arr => arr.sort((a, b) => (primary[b.id] ? 1 : 0) - (primary[a.id] ? 1 : 0)
         || (idx.hours[a.id] < 40 ? 0 : 1) - (idx.hours[b.id] < 40 ? 0 : 1)
-        || (idx.hours[a.id] < 50 ? 0 : 1) - (idx.hours[b.id] < 50 ? 0 : 1)
+        || (idx.hours[a.id] < (SOFT_MAX - 10) ? 0 : 1) - (idx.hours[b.id] < (SOFT_MAX - 10) ? 0 : 1)
         || idx.hours[a.id] - idx.hours[b.id]);
       for (const pr of order) {
         const free = s => !pr.crew[s];
         const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
         const inCrew = id => Object.values(pr.crew).includes(id);
         if (free('C')) {
-          let caps = st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C'));
-          if (caps.some(p => primary[p.id] && idx.hours[p.id] < 55)) caps = caps.filter(p => primary[p.id]);
+          let caps = st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C'));
+          if (caps.some(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 5))) caps = caps.filter(p => primary[p.id]);
           const c = sortR(caps)[0]; if (c) { pr.crew.C = c.id; idx.sched[c.id].push(pr); idx.hours[c.id] += pairingHours(pr); }
         }
         if (free('F')) {
           let fos = st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'));
-          if (fos.some(p => primary[p.id] && idx.hours[p.id] < 55)) fos = fos.filter(p => primary[p.id]);
+          if (fos.some(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 5))) fos = fos.filter(p => primary[p.id]);
           const f = sortR(fos)[0]; if (f) { pr.crew.F = f.id; idx.sched[f.id].push(pr); idx.hours[f.id] += pairingHours(pr); }
         }
         if (free('T') && pr.crew.C && pr.crew.F) {
           const needInstr = isNew(idx.pm[pr.crew.C].rank);
           let ts = st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank)));
-          if (ts.some(p => primary[p.id] && idx.hours[p.id] < 55)) ts = ts.filter(p => primary[p.id]);
+          if (ts.some(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 5))) ts = ts.filter(p => primary[p.id]);
           const t = sortR(ts)[0];
           if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) { pr.crew.T = t.id; idx.sched[t.id].push(pr); idx.hours[t.id] += pairingHours(pr); } }
         }
@@ -1077,7 +1124,7 @@
     (function refillAfterConcentrate() {
       const idx = buildIndex(st);
       const sortR = arr => arr.sort((a, b) => {
-        const band = p => { const h = idx.hours[p.id]; if (h >= 18 && h < 55) return 0; if (h >= 5 && h < 60) return 1; if (h < 5) return 3; return 2; };
+        const band = p => { const h = idx.hours[p.id]; if (h >= 18 && h < (SOFT_MAX - 5)) return 0; if (h >= 5 && h < SOFT_MAX) return 1; if (h < 5) return 3; return 2; };
         return band(a) - band(b) || idx.hours[a.id] - idx.hours[b.id];
       });
       for (const pr of st.pairings) {
@@ -1103,48 +1150,175 @@
     fairConcentrate(st);
     bandBalance(st, target);
     // 最后补洞：只要 18–55h 带内有人可上就不启用 0h 后备
-    (function finalBandHoles() {
-      const idx = buildIndex(st);
-      const sortR = arr => arr.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
-      for (const pr of st.pairings) {
-        if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
-        const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
-        const inCrew = id => Object.values(pr.crew).includes(id);
-        const put = (slot, p) => { pr.crew[slot] = p.id; (idx.sched[p.id] = idx.sched[p.id] || []).push(pr); idx.hours[p.id] += pairingHours(pr); };
-        const pick = (pool) => {
-          const band = pool.filter(p => idx.hours[p.id] >= 12 && idx.hours[p.id] < 58);
-          const use = band.length ? band : pool.filter(p => idx.hours[p.id] < 58);
-          return sortR(use)[0];
-        };
-        if (!pr.crew.C) { const c = pick(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C'))); if (c) put('C', c); }
-        if (!pr.crew.F) { const f = pick(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'))); if (f) put('F', f); }
-        if (!pr.crew.T && pr.crew.C && pr.crew.F) {
-          const needInstr = isNew(idx.pm[pr.crew.C].rank);
-          const t = pick(st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank))));
-          if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) put('T', t); }
-        }
-      }
-    })();
+    fillBandHoles(st);
     repairCrewIssues(st);
     repairFtl(st);
     spreadInstrT(st); // 新机长观察员位：教员工时互助，压尖峰
+    repairFtl(st);
+    rhythmRepair(st);
+    repairFtl(st);
+    swapNewCaptHoles(st);
+    topUpNewCapt(st);
+    fairConcentrate(st); // 顶替后再按职级浓缩，避免副驾被摊薄
+    swapNewCaptHoles(st);
+    fillBandHoles(st); // 合规卸员后再补一轮（只取当前合规候选）
+    repairCrewIssues(st);
     repairFtl(st);
     assignStandby(st);
     assignTraining(st);
     return summarize(st);
   }
 
+  function fillBandHoles(st) {
+    const idx = buildIndex(st);
+    const sortR = arr => arr.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+    for (const pr of st.pairings) {
+      if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
+      const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
+      const inCrew = id => Object.values(pr.crew).includes(id);
+      const put = (slot, p) => { pr.crew[slot] = p.id; (idx.sched[p.id] = idx.sched[p.id] || []).push(pr); idx.hours[p.id] += pairingHours(pr); };
+      const pick = (pool) => {
+        const band = pool.filter(p => idx.hours[p.id] >= 12 && idx.hours[p.id] < (SOFT_MAX - 2));
+        const use = band.length ? band : pool.filter(p => idx.hours[p.id] < (SOFT_MAX - 2));
+        return sortR(use)[0];
+      };
+      if (!pr.crew.C) { const c = pick(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C'))); if (c) put('C', c); }
+      if (!pr.crew.F) { const f = pick(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'))); if (f) put('F', f); }
+      if (!pr.crew.T && pr.crew.C && pr.crew.F) {
+        const needInstr = isNew(idx.pm[pr.crew.C].rank);
+        const pool = st.pilots.filter(p => !inCrew(p.id) && (!needInstr || isInstr(p.rank)) && idx.hours[p.id] < SOFT_MAX + 6);
+        const band = p => { const h = idx.hours[p.id]; return h >= 12 && h < SOFT_MAX - 2 ? 0 : h < 12 ? 1 : 2; };
+        pool.sort((a, b) => band(a) - band(b) || idx.hours[a.id] - idx.hours[b.id]);
+        let bt = null, bs = Infinity, nv = 0;
+        for (const t of pool) {
+          const rd = rhythmDelta(t, pr, st, idx);
+          if (!ok(t, 'T')) continue;
+          const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t];
+          if (crewIssue(pr, crew, st)) continue;
+          const sc = rd + 0.6 * band(t) + 0.015 * idx.hours[t.id];
+          if (sc < bs) { bs = sc; bt = t; }
+          if (++nv >= 8) break;
+        }
+        if (bt) put('T', bt);
+      }
+    }
+  }
+
+  // 节奏修复：把造成「休 1–2 天 / 连飞 ≥4 天」的任务换给节奏更合适且工时未满的同类人员（不放松任何硬规则）
+  function rhythmRepair(st) {
+    for (let it = 0; it < 3; it++) {
+      const idx = buildIndex(st); let moved = 0;
+      const ds = dayStatus(st, idx);
+      for (const p of st.pilots) {
+        const sc = idx.sched[p.id] || []; if (sc.length < 2) continue;
+        const bad = new Set();
+        const sorted = sc.slice().sort((a, b) => a.start - b.start);
+        for (let i = 1; i < sorted.length; i++) {
+          const a = sorted[i - 1], b = sorted[i];
+          const gap = b.start - (a.start + a.ndays);
+          if (gap >= 1 && gap <= 2) { bad.add(a.ndays <= b.ndays ? a : b); }
+        }
+        // 连飞 ≥4 天：块内最短任务
+        let run = []; const flush = () => { if (run.length >= 2) { const days = new Set(); run.forEach(x => daysTouched(x, st).forEach(d => days.add(d))); if (days.size >= 4) bad.add(run.slice().sort((x, y) => x.ndays - y.ndays)[0]); } run = []; };
+        for (let i = 0; i < sorted.length; i++) { if (run.length && sorted[i].start > run[run.length - 1].start + run[run.length - 1].ndays) flush(); run.push(sorted[i]); } flush();
+        for (const pr of bad) {
+          const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === p.id); if (!slot) continue;
+          const h = pairingHours(pr);
+          const without = sc.filter(x => x !== pr);
+          const gain0 = gapCost(p, sc, st) - gapCost(p, without, st);
+          if (gain0 <= 0.2) continue;
+          const pool = st.pilots.filter(q => q.id !== p.id && !Object.values(pr.crew).includes(q.id)
+            && (slot === 'C' ? isCaptClass(q.rank) && (!isNew(q.rank) || idx.hours[q.id] + h <= softCapOf(q, slot)) : slot === 'F' ? isFO(q.rank) : (isNew((idx.pm[pr.crew.C] || {}).rank) ? isInstr(q.rank) : true))
+            && idx.hours[q.id] > 0.5 && idx.hours[q.id] + h <= softCapOf(q, slot) && rankGroup(q.rank) === rankGroup(p.rank));
+          let best = null, bs = -0.25;
+          for (const q of pool) {
+            const rd = rhythmDelta(q, pr, st, idx);
+            const net = gain0 - rd - 0.01 * Math.abs((idx.hours[q.id] + h) - SOFT_AIM);
+            if (net <= bs) continue;
+            if (!pcOK(q, pr, st, idx, slot)) continue;
+            const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
+            if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
+            best = q; bs = net;
+          }
+          if (!best) continue;
+          pr.crew[slot] = best.id;
+          idx.sched[p.id] = idx.sched[p.id].filter(x => x !== pr); idx.hours[p.id] -= h;
+          idx.sched[best.id].push(pr); idx.hours[best.id] += h;
+          moved++; break;
+        }
+      }
+      if (!moved) break;
+    }
+  }
+
+  // 新机长补足值勤：任观察员（T 位不需教员陪飞）顶替值勤偏多者，使新机长也落在 ~12 天
+  function topUpNewCapt(st) {
+    const idx = buildIndex(st);
+    const dd = id => { const s = new Set(); (idx.sched[id] || []).forEach(x => daysTouched(x, st).forEach(d => s.add(d))); return s.size; };
+    const news = st.pilots.filter(p => isNew(p.rank) && !(p.health && p.health.noFly));
+    for (let round = 0; round < 6; round++) {
+      let moved = 0;
+      news.sort((a, b) => dd(a.id) - dd(b.id));
+      for (const p of news) {
+        if (dd(p.id) >= 12) continue;
+        let best = null, bs = 0.3;
+        for (const pr of st.pairings) {
+          const tid = pr.crew.T; if (!tid || Object.values(pr.crew).includes(p.id)) continue;
+          const c = idx.pm[pr.crew.C]; if (c && isNew(c.rank)) continue; // 该 T 需教员
+          const holder = idx.pm[tid]; if (!holder || isInstr(holder.rank) && false) continue;
+          const hd = dd(tid);
+          if (!(hd >= 13 || idx.hours[tid] > SOFT_AIM + 2)) continue;
+          const h = pairingHours(pr); if (idx.hours[p.id] + h > SOFT_MAX) continue;
+          const rd = rhythmDelta(p, pr, st, idx);
+          if (rd >= bs) continue;
+          if (!pcOK(p, pr, st, idx, 'T')) continue;
+          if (crewIssue(pr, [c, idx.pm[pr.crew.F], p], st)) continue;
+          best = pr; bs = rd;
+          if (rd < -0.3) break;
+        }
+        if (!best) continue;
+        const tid = best.crew.T, h = pairingHours(best);
+        best.crew.T = p.id;
+        idx.sched[tid] = idx.sched[tid].filter(x => x !== best); idx.hours[tid] -= h;
+        idx.sched[p.id].push(best); idx.hours[p.id] += h; moved++;
+      }
+      if (!moved) break;
+    }
+  }
+
+  // 新机长任务找不到教员陪飞时：换成有余量的普通机长（教员编制约 6%，是新机长飞行量的结构性上限）
+  function swapNewCaptHoles(st) {
+    const idx = buildIndex(st);
+    for (const pr of st.pairings) {
+      if (pr.crew.T || !pr.crew.C) continue;
+      const c0 = idx.pm[pr.crew.C]; if (!c0 || !isNew(c0.rank)) continue;
+      const h = pairingHours(pr);
+      const pool = st.pilots.filter(q => isCaptClass(q.rank) && !isNew(q.rank) && !isInstr(q.rank) && !Object.values(pr.crew).includes(q.id) && idx.hours[q.id] + h <= SOFT_MAX + 8)
+        .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+      for (const q of pool) {
+        if (!pcOK(q, pr, st, idx, 'C')) continue;
+        const f = idx.pm[pr.crew.F];
+        if (f && (f.rank === 'F1' || f.rank === 'F2')) break; // 仍需教员，换机长无益
+        if (f && pr.legs.some(l => !legSeatedOK(q, f, l, st) && !legSeatedOK(f, q, l, st))) continue; // RE12 执飞对
+        pr.crew.C = q.id;
+        idx.sched[c0.id] = idx.sched[c0.id].filter(x => x !== pr); idx.hours[c0.id] -= h;
+        idx.sched[q.id].push(pr); idx.hours[q.id] += h;
+        break;
+      }
+    }
+  }
+
   // 新机长任务第三人必须是教员时，把高工时教员与低工时教员互换 T 位
   function spreadInstrT(st) {
     for (let it = 0; it < 8; it++) {
       const idx = buildIndex(st); let moved = 0;
-      const fat = st.pilots.filter(p => isInstr(p.rank) && idx.hours[p.id] > 58)
+      const fat = st.pilots.filter(p => isInstr(p.rank) && idx.hours[p.id] > (SOFT_MAX - 2))
         .sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
       const thin = st.pilots.filter(p => isInstr(p.rank) && idx.hours[p.id] < 48 && !(p.health && p.health.noFly))
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       if (!fat.length || !thin.length) break;
       for (const hi of fat) {
-        if (idx.hours[hi.id] <= 58) continue;
+        if (idx.hours[hi.id] <= (SOFT_MAX - 2)) continue;
         for (const pr of (idx.sched[hi.id] || []).slice()) {
           if (pr.crew.T !== hi.id) continue;
           const cp = idx.pm[pr.crew.C]; if (!cp || !isNew(cp.rank)) continue; // 仅动「新机长+教员」义务位
@@ -1152,8 +1326,8 @@
           let best = null;
           for (const q of thin) {
             if (Object.values(pr.crew).includes(q.id)) continue;
-            if (idx.hours[q.id] + h > 60) continue;
-            if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot: 'T' })[0]) continue;
+            if (idx.hours[q.id] + h > softCapOf(q)) continue;
+            if (!pcOK(q, pr, st, idx, 'T')) continue;
             const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], q];
             if (crewIssue(pr, crew, st)) continue;
             best = q; break;
@@ -1175,7 +1349,7 @@
 
   // 按职级公平浓缩：本级总工时决定应飞人数，目标人均 ~45h 且人均 ≤58h；保留工时最高者，其余转给未满 55h 保留者
   function fairConcentrate(st) {
-    const AIM = 45, MEAN_CAP = 58;
+    const AIM = SOFT_AIM, MEAN_CAP = SOFT_MAX - 2;
     for (let pass = 0; pass < 4; pass++) {
       const allowDrop = pass < 2;
       const idx = buildIndex(st); let moved = 0;
@@ -1189,18 +1363,19 @@
         if (xs.length < 6) return;
         const total = xs.reduce((a, p) => a + idx.hours[p.id], 0);
         if (total < 20) return;
-        let want = Math.round(total / AIM);
-        while (want < xs.length && want > 0 && total / want > MEAN_CAP) want++;
+        const aimR = AIM, capR = MEAN_CAP; // 新机长 C 位另有 softCapOf 约束，T 位不限
+        let want = Math.round(total / aimR);
+        while (want < xs.length && want > 0 && total / want > capR) want++;
         // 夹在约 48%–75%：跨级闲置比例接近，且不把人均抬过硬顶
         const isCaptRk = isCaptClass(rk);
-        const loN = Math.ceil(xs.length * (isCaptRk ? 0.55 : 0.42));
-        const hiN = Math.floor(xs.length * (isCaptRk ? 0.90 : 0.72));
+        const loN = Math.ceil(xs.length * (isCaptRk ? 0.55 : 0.38));
+        const hiN = Math.floor(xs.length * (isCaptRk ? 0.92 : 0.64));
         want = Math.max(loN, Math.min(hiN, want));
         want = Math.max(1, Math.min(xs.length, want));
         const ranked = xs.slice().sort((a, b) => idx.hours[b.id] - idx.hours[a.id] || a.id.localeCompare(b.id));
         const keep = new Set(ranked.slice(0, want).map(p => p.id));
         // 若保留者已临近满载，再扩一小批，避免只能卸洞
-        let takers = ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < 55);
+        let takers = ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < (SOFT_MAX - 5));
         if (takers.length < Math.ceil(want * 0.3) && want < xs.length) {
           for (const p of ranked) {
             if (keep.has(p.id)) continue;
@@ -1216,25 +1391,30 @@
             const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === lo.id); if (!slot) continue;
             const h = pairingHours(pr);
             let best = null;
-            let tryList = takers.concat(ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < 60 && !takers.includes(p)));
+            let tryList = takers.concat(ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < SOFT_MAX && !takers.includes(p)));
             // F/T：若同级接不住，允许其它副驾级别中 20–55h 者接手（仍不喂 0h 新人）
             if ((slot === 'F' || slot === 'T') && isFO(lo.rank)) {
-              const extra = st.pilots.filter(p => isFO(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < 55);
+              const extra = st.pilots.filter(p => isFO(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < (SOFT_MAX - 5));
               tryList = tryList.concat(extra.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]));
             }
             if (slot === 'C' && isCaptClass(lo.rank)) {
-              const extra = st.pilots.filter(p => isCaptClass(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < 55);
+              const extra = st.pilots.filter(p => isCaptClass(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < (SOFT_MAX - 5));
               tryList = tryList.concat(extra.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]));
             }
+            let bestSc = Infinity, nValid = 0;
             for (const q of tryList) {
               if (q.id === lo.id || Object.values(pr.crew).includes(q.id)) continue;
               if (slot === 'C' && !isCaptClass(q.rank)) continue;
               if (slot === 'F' && !isFO(q.rank)) continue;
-              if (idx.hours[q.id] + h > 60) continue;
-              if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0]) continue;
+              if (idx.hours[q.id] + h > softCapOf(q, slot)) continue;
+              const rd = rhythmDelta(q, pr, st, idx);
+              if (rd > 1.0) continue; // 会造成 1 日休/5 日连飞等坏节奏：跳过
+              if (!pcOK(q, pr, st, idx, slot)) continue;
               const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
               if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
-              best = q; break;
+              const sc = rd + 0.02 * idx.hours[q.id];
+              if (sc < bestSc) { bestSc = sc; best = q; }
+              if (++nValid >= 6) break;
             }
             if (!best) {
               if (!allowDrop) continue;
@@ -1261,10 +1441,10 @@
     (function shavePeaks() {
       const idx = buildIndex(st);
       for (let guard = 0; guard < 40; guard++) {
-        const over = st.pilots.filter(p => idx.hours[p.id] > 60).sort((a, b) => idx.hours[b.id] - idx.hours[a.id])[0];
+        const over = st.pilots.filter(p => idx.hours[p.id] > SOFT_MAX).sort((a, b) => idx.hours[b.id] - idx.hours[a.id])[0];
         if (!over) break;
         const under = st.pilots.filter(p => {
-          if (idx.hours[p.id] >= 50 || (p.health && p.health.noFly)) return false;
+          if (idx.hours[p.id] >= (SOFT_MAX - 10) || (p.health && p.health.noFly)) return false;
           if (isCaptClass(over.rank)) return isCaptClass(p.rank);
           if (isFO(over.rank)) return isFO(p.rank);
           return p.rank === over.rank;
@@ -1278,8 +1458,8 @@
             if (Object.values(pr.crew).includes(q.id)) continue;
             if (slot === 'C' && !isCaptClass(q.rank)) continue;
             if (slot === 'F' && !isFO(q.rank)) continue;
-            if (idx.hours[q.id] + h > 60) continue;
-            if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0]) continue;
+            if (idx.hours[q.id] + h > softCapOf(q, slot)) continue;
+            if (!pcOK(q, pr, st, idx, slot)) continue;
             const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
             if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
             pr.crew[slot] = q.id;
@@ -1316,7 +1496,7 @@
         if (h < 16) return true; // 主班碎片
         return false;
       }).sort((a, b) => (primary[a.id] ? 1 : 0) - (primary[b.id] ? 1 : 0) || idx.hours[a.id] - idx.hours[b.id]);
-      const takers = st.pilots.filter(p => primary[p.id] && idx.hours[p.id] < 58)
+      const takers = st.pilots.filter(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 2))
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       if (!donors.length || !takers.length) break;
       for (const lo of donors) {
@@ -1330,8 +1510,8 @@
             if (slot === 'C' && !isCaptClass(q.rank)) continue;
             if (slot === 'F' && !isFO(q.rank)) continue;
             if (slot !== 'T' && rankGroup(q.rank) !== rankGroup(lo.rank) && !(slot === 'C')) continue;
-            if (idx.hours[q.id] + h > 62) continue; // 软顶，硬顶仍由 personCheck/FTL 卡
-            if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0]) continue;
+            if (idx.hours[q.id] + h > (SOFT_MAX + 2)) continue; // 软顶，硬顶仍由 personCheck/FTL 卡
+            if (!pcOK(q, pr, st, idx, slot)) continue;
             const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
             if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
             best = q; break;
@@ -1360,11 +1540,11 @@
       st.pilots.forEach(p => { (ranks[p.rank] = ranks[p.rank] || []).push(p); });
       Object.keys(ranks).forEach(rk => {
         const xs = ranks[rk];
-        const over = xs.filter(p => idx.hours[p.id] > 55).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        const over = xs.filter(p => idx.hours[p.id] > (SOFT_MAX - 5)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
         const under = xs.filter(p => primary[p.id] && idx.hours[p.id] < 40 && !(p.health && p.health.noFly))
           .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         for (const hi of over) {
-          if (idx.hours[hi.id] <= 55) continue;
+          if (idx.hours[hi.id] <= (SOFT_MAX - 5)) continue;
           for (const pr of (idx.sched[hi.id] || []).slice()) {
             const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
             const h = pairingHours(pr);
@@ -1374,8 +1554,8 @@
               if (q.id === hi.id || Object.values(pr.crew).includes(q.id)) continue;
               if (slot === 'C' && !isCaptClass(q.rank)) continue;
               if (slot === 'F' && !isFO(q.rank)) continue;
-              if (idx.hours[q.id] + h > 60 || idx.hours[q.id] >= 40) continue;
-              if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0]) continue;
+              if (idx.hours[q.id] + h > softCapOf(q, slot) || idx.hours[q.id] >= 40) continue;
+              if (!pcOK(q, pr, st, idx, slot)) continue;
               const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
               if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
               best = q; break;
@@ -1395,7 +1575,7 @@
       // 2) 非新机长任务：观察员位上的机长 → 不足 40h 的副驾（释放机长飞 C）
       for (const pr of st.pairings) {
         const tid = pr.crew.T; if (!tid) continue;
-        const tp = idx.pm[tid]; if (!tp || !isCaptClass(tp.rank)) continue;
+        const tp = idx.pm[tid]; if (!tp || !isCaptClass(tp.rank) || (isNew(tp.rank) && idx.hours[tp.id] < SOFT_AIM)) continue; // 新机长任观察员是补足值勤，不换走
         const cp = idx.pm[pr.crew.C]; if (cp && isNew(cp.rank)) continue;
         const h = pairingHours(pr);
         const underFo = st.pilots.filter(p => isFO(p.rank) && primary[p.id] && idx.hours[p.id] < 40 && !(p.health && p.health.noFly))
@@ -1403,8 +1583,8 @@
         let best = null;
         for (const q of underFo) {
           if (Object.values(pr.crew).includes(q.id)) continue;
-          if (idx.hours[q.id] + h > 60) continue;
-          if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot: 'T' })[0]) continue;
+          if (idx.hours[q.id] + h > softCapOf(q)) continue;
+          if (!pcOK(q, pr, st, idx, 'T')) continue;
           const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], q];
           if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
           best = q; break;
@@ -1425,12 +1605,12 @@
   function bandBalance(st, target) {
     for (let it = 0; it < 4; it++) {
       const idx = buildIndex(st); let moved = 0;
-      const over = st.pilots.filter(p => idx.hours[p.id] > 60).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+      const over = st.pilots.filter(p => idx.hours[p.id] > SOFT_MAX).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
       const under = st.pilots.filter(p => idx.hours[p.id] < 40 && !(p.health && p.health.noFly))
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       if (!over.length || !under.length) break;
       for (const hi of over) {
-        if (idx.hours[hi.id] <= 60) continue;
+        if (idx.hours[hi.id] <= SOFT_MAX) continue;
         const list = (idx.sched[hi.id] || []).slice().sort((a, b) => pairingHours(b) - pairingHours(a));
         for (const pr of list) {
           const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
@@ -1441,8 +1621,8 @@
             if (q.id === hi.id || Object.values(pr.crew).includes(q.id)) continue;
             if (slot === 'C' && !isCaptClass(q.rank)) continue;
             if (slot === 'F' && !isFO(q.rank)) continue;
-            if (idx.hours[q.id] + h > 60) continue;
-            if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0]) continue;
+            if (idx.hours[q.id] + h > softCapOf(q, slot)) continue;
+            if (!pcOK(q, pr, st, idx, slot)) continue;
             const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
             if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
             best = q; break;
@@ -1525,7 +1705,7 @@
     for (const pr of st.pairings) {
       for (const slot of ['C', 'F', 'T']) {
         if (pr.crew[slot]) continue;
-        const okc = candidates(st, pr, slot).filter(c => c.ok && !c.warn);
+        const okc = candidates(st, pr, slot).filter(c => c.ok && !c.warn && !(slot === 'C' && isNew(c.p.rank) && c.hours + pairingHours(pr) > SOFT_NEW + 4));
         okc.sort((a, b) => {
           const as = (a.hours > 0.5 && a.hours < 55) ? 0 : (a.hours < 0.5 ? 2 : 1);
           const bs = (b.hours > 0.5 && b.hours < 55) ? 0 : (b.hours < 0.5 ? 2 : 1);
@@ -1720,7 +1900,7 @@
     allG.forEach(g => gapDist[g <= 1 ? '0-1' : g >= 5 ? '5+' : String(g)]++);
     const lenDist = {}; st.pairings.forEach(p => lenDist[p.ndays] = (lenDist[p.ndays] || 0) + 1);
     const sbC = per.filter(x => isCaptClass(x.rank)).map(x => x.standby), sbF = per.filter(x => isFO(x.rank)).map(x => x.standby);
-    const rhythm = { gapDist, gapN: allG.length, gap23: allG.length ? allG.filter(g => g === 2 || g === 3).length / allG.length : 0,
+    const rhythm = { gapDist, gapN: allG.length, gap23: allG.length ? allG.filter(g => g === 2 || g === 3).length / allG.length : 0, gap34: allG.length ? allG.filter(g => g === 3 || g === 4).length / allG.length : 0,
       gapMean: allG.length ? allG.reduce((a, b) => a + b, 0) / allG.length : 0, lenDist,
       standbyC: stats(sbC), standbyF: stats(sbF), standbyTotal: per.reduce((s, x) => s + x.standby, 0) };
     GROUPS.forEach(g => groups[g].standby = stats(per.filter(x => x.group === g).map(x => x.standby)));
