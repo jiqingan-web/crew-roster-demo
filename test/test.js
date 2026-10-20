@@ -336,3 +336,39 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const pack = C.personalMonthPack(st);
   console.log('export personalMonthPack', pack.length === st.pilots.length ? 'OK' : 'FAIL', pack.length); if (pack.length !== st.pilots.length) process.exitCode = 1;
 }
+
+// ===== 观察员位(T)候选：不限教员 =====
+{ const chk = (n, ok, info) => { console.log('OBS ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
+  const st = C.generateSample();
+  const nc = st.pilots.find(p => C.isNew(p.rank) && p.fleet === 'A320');
+  const fo = st.pilots.find(p => C.isFO(p.rank) && p.rank !== 'F1' && p.rank !== 'F2' && p.fleet === 'A320' && p.id !== nc.id);
+  const fo2 = st.pilots.find(p => C.isFO(p.rank) && p.fleet === 'A320' && p.id !== nc.id && p.id !== fo.id);
+  const capt = st.pilots.find(p => p.rank === 'J3' && p.fleet === 'A320');
+  chk('fixture', !!(nc && fo && fo2 && capt), [nc && nc.rank, fo && fo.rank, fo2 && fo2.rank].join('/'));
+  const base = 4 * C.DAY;
+  const legs = [
+    { d: 1, flt: 'EU9001', from: 'ZUUU', to: 'ZGGG', dep: base + 8 * 60, arr: base + 10 * 60, ac: 'A320', reg: 'B-TEST' },
+    { d: 1, flt: 'EU9002', from: 'ZGGG', to: 'ZUUU', dep: base + 11 * 60, arr: base + 13 * 60, ac: 'A320', reg: 'B-TEST' }
+  ];
+  const pr = { id: 'PR-OBS', start: 5, ndays: 1, ac: 'A320', legs, crew: { C: nc.id, F: fo.id, T: null } };
+  st.pairings.push(pr);
+  const cs = C.candidates(st, pr, 'T').filter(c => c.ok);
+  const nonInstr = cs.filter(c => !C.isInstr(c.p.rank));
+  const hasFO = nonInstr.some(c => C.isFO(c.p.rank));
+  const hasCapt = nonInstr.some(c => C.isCaptClass(c.p.rank) && !C.isInstr(c.p.rank));
+  chk('seat3 observer includes non-instructors', nonInstr.length >= 10, 'ok=' + cs.length + ' nonInstr=' + nonInstr.length);
+  chk('seat3 includes FO', hasFO, 'fo');
+  chk('seat3 includes capt-class', hasCapt, 'capt');
+  chk('SLOT_NAME T is 观察', C.SLOT_NAME.T === '观察', C.SLOT_NAME.T);
+  // 选非教员观察员后：整机组仍可能因缺教员而不合规（由 crewIssue 提示），但不阻挡候选列表
+  pr.crew.T = fo2.id;
+  const iss = C.crewIssue(pr, [nc, fo, fo2], st);
+  chk('crewIssue still flags missing instr when needed', !!iss && /教员/.test(iss), iss || 'none');
+  // 教员已在副驾位时，观察员任意级别且机组合规
+  const tl = st.pilots.find(p => C.isInstr(p.rank) && p.fleet === 'A320');
+  const pr2 = { id: 'PR-OBS2', start: 5, ndays: 1, ac: 'A320', legs: legs.map(l => Object.assign({}, l)), crew: { C: nc.id, F: tl.id, T: fo2.id } };
+  const iss2 = C.crewIssue(pr2, [nc, tl, fo2], st);
+  chk('observer FO ok when instr flies', !iss2, iss2 || 'ok');
+  const cs2 = C.candidates(st, Object.assign({}, pr2, { crew: { C: nc.id, F: tl.id, T: null } }), 'T').filter(c => c.ok);
+  chk('seat3 many when instr on F', cs2.filter(c => !C.isInstr(c.p.rank)).length >= 10, cs2.length);
+}

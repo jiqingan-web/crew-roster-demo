@@ -640,7 +640,8 @@
   function crewIssue(p, crewPilots, st) {
     const cs = crewPilots.filter(Boolean);
     if (cs.length < 3) return null; // 不完整机组不做组合判定
-    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '新机长所在机组须有 TL 及以上教员';
+    // 新机长执飞须组内有教员（教员可任执飞座之一）；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
+    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
     if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '机组无机长';
     for (const leg of p.legs) {
       let ok = false;
@@ -652,7 +653,8 @@
     if (cs.some(x => x.rank === 'F1' || x.rank === 'F2') && !cs.some(x => isInstr(x.rank))) return 'F1/F2 须与教员同组';
     return null;
   }
-  const SLOT_NAME = { C: '机', F: '副', T: '三' };
+  // T=观察员：任意级别可上；RE12 座位规则只约束执飞双人座对
+  const SLOT_NAME = { C: '机', F: '副', T: '观察' };
   function slotRankOK(slot, rank) { if (slot === 'C') return isCaptClass(rank); if (slot === 'F') return isFO(rank); return true; }
 
   // ---------- 索引与计算 ----------
@@ -1366,19 +1368,26 @@
   function candidates(st, pr, slot) {
     const idx = buildIndex(st); const res = [];
     for (const p of st.pilots) {
-      const rs = [];
+      const rs = []; let crewWarn = '';
       if (!slotRankOK(slot, p.rank)) rs.push('级别不适合' + SLOT_NAME[slot] + '位');
       const other = ['C', 'F', 'T'].filter(s => s !== slot).map(s => pr.crew[s]);
       if (other.includes(p.id)) rs.push('已在本任务');
       if (!rs.length) {
         const [, r2] = personCheck(p, pr, st, idx, { ignorePrefs: true, slot }); rs.push(...r2);
         const crew = ['C', 'F', 'T'].map(s => s === slot ? p : (pr.crew[s] && idx.pm[pr.crew[s]]));
-        const iss = crewIssue(pr, crew, st); if (iss) rs.push(iss);
+        const iss = crewIssue(pr, crew, st);
+        // 观察员位(T)：个人可用即可进候选（不因「须有教员」收成仅教员）；机组合规记 crewWarn 供自动补位优选
+        // 执飞位(C/F)：crewIssue 仍阻断 ok
+        if (iss) {
+          if (slot === 'T') crewWarn = iss;
+          else rs.push(iss);
+        }
       }
       const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
       const sbd = daysTouched(pr, st).filter(d => ((st.standby || {})[p.id] || []).includes(d));
-      res.push({ p, ok: rs.length === 0, reasons: rs, warn: pf.length ? '意向休息日' + pf.join(',') + '日' : '', standby: sbd, hours: idx.hours[p.id] });
+      res.push({ p, ok: rs.length === 0, reasons: rs, crewWarn, warn: pf.length ? '意向休息日' + pf.join(',') + '日' : '', standby: sbd, hours: idx.hours[p.id] });
     }
+    // 观察员列表按工时排，不把教员置顶；自动补位另用 !crewWarn 优选
     return res.sort((a, b) => (b.ok - a.ok) || a.hours - b.hours);
   }
 
@@ -1640,6 +1649,7 @@
     for (const pr of affected) {
       const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === pilotId); pr.crew[slot] = null;
       let cands = candidates(st, pr, slot).filter(c => c.ok);
+      const crewOk = cands.filter(c => !c.crewWarn); if (crewOk.length) cands = crewOk;
       const noWarn = cands.filter(c => !c.warn); if (noWarn.length) cands = noWarn;
       // 首选：任务首日在备份的人员
       const d0 = daysTouched(pr, st)[0];
@@ -1675,7 +1685,7 @@
       const [ok2] = personCheck(q, pr, w, idx2, { ignorePrefs: true, slot }); const crew = ['C', 'F', 'T'].map(x => x === slot ? q : (pr.crew[x] && idx2.pm[pr.crew[x]]));
       if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > pilotHardCap(q, w))) {
         pr.crew[slot] = q.id;
-        const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id).sort((a, b) => (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
+        const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id).sort((a, b) => (!!a.crewWarn - !!b.crewWarn) || (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
         pr.crew[slot] = null;
         if (bf) out.push({ q, Q, sQ, bf });
       }
@@ -1704,7 +1714,8 @@
     const steps = [];
       for (const v of vac) {
         const pr = prOf(w, v.id); const idx = buildIndex(w);
-        const cands = candidates(w, pr, v.slot).filter(c => c.ok && !ban.has(c.p.id));
+        let cands = candidates(w, pr, v.slot).filter(c => c.ok && !ban.has(c.p.id));
+        const crewOk = cands.filter(c => !c.crewWarn); if (crewOk.length) cands = crewOk;
         const sb = cands.filter(c => c.standby.length).sort((a, b) => a.hours - b.hours);
         let rest = cands.filter(c => !c.standby.length);
         const noPref = rest.filter(c => !c.warn); if (noPref.length) rest = noPref;
