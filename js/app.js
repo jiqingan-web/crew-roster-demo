@@ -1620,8 +1620,10 @@
   }
   function exportBarHtml(extra) {
     return '<div class="export-bar">'
-      + '<button type="button" class="btn primary" id="exMonthRoster">📥 导出全月班表</button>'
-      + '<button type="button" class="btn primary" id="exPersonalZip">📦 导出个人月历包</button>'
+      + '<button type="button" class="btn primary" id="exXlsxAll" title="Excel 甘特图：人员甘特 / 任务甘特 / 图例与统计（离线生成）">📊 导出 Excel 甘特图</button>'
+      + ((ui.gq || (ui.gg && ui.gg !== '全部')) ? '<button type="button" class="btn primary" id="exXlsxFilt">📊 Excel 甘特（当前筛选）</button>' : '')
+      + '<button type="button" class="btn" id="exMonthRoster">导出全月班表 CSV</button>'
+      + '<button type="button" class="btn" id="exPersonalZip">个人月历包 ZIP</button>'
       + '<button type="button" class="btn" id="exPersonalCsv">导出个人月历汇总 CSV</button>'
       + onePersonPicker()
       + (extra || '') + '</div>';
@@ -1635,7 +1637,7 @@
   function onePersonPicker() {
     return '<span class="onepick"><input id="exOneQ" list="exOneDL" placeholder="搜索姓名/工号/级别/中队 → 单人月历" style="width:240px">'
       + '<datalist id="exOneDL">' + st.pilots.map(p => `<option value="${p.id} ${esc(p.name)} ${p.rank} ${esc(p.squad || '')}"></option>`).join('') + '</datalist>'
-      + '<button type="button" class="btn" id="exOneBtn">导出此人月历 CSV</button><span class="mut" id="exOneN"></span></span>';
+      + '<button type="button" class="btn primary" id="exOneX">此人 Excel 甘特</button><button type="button" class="btn" id="exOneBtn">此人月历 CSV</button><span class="mut" id="exOneN"></span></span>';
   }
   function bindOnePerson() {
     const q = $('#exOneQ'), b = $('#exOneBtn'), n = $('#exOneN'); if (!q || !b) return;
@@ -1643,10 +1645,24 @@
       return st.pilots.find(p => p.id === id) || (v ? st.pilots.filter(p => C.pilotMatches(p, v))[0] : null); };
     q.oninput = () => { const v = q.value.trim(); n.textContent = v ? '匹配 ' + st.pilots.filter(p => C.pilotMatches(p, v)).length + ' 人' : ''; };
     b.onclick = () => { const p = resolve(); if (p) exportOnePerson(p.id); else toast('请输入并选择一名人员'); };
+    const bx = $('#exOneX'); if (bx) bx.onclick = () => { const p = resolve(); if (p) exportXlsxGantt([p.id], p.id + ' ' + p.name + ' ' + p.rank); else toast('请输入并选择一名人员'); };
     q.onkeydown = e => { if (e.key === 'Enter') b.onclick(); };
   }
+  function ganttFilteredIds() { const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
+    let ps = st.pilots.slice().sort((a, b) => order[C.rankGroup(a.rank)] - order[C.rankGroup(b.rank)] || C.RANK_VAL[b.rank] - C.RANK_VAL[a.rank] || a.id.localeCompare(b.id));
+    if (ui.gg && ui.gg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.gg); if (ui.gq) ps = ps.filter(p => (p.name + p.id + p.rank).includes(ui.gq)); return ps.map(p => p.id); }
+  async function exportXlsxGantt(ids, label) {
+    if (!window.ExcelJS || !window.XlsxGantt) { toast('Excel 组件未加载（js/vendor/exceljs.min.js）'); return; }
+    const H = st.solHist || []; const h = H[st.solIdx != null ? st.solIdx : H.length - 1]; const plan = h ? `方案 #${h.n} · seed ${h.seed}` : '当前方案';
+    toast('正在生成 Excel 甘特图…');
+    try { const wb = XlsxGantt.build(ExcelJS, C, st, { pilotIds: ids, label: label || (LITE ? '七中队·演示（轻量版）' : '全部人员'), plan });
+      const buf = await wb.xlsx.writeBuffer(); const safe = String(label || '全员').replace(/[\\/:*?"<>|\s]+/g, '_');
+      dl(`排班甘特_${C.YEAR}-${String(C.MONTH).padStart(2, '0')}_${safe}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      toast(`✔ 已导出 Excel 甘特图（${ids ? ids.length : st.pilots.length} 人 · ${plan}）`); } catch (e) { toast('导出失败：' + e.message); } }
   function bindExportButtons() {
     bindOnePerson();
+    const xa = $('#exXlsxAll'), xf = $('#exXlsxFilt'); if (xa) xa.onclick = () => exportXlsxGantt(ganttFilteredIds().length === st.pilots.length ? ganttFilteredIds() : null, null);
+    if (xf) xf.onclick = () => { const ids = ganttFilteredIds(); if (!ids.length) return toast('当前筛选无人员'); exportXlsxGantt(ids, '筛选_' + (ui.gg !== '全部' ? ui.gg : '') + (ui.gq || '')); };
     document.querySelectorAll('.roCal').forEach(x => x.onclick = e => { e.stopPropagation(); exportOnePerson(x.dataset.pid); });
     const a = $('#exMonthRoster'), b = $('#exPersonalZip'), c = $('#exPersonalCsv');
     if (a) a.onclick = exportMonthRoster;
