@@ -420,3 +420,13 @@ body.side-layout #btnAuto{font-size:14px;padding:8px 16px;box-shadow:0 0 0 1px #
 @media (max-width:1300px){.bkpis{grid-template-columns:repeat(3,1fr)}.bgrid3{grid-template-columns:1fr}.tcols{grid-template-columns:repeat(2,1fr)}}
 .dleg div{white-space:nowrap}.d2 .donut svg{width:112px;height:112px}.d2 .donut{gap:4px}
 .quad{height:190px;max-height:none}
+/* Gantt 高度 / 全屏 / 收起 */
+body.g-compact #story,body.g-compact .demo-fill-note,body.g-compact .export-bar{display:none}
+.gresize{height:12px;cursor:ns-resize;display:flex;align-items:center;justify-content:center;margin-top:2px;border-radius:0 0 8px 8px}
+.gresize i{width:60px;height:4px;border-radius:2px;background:#36507e}.gresize:hover i,.gresize.on i{background:#6c8fcc}
+.gbox.gfull{position:fixed;inset:0;z-index:80;background:#08111f;padding:6px 8px}
+.gfull-bar{display:flex;align-items:center;gap:12px;height:30px;color:#dbe6f8}.gfull-bar .btn{margin-left:auto}
+body.g-fullon{overflow:hidden}
+.topbar .actions .btn{white-space:nowrap}
+body.g-compact #main .toolbar .legend{display:none}
+body.g-compact .topbar{padding-top:6px;padding-bottom:6px}body.g-compact .topbar .t2{display:none}

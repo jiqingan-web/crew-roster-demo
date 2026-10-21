@@ -305,7 +305,7 @@
   }
   function render() {
     document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    renderStory(); renderSide();
+    renderStory(); renderSide(); applyCompact();
     ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, tasklist: rTaskList, overview: rOverview, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
 
@@ -440,6 +440,7 @@
   document.addEventListener('click', e => { const m = $('#zMenu'); if (m && !e.target.closest('#zoomw')) m.classList.add('hidden'); });
   let _rz; addEventListener('resize', () => { clearTimeout(_rz); _rz = setTimeout(() => { if (tab === 'gantt' && st) { ui.fitAvail = 0; if (ui.fit) ui.cw = fitCw(C.DAYS, 170); rGantt(); } }, 150); });
   function rGantt() {
+    applyCompact();
     const cw = ui.cw, nw = NW(); let lvl = cw >= 110 ? 'full' : cw >= 40 ? 'mid' : cw >= 16 ? 'small' : 'tiny';
     let rh = { full: 66, mid: 40, small: 18, tiny: 9 }[lvl]; const m = pm(); const V = violByPairing();
     const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
@@ -503,7 +504,22 @@
     const pct = Math.round(cw / BASE_CW * 100);
     $('#main').innerHTML = h + `</div></div><div class="zoomw" id="zoomw"><button id="zOut" title="缩小（Ctrl/⌘+滚轮）">−</button><button id="zPct" title="点击恢复 100%（日视图）">${pct}%</button><button id="zIn" title="放大（Ctrl/⌘+滚轮）">+</button><button id="zMenuB" title="预设">▾</button>
       <div class="zmenu hidden" id="zMenu">${[['日', 'd', '100%'], ['3日', '3', ''], ['周', 'w', ''], ['半月', 'h', ''], ['整月 · 全局', 'm', '适配']].map(([n, k, t]) => `<div class="zp" data-z="${k}"><span>${n}</span><span class="mut">${t}</span></div>`).join('')}</div></div></div>`;
-    const gw0 = $('.gwrap'); const sizeG = () => { gw0.style.height = Math.max(240, innerHeight - gw0.getBoundingClientRect().top - 14) + 'px'; }; sizeG();
+    // 高度：默认填满剩余视口；底边拖拽可调（≥300px，localStorage 记忆）；⤢ 全屏覆盖（Esc 退出）；「收起」隐藏主线/导出行
+    const gw0 = $('.gwrap'); const gbox = $('.gbox'); const GH_KEY = 'crewRoster.ganttH';
+    const tb = document.querySelector('#main .toolbar');
+    if (tb && !$('#gFull')) tb.insertAdjacentHTML('beforeend', `<button class="btn sm" id="gCompact" title="收起/展开 主线步骤与导出行">${ganttCompact() ? '▾ 展开顶部' : '▴ 收起顶部'}</button><button class="btn sm" id="gFull" title="全屏查看（Esc 退出）">⤢ 全屏</button>`);
+    if (ui.gFull) { gbox.classList.add('gfull'); gbox.insertAdjacentHTML('afterbegin', `<div class="gfull-bar"><b>人员视图 · 全屏</b><span class="mut">Ctrl/⌘+滚轮缩放 · Esc 退出</span><button class="btn sm" id="gFullX">✕ 退出全屏</button></div>`); }
+    else gbox.insertAdjacentHTML('beforeend', '<div class="gresize" id="gResize" title="拖动调整高度（双击恢复自适应）"><i></i></div>');
+    const sizeG = () => { if (ui.gFull) { gw0.style.height = (innerHeight - 46) + 'px'; return; }
+      const saved = +localStorage.getItem(GH_KEY) || 0; const fill = innerHeight - gw0.getBoundingClientRect().top - window.scrollY * 0 - 22;
+      gw0.style.height = Math.max(300, saved || fill) + 'px'; }; sizeG();
+    if ($('#gCompact')) $('#gCompact').onclick = () => { localStorage.setItem('crewRoster.ganttCompact', ganttCompact() ? '0' : '1'); applyCompact(); rGantt(); };
+    if ($('#gFull')) $('#gFull').onclick = () => { ui.gFull = true; rGantt(); };
+    if ($('#gFullX')) $('#gFullX').onclick = () => { ui.gFull = false; rGantt(); };
+    const rz = $('#gResize'); if (rz) { rz.ondblclick = () => { localStorage.removeItem(GH_KEY); sizeG(); };
+      rz.onpointerdown = e => { e.preventDefault(); const y0 = e.clientY, h0 = gw0.offsetHeight; rz.setPointerCapture(e.pointerId); rz.classList.add('on');
+        rz.onpointermove = ev => { gw0.style.height = Math.max(300, h0 + ev.clientY - y0) + 'px'; };
+        rz.onpointerup = () => { rz.onpointermove = null; rz.classList.remove('on'); localStorage.setItem(GH_KEY, String(gw0.offsetHeight)); if (ui.fit) { ui.fitAvail = 0; rGantt(); } }; }; }
     if (ui.fit) { const av = gw0.clientHeight - $('.ghead').offsetHeight - 2; if (Math.abs(av - (ui.fitAvail || 0)) > 4) { ui.fitAvail = av; return rGantt(); } }
     document.querySelectorAll('.lvable').forEach(c => c.onclick = () => { const id = c.dataset.pid; const nx = C.buildIndex(st).sched[id].find(pr => pr.start + pr.ndays - 1 >= 1); goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1); });
     if ($('#hlClr')) { $('#hlClr').onclick = () => { ui.hl = null; rGantt(); }; $('#hlUndo').onclick = undoLeave; }
@@ -520,6 +536,9 @@
       setZoom(ui.cw * Math.exp(-e.deltaY * 0.003), e.clientX - gw.getBoundingClientRect().left); }, { passive: false });
     bindBars();
   }
+  function ganttCompact() { return localStorage.getItem('crewRoster.ganttCompact') !== '0'; } // 默认收起
+  function applyCompact() { document.body.classList.toggle('g-compact', tab === 'gantt' && ganttCompact()); document.body.classList.toggle('g-fullon', tab === 'gantt' && !!ui.gFull); }
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && ui.gFull && tab === 'gantt') { ui.gFull = false; rGantt(); } });
   const RISK_BADGE = { over: ['⛔', '超限'], high: ['⚠', '高'], med: ['◔', '中'] };
   function bindBars() {
     document.querySelectorAll('.bar').forEach(b => {
