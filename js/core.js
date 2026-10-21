@@ -2832,12 +2832,12 @@
     }
     const seen = new Set(); let out = sols.filter(x => { if (seen.has(x.sig)) return false; seen.add(x.sig); return true; });
     // 丢弃填人后仍有硬违规或未解决岗位的拆分方案（避免劣于人工）
-    out = out.filter(x => !x.unresolved && x.hard === 0);
+    out = out.filter(x => !x.unresolved && x.hard <= before.hard);
     if (!ex && dn0.some(x => !x.overnight)) for (const key of ['standby', 'rhythm', 'hours', 'chain']) {
       const w = clone(st); const ban = new Set(Object.values(crew0).filter(Boolean)); const steps = [];
       dn0.filter(x => !x.overnight).forEach(x => { const q = w.pairings.find(p => p.id === x.next); if (!q) return; q.crew[x.nextSlot] = null; steps.push(...fillVac(w, [{ id: q.id, slot: x.nextSlot, from: x.pilot, why: '休息不足' }], key, ban, usedRest)); });
       if (!steps.length) continue;
-      const sol = evaluate(st, w, steps, key, before, bIdx); fdpEval(sol, w, delays, [prId]); sol.name = '后续任务换人 · ' + STRATS[key].name.replace('休息人员 · ', ''); sol.desc = '延误压缩了机组下一任务前的休息，替换受影响成员'; if (!seen.has(sol.sig) && !sol.unresolved && sol.hard === 0) { seen.add(sol.sig); out.push(sol); } }
+      const sol = evaluate(st, w, steps, key, before, bIdx); fdpEval(sol, w, delays, [prId]); sol.name = '后续任务换人 · ' + STRATS[key].name.replace('休息人员 · ', ''); sol.desc = '延误压缩了机组下一任务前的休息，替换受影响成员'; if (!seen.has(sol.sig) && !sol.unresolved && sol.hard <= before.hard) { seen.add(sol.sig); out.push(sol); } }
     const reasons = [];
     if (needSplit && !splits.length) reasons.push(`风险日无从合适站点拆分`);
     if (ex && !splits.some(j => pr0.legs[j].from === 'ZUUU')) reasons.push(`D${ex.d} 超限前无从成都出发的航段，基地换组不可用；已尝试异地预防/拆分（若上方无卡片则填人失败），或需 DH 新机组至 ${apName(ex.legs[0].leg.from, st)} / 调整航段`);
@@ -2849,6 +2849,23 @@
     out.sort((a, b) => a.score - b.score); out = out.slice(0, (opt.max || 5) - 1); out.push(man);
     const ok = out.filter(x => !x.unresolved && !x.fdpAfter); if (ok.length) ok[0].recommended = true;
     return { pairing: pr0, days: ds0, exceed: ex, downstream: dn0, solutions: out, ms: Date.now() - t0 };
+  }
+
+  // 演示友好的模拟故障：逐个尝试目标（风险最高优先），预检至少 minOk 个合规处置方案，且应用首选后硬违规=0、满员
+  function simFaultPick(st, date, opt) {
+    opt = opt || {}; const minOk = opt.minOk || 2; st.actuals = st.actuals || {}; const b0 = summarize(st);
+    const hardN = s => s.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length;
+    const mon = dutyMonitor(st, date).filter(x => x.day.legs.length >= 2 && !x.exceed && x.day.buffer > 60).sort((a, b) => a.day.buffer - b.day.buffer);
+    for (const x of mon.slice(0, opt.maxTry || 12)) { const l = x.day.legs[Math.min(1, x.day.legs.length - 1)]; const k = legKey(l.leg);
+      const dly = Math.max(20, Math.round((x.day.buffer - 30) / 5) * 5); // 压到余量约 30 分（高风险、未超限）→ 预防性换组
+      const w = clone(st); w.actuals[k] = { dep: l.dep + dly, arr: l.arr + dly, kind: 'est' };
+      const o = fdpOptions(w, x.pr.id); const good = o.solutions.filter(z => !z.manual && !z.unresolved && !z.fdpAfter && z.hard <= b0.hard && z.state);
+      if (good.length < minOk) continue;
+      const top = good.find(z => z.recommended) || good[0]; const after = summarize(top.state);
+      if (hardN(after) > hardN(b0) || (after.total - after.full) > (b0.total - b0.full)) continue;
+      return { pairing: x.pr.id, legKey: k, delay: dly, okCount: good.length, top: top.name };
+    }
+    return null;
   }
   const fmtH = m => `${Math.floor(m / 60)}h${String(Math.round(m % 60)).padStart(2, '0')}`;
   function fdpEval(sol, w, delays, ids) {
@@ -3047,7 +3064,7 @@
     return files;
   }
 
-    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
+    return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, generateLiteSample, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,

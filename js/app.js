@@ -244,6 +244,18 @@
   function apHtml(c) { const n = C.apName(c, st); const k = C.apClass && C.apClass(c, st); const tag = k ? `<sup class="apcls" title="机场分类：${k.label}（${k.fleet}）">${k.label[0]}</sup>` : ''; return C.isSpecial(c, st) ? `<span class="red" title="${esc(C.CAT_DESC[C.apCat(c, st)] || '')}${k ? ' · ' + k.label : ''}">${esc(n)}</span>${tag}` : esc(n) + tag; }
   function dayChains(pr) { const out = []; for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
     out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
+  // 机场单字简称：按出现频次分配，优先首字，冲突时依次取名称中下一个未占用字；成都双流=蓉、成都天府=府
+  let AB = null, ABKEY = null;
+  function apAbbr(c) { const key = st.pairings.length + ':' + (st.pairings[0] && st.pairings[0].id);
+    if (!AB || ABKEY !== key) { AB = {}; ABKEY = key; const used = new Set(); const cnt = {};
+      st.pairings.forEach(p => p.legs.forEach(l => { cnt[l.from] = (cnt[l.from] || 0) + 1; cnt[l.to] = (cnt[l.to] || 0) + 1; }));
+      const fix = n => /双流/.test(n) ? '蓉' : /天府/.test(n) ? '府' : null;
+      Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]).forEach(code => { const n = String(C.apName(code, st) || code).replace(/[\s\d]/g, '');
+        const cand = [fix(n), ...n.replace(/^成都/, '')].filter(Boolean).concat([...n]); const ch = cand.find(x => !used.has(x)) || n[0] || code[0]; used.add(ch); AB[code] = ch; }); }
+    return AB[c] || String(C.apName(c, st) || c)[0]; }
+  function abHtml(c) { const a = esc(apAbbr(c)); return C.isSpecial(c, st) ? `<span class="red">${a}</span>` : a; }
+  function crewShort(pr, m) { return ['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">缺</span>').join('/'); }
+  function blkDay(c) { return `${[c.ls[0].from, ...c.ls.map(l => l.to)].map(abHtml).join('-')}<br><span class="mut" style="color:#b9cbe8">${C.fmtT(c.ls[0].dep)}-${C.fmtT(c.ls[c.ls.length - 1].arr)}</span>`; }
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">空缺</span>'}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 
@@ -474,8 +486,8 @@
         const rk = C.pairingRisk(pr, st, st.actuals && Object.keys(st.actuals).length ? st.actuals : null); const rb = RISK_BADGE[rk.risk];
         const badge = rb ? `<span class="rbadge r-${rk.risk}" title="执勤风险：${rb[1]} · D${rk.worst.d} FDP ${C.fmtH(rk.worst.fdp)} / 限制 ${C.fmtH(rk.worst.limit)} · 余量 ${rk.worst.buffer} 分钟">${rb[0]}</span>` : '';
         let inner = '';
-        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
-        else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
+        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} ${crewShort(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${blkDay(c)}</div>`).join('')}</div>`; }
+        else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(abHtml).join('-')}</div>`;
         else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${pr.id}</span>`;
         const isHl = hlr && ui.hl.pairings.has(pr.id);
         const isOk = isHl && ui.hl.ok && !V[pr.id];
@@ -492,8 +504,8 @@
             segs.forEach((g, i) => { if (i) sh += `<i class="conn" style="left:${segs[i - 1].x1 - bl}px;width:${Math.max(0, g.x0 - segs[i - 1].x1)}px"></i>`; sh += `<i class="seg" style="left:${g.x0 - bl}px;width:${Math.max(3, g.x1 - g.x0)}px"></i>`; });
             if (lvl === 'full') { const ch = dayChains(pr);
               const lgs = segs.map((g, i) => { const c = ch[i]; if (!c) return ''; const room = Math.max(g.x1 - g.x0, Math.min(cw - 4, (segs[i + 1] ? segs[i + 1].x0 : g.x0 + cw) - g.x0 - 4));
-                return `<div class="lg tl" style="left:${g.x0 - bl + 3}px;width:${room}px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`; }).join('');
-              inner = `${sh}<div class="bh tl">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div>${lgs}`;
+                return `<div class="lg tl" style="left:${g.x0 - bl + 3}px;width:${room}px">${blkDay(c)}</div>`; }).join('');
+              inner = `${sh}<div class="bh tl">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} ${crewShort(pr, m)}</div>${lgs}`;
             } else inner = sh + inner.replace('class="bh"', 'class="bh tl"').replace('class="lg"', 'class="lg tl"');
           }
         }
@@ -553,19 +565,21 @@
     const m = pm(); const V = violByPairing();
     const fl = fillsOf(pr.id); const flTxt = fl.length ? '<br><span class="fbadge">补位</span> ' + fl.map(f => esc((f.slotName || '') + ' ' + (f.toName || '') + ' ← ' + (f.fromName || '') + (f.leaveDays && f.leaveDays.length ? '（请假 ' + f.leaveDays.join(',') + ' 日）' : ''))).join('；') : '';
     return `<b>${pr.id}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h<br>${pr.legs.map(l => `D${l.d} ${l.flt} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
+      <br>FDP：${C.fdpDays(pr, st).map(dy => `D${dy.d} ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余${fmtBuf(dy.planBuffer)}`).join(' · ')}
       <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${flTxt}${pr.demoAnomalyNote ? '<br><span class="red">' + esc(pr.demoAnomalyNote) + '</span>' : ''}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
   }
 
   // ---------------- 编辑弹窗 ----------------
-  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.mLeave'); if (!b) return; const pr = st.pairings.find(x => x.id === $('#modalBox').dataset.pr); closeModal(); goLeave(b.dataset.pid, pr.start, pr.start + pr.ndays - 1); });
-  function openEdit(id) {
-    $('#modalBox').dataset.pr = id;
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('.mLeave'); if (!b) return; const box = b.closest('[data-pr]'); const pr = st.pairings.find(x => x.id === (box ? box.dataset.pr : '')); if (!pr) return; closeDrawer(); closeModal(); goLeave(b.dataset.pid, pr.start, pr.start + pr.ndays - 1); });
+  function openEdit(id) { openDrawer(id); }
+  function editInto(id, BOX) {
+    BOX.dataset.pr = id;
     $('#tip').classList.add('hidden');
     const pr = st.pairings.find(x => x.id === id); const m = pm();
     const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
     const draft = { C: pr.crew.C || null, F: pr.crew.F || null, T: pr.crew.T || null };
     const orig = { C: draft.C, F: draft.F, T: draft.T };
-    let h = `<div class="flex"><h3 style="margin:0">任务 ${pr.id}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)} 飞行小时</h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
+    let h = `<div class="flex"><a href="#" id="mClose" class="drw-back">← 返回详情</a><span class="mut" style="margin-left:auto">任务 ${pr.id}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h</span></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
       <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${esc(l.reg || '—')}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
@@ -574,8 +588,8 @@
       <div class="edit-foot"><div id="editDiff" class="mut">尚未选择变更</div>
         <button class="btn primary" id="mConfirm" disabled>确定</button>
         <button class="btn" id="mCancel">取消</button></div>`;
-    $('#modalBox').innerHTML = h; $('#modal').classList.remove('hidden');
-    $('#mClose').onclick = $('#mCancel').onclick = closeModal;
+    BOX.innerHTML = h;
+    $('#mClose').onclick = e => { e.preventDefault(); openDrawer(id); }; $('#mCancel').onclick = () => openDrawer(id);
     const drawSlots_q = { C: '', F: '', T: '' };
     const dirty = () => ['C', 'F', 'T'].some(s => (draft[s] || null) !== (orig[s] || null));
     const diffHtml = () => {
@@ -639,7 +653,7 @@
       const parts = changes.map(s => `${C.SLOT_NAME[s]} ${nameOf(orig[s])}→${nameOf(draft[s])}`);
       leaveHist.push({ snap, label: `${pr.id} 手工换人：${parts.join('，')}`, time: new Date().toTimeString().slice(0, 8) });
       const pilots = changes.flatMap(s => [orig[s], draft[s]]);
-      $('#modal').classList.add('hidden');
+      closeDrawer();
       // 先刷新摘要再判定合规，便于去掉 viol、点亮绿灯
       sum = C.summarize(st);
       const okNow = crewComplianceOk(pr);
@@ -742,21 +756,31 @@
     document.querySelectorAll('[data-card]').forEach(c => c.onclick = () => openDrawer(c.dataset.card));
     ui.lastRenderMs = Math.round(performance.now() - t0);
   }
-  function openDrawer(id) {
+  function closeDrawer() { const dw = $('#drawer'); if (dw) dw.classList.add('hidden'); }
+  function fmtBuf(v) { const n = Math.abs(Math.round(v)); return (v < 0 ? '-' : '') + Math.floor(n / 60) + 'h' + String(n % 60).padStart(2, '0') + 'm'; }
+  function openDrawer(id, mode) {
     const pr = st.pairings.find(p => p.id === id); if (!pr) return; const m = pm(); const idx = C.buildIndex(st);
+    $('#tip') && $('#tip').classList.add('hidden');
     const fd = C.fdpDays(pr, st); const minBuf = fd.length ? Math.min(...fd.map(x => x.planBuffer)) : null; const sp = C.specialAirportsOf(pr, st);
-    const RN = { low: '低', med: '中', high: '高', over: '超限' };
-    const tile = (l, v, cls) => `<div class="dtile"><small>${l}</small><b class="${cls || ''}">${v}</b></div>`;
-    const html = `<div class="drw-h"><div><h3>${pr.id}</h3><div class="mut">${routeHtml(pr.legs)}</div></div><button class="btn" id="drwX">✕</button></div>
-      <div class="drw-b"><div class="dtiles">${tile('日期', dateOf(pr.start))}${tile('天数', pr.ndays)}${tile('飞行小时', C.pairingHours(pr).toFixed(1) + 'h')}${tile('机型', pr.ac)}${tile('FDP 余量', minBuf == null ? '—' : minBuf + ' 分', minBuf != null && minBuf < 60 ? 'warnc' : 'okc')}${tile('规则', sp.length ? sp.map(c => C.apName(c, st)).join('/') : '常规', sp.length ? 'red' : '')}</div>
-      <h4>机组</h4>${['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; return `<div class="drow"><span class="seat">${({ C: '机长', F: '副驾驶', T: '观察员' })[s]}</span>${p ? `<b>${esc(p.name)}</b><span class="mut">${esc(p.rank)}</span><span class="hrs">${(idx.hours[p.id] || 0).toFixed(1)}h</span>` : '<b class="red">空缺</b>'}</div>`; }).join('')}
-      <h4>航段</h4><table class="dtab"><tr><th>日</th><th>航班</th><th>航段</th><th>计划</th><th>机型</th></tr>${pr.legs.map(l => `<tr><td>D${l.d}</td><td>${esc(l.flt)}</td><td>${apHtml(l.from)} → ${apHtml(l.to)}</td><td>${hm(l.dep)}–${hm(l.arr)}</td><td>${esc(l.ac || pr.ac)}</td></tr>`).join('')}</table>
-      <h4>FDP</h4><table class="dtab"><tr><th>值勤日</th><th>FDP / 限制</th><th>余量</th><th>风险</th></tr>${fd.length ? fd.map(dy => `<tr><td>D${dy.d} · ${dateOf(dy.date)}</td><td>${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)}</td><td>${dy.planBuffer} 分</td><td><span class="rdot r-${dy.planRisk}"></span>${RN[dy.planRisk] || dy.planRisk}</td></tr>`).join('') : '<tr><td colspan="4" class="mut">暂无</td></tr>'}</table></div>
+    const RK = { low: ['ok', 'ok'], med: ['tight', 'tight'], high: ['risk', 'risk'], over: ['超限', 'risk'] };
+    const rule = sp.length ? (sp.some(c => C.isPlateauAirport && C.isPlateauAirport(c, st)) ? '高原' : '特殊机场') : '常规';
+    const tile = (l, v, cls, t) => `<div class="dtile"${t ? ` title="${esc(t)}"` : ''}><small>${l}</small><b class="${cls || ''}">${v}</b></div>`;
+    const cityChain = pr.legs.length ? [pr.legs[0].from].concat(pr.legs.map(l => l.to)).map(c => esc(C.apName(c, st))).join(' → ') : '';
+    const bufCls = minBuf == null ? '' : minBuf < 0 ? 'red' : minBuf < (st.settings.fdpRiskHigh || 60) ? 'red' : minBuf < (st.settings.fdpRiskMed || 120) ? 'warnc' : 'okc';
+    const spNotes = [...new Set(pr.legs.flatMap(l => [l.from, l.to]).filter(c => C.isSpecial(c, st)))].map(c => `${esc(C.apName(c, st))}(${c})：${esc(C.CAT_DESC[C.apCat(c, st)] || '特殊机场')}`);
+    const head = `<div class="drw-h"><div><h3>${pr.id}${fillBadge(pr.id)}${demoTag(pr)}</h3><div class="mut">${cityChain}</div></div><button class="btn drw-x" id="drwX" title="关闭">✕</button></div>`;
+    const view = `<div class="drw-b"><div class="dtiles">${tile('日期', dateOf(pr.start) + (pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''))}${tile('天数', pr.ndays + ' 天')}${tile('飞行小时', C.pairingHours(pr).toFixed(1) + 'h')}${tile('机型', esc(pr.ac))}${tile('FDP 余量', minBuf == null ? '—' : fmtBuf(minBuf), bufCls, '各值勤日 (限制 − 计划FDP) 的最小值')}${tile('规则', rule, sp.length ? 'red' : '', sp.map(c => C.apName(c, st)).join('、'))}</div>
+      <h4>机组</h4>${['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; return `<div class="drow ${p ? '' : 'vac'}"><span class="seat s-${s}">${({ C: '机长', F: '副驾驶', T: '观察员' })[s]}</span>${p ? `<b>${esc(p.name)}</b>${pill(p.rank)}<span class="hrs">${(idx.hours[p.id] || 0).toFixed(1)}h</span>` : '<b class="red">空缺</b><span class="mut">待补位 · 点「调整机组」选择候选人</span>'}</div>`; }).join('')}
+      <h4>航段</h4><table class="dtab"><tr><th>日</th><th>航班</th><th>航段</th><th>计划</th><th>机型/机号</th></tr>${pr.legs.map(l => `<tr><td>D${l.d}</td><td>${esc(l.flt)}</td><td>${apHtml(l.from)} → ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}–${C.fmtT(l.arr)}</td><td>${esc(l.ac || pr.ac)}<span class="mut"> ${esc(l.reg || '')}</span></td></tr>`).join('')}</table>
+      ${spNotes.length ? `<div class="note red">特殊机场：${spNotes.join('；')}，执行左右座均需持有该机场授权</div>` : ''}
+      <h4>FDP</h4><table class="dtab"><tr><th>值勤日</th><th>FDP / 限制</th><th>余量</th><th>风险</th></tr>${fd.map(dy => `<tr><td>D${dy.d} · ${dateOf(dy.date)}</td><td>${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)}</td><td>${fmtBuf(dy.planBuffer)}</td><td><span class="rbadge rb-${RK[dy.planRisk][1]}">${RK[dy.planRisk][0]}</span></td></tr>`).join('')}</table>
+      <div class="mut sm">FDP = 首段前报到 ${st.settings.reportMin || 60} 分 → 末段落地（计划时刻）；限制按规则表（报到时刻 × 航段数）。</div></div>
       <div class="drw-f"><button class="btn" id="drwC">关闭</button><button class="btn primary" id="drwE">⚙ 调整机组</button></div>`;
     let dw = $('#drawer'); if (!dw) { dw = document.createElement('div'); dw.id = 'drawer'; document.body.appendChild(dw); }
-    dw.innerHTML = `<div class="drw-mask"></div><aside class="drw">${html}</aside>`; dw.classList.remove('hidden');
-    const close = () => dw.classList.add('hidden');
-    $('#drwX').onclick = close; $('#drwC').onclick = close; dw.querySelector('.drw-mask').onclick = close; $('#drwE').onclick = () => { close(); openEdit(id); };
+    dw.innerHTML = `<div class="drw-mask"></div><aside class="drw">${head}${view}</aside>`; dw.classList.remove('hidden');
+    $('#drwX').onclick = closeDrawer; $('#drwC').onclick = closeDrawer; dw.querySelector('.drw-mask').onclick = closeDrawer;
+    $('#drwE').onclick = () => { const b = dw.querySelector('.drw-b'); dw.querySelector('.drw-f').remove(); b.classList.add('edit'); editInto(id, b); };
+    if (mode === 'edit') $('#drwE').click();
   }
   // ---- SVG 小部件 ----
   const PAL = ['#4f8cff', '#21c7a8', '#f5a524', '#8b6cf6', '#ef5d6c', '#3cc4f0', '#c7d0e0'];
@@ -905,7 +929,7 @@
     let h = `<div class="panel"><h3>执勤监控 · 按实际/预计时刻滚动监控 <small>逐段录入实际/预计起飞、落地（日期+时间，可跨午夜），每录入一段实际落地即按实际时刻重算 FDP、剩余余量与过夜休息；数据随排班保存</small></h3>
       <div class="flex" style="flex-wrap:wrap">${tog}<span>日期</span><select id="dtD">${Array.from({ length: C.DAYS }, (_, i) => `<option value="${i + 1}" ${i + 1 === dutyDate ? 'selected' : ''}>11/${String(i + 1).padStart(2, '0')} 周${WK[dow(i + 1)]}</option>`).join('')}</select>
       <span class="mut">当日执行任务 ${mon.length} 个 · 预计超限 <b class="${nEx ? 'red' : 'okc'}">${nEx}</b> · 下游休息受影响 <b class="${nDn ? 'warnc' : 'okc'}">${nDn}</b> · 已录入延误 ${dl} 段</span>
-      <button class="btn sm" id="dtSim">模拟：风险最高任务第 2 段预计晚 120 分（仅该段）</button><button class="btn sm" id="dtClr">清除当日延误</button>${leaveHist.length ? `<button class="btn sm" id="dtUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
+      <button class="btn sm" id="dtSim">模拟故障：延误致执勤余量告急（预检≥2套合规换人方案）</button><button class="btn sm" id="dtClr">清除当日延误</button>${leaveHist.length ? `<button class="btn sm" id="dtUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
       <div class="note">FDP = 报到（首段计划起飞前 ${S.reportMin} 分钟）→ 当日最晚的实际/预计落地；未录入的航段按计划时刻计算，前段延误<b>不会</b>自动顺延到后续航段（可能在后续过站追回）。若前段延误不追回、按最短过站 ${S.minTurnMin} 分钟顺延会超限，仅给出「若不追回将超限」提示，不计入超限。限制表为默认值（参考 CCAR-121，可在设置中修改）。飞机甘特按机号分行，色块表示延误/FDP 风险（绿=正常 · 琥珀=延误或中风险 · 红=高风险/超限）。</div></div>`;
     if (dutyView === 'ac') h += rDutyAcHtml(mon, m, A);
     else {
@@ -918,7 +942,7 @@
           ${dy.exLeg ? `<div class="red">✖ 自 ${dy.exLeg.leg.flt} ${C.apName(dy.exLeg.leg.from, st)}-${C.apName(dy.exLeg.leg.to, st)} 起超出 FDP 限制 ${dy.exceed} 分钟（报到 ${C.fmtT(dy.start)}，限制至 ${C.fmtT(dy.start + dy.limit)}）</div>` : ''}
           ${dy.cascExceed ? `<div class="mut">ⓘ 若不追回将超限：前段延误按最短过站顺延，预计 ${dy.cascLeg.leg.flt} 落地 ${C.fmtT(dy.cascLeg.carr)}，超 ${dy.cascExceed} 分钟（提示，不计入超限）</div>` : ''}
           ${x.downstream.map(d => `<div class="warnc">↳ ${d.overnight ? `D${d.d} 过夜休息压缩至 ${C.fmtH(d.restAfter)}（低于 ${S.minOvernightRestH}h，差 ${d.short} 分钟）` : `${esc(m[d.pilot].name)} 下一任务 ${d.next} 前休息仅 ${C.fmtH(d.gap)}（低于 ${S.minRestH}h，差 ${d.short} 分钟）`}</div>`).join('')}
-          ${x.exceed || x.downstream.length ? `<button class="btn sm ${x.exceed ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
+          ${x.exceed || x.downstream.length || x.day.buffer < (st.settings.fdpRiskHigh || 60) ? `<button class="btn sm ${x.exceed || x.day.buffer < (st.settings.fdpRiskHigh || 60) ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
     }
     const o = dutyOpts;
     if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 FDP ${o.exceed.exceed} 分钟` : (o.downstream && o.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
@@ -932,7 +956,9 @@
     document.querySelectorAll('.atin').forEach(i => i.onchange = () => { const k = i.dataset.k; const a = A[k] = A[k] || { kind: 'est' }; const v = fromDT(i.value); if (v == null) delete a[i.dataset.f]; else a[i.dataset.f] = v; if (a.dep == null && a.arr == null) delete A[k]; dutyOpts = null; save(); sum = C.summarize(st); renderKpis(); rDuty(); });
     document.querySelectorAll('.atkind').forEach(i => i.onchange = () => { if (A[i.dataset.k]) A[i.dataset.k].kind = i.value; save(); rDuty(); });
     $('#dtClr').onclick = () => { mon.forEach(x => x.day.legs.forEach(l => delete A[C.legKey(l.leg)])); dutyOpts = null; dutySel = null; save(); rDuty(); };
-    $('#dtSim').onclick = () => { const x = mon.slice().sort((a, b) => a.day.buffer - b.day.buffer)[0]; if (!x) return; const l = x.day.legs[Math.min(1, x.day.legs.length - 1)]; A[C.legKey(l.leg)] = { dep: l.dep + 120, arr: l.arr + 120, kind: 'est' }; dutyOpts = null; save(); rDuty(); };
+    $('#dtSim').onclick = () => { const f = C.simFaultPick(st, dutyDate);
+      if (f) { const l = st.pairings.find(p => p.id === f.pairing).legs.find(x => C.legKey(x) === f.legKey); A[f.legKey] = { dep: l.dep + f.delay, arr: l.arr + f.delay, kind: 'est' }; dutyOpts = null; save(); toast(`模拟：${f.pairing} 第 2 段预计晚 ${f.delay} 分 → 执勤余量告急；已预检 ${f.okCount} 套合规换人方案`); rDuty(); const g = document.querySelector(`.dtGo[data-pr="${f.pairing}"]`); if (g) g.click(); return; }
+      const x = mon.slice().sort((a, b) => a.day.buffer - b.day.buffer)[0]; if (!x) return; const l = x.day.legs[Math.min(1, x.day.legs.length - 1)]; A[C.legKey(l.leg)] = { dep: l.dep + 120, arr: l.arr + 120, kind: 'est' }; dutyOpts = null; save(); rDuty(); };
     if ($('#dtUndo')) $('#dtUndo').onclick = undoLeave;
     document.querySelectorAll('.dtGo').forEach(b => b.onclick = () => { dutyOpts = C.fdpOptions(st, b.dataset.pr); const i = dutyOpts.solutions.findIndex(x => x.recommended);
       cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(dutyOpts.pairing.crew).filter(Boolean), days: dutyOpts.days.map(d => d.date) }; rDuty(); const e = $('#dtSol'); if (e) e.scrollIntoView(); });
@@ -1805,11 +1831,20 @@
   $('#btnAuto').onclick = () => runAuto();
   $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; refresh(); } };
   $('#btnReset').onclick = () => { if (confirm(LITE ? '重置为轻量版示例数据（约100人 / 1中队）？当前修改将丢失。' : '重置为示例数据（约1100人 / 11中队）？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
+  { const TH = [['', '深蓝（默认）'], ['light', '浅色'], ['black', '纯黑/高对比'], ['green', '墨绿'], ['warm', '暖灰']];
+    const sel = document.createElement('select'); sel.id = 'themeSel'; sel.className = 'btn'; sel.title = '配色主题';
+    sel.innerHTML = TH.map(t => `<option value="${t[0]}">🎨 ${t[1]}</option>`).join('');
+    const ap = v => { if (v) document.documentElement.dataset.theme = v; else delete document.documentElement.dataset.theme; };
+    const sv = (location.hash.match(/theme=(\w+)/) || [])[1] || localStorage.getItem('crewTheme') || ''; sel.value = sv; ap(sv);
+    sel.onchange = () => { localStorage.setItem('crewTheme', sel.value); ap(sel.value); };
+    const rb = $('#btnReset'); rb.parentNode.insertBefore(sel, rb); }
   $('#btnIssues').onclick = e => { e.stopPropagation(); toggleIssuePanel(); };
   $('#modal').onclick = e => { if (e.target.id === 'modal') closeModal(); };
   const hp = location.hash.slice(1).split('&'); if (hp[0]) tab = hp[0];
   sum = C.summarize(st); renderKpis(); updateIssueBadge(); render();
   if (hp.includes('auto')) runAuto(() => { if (hp.includes('leave')) { const idx = C.buildIndex(st); const c = st.pilots.filter(p => p.rank === 'J3').sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0];
     const pr = idx.sched[c.id][1]; goLeave(c.id, pr.start, pr.start + pr.ndays - 1); }
-    if (hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length); openEdit(pr.id); document.querySelectorAll('#modalBox details')[0].open = true; } document.title += ' ready'; });
+    if (hp.includes('sim') && $('#dtSim')) $('#dtSim').click();
+    if (hp.includes('drawer') && !hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length && p.crew.C) || st.pairings[0]; openEdit(pr.id); }
+    if (hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length); openEdit(pr.id); $('#drwE').click(); document.querySelectorAll('#drawer details')[0].open = true; } document.title += ' ready'; });
 })();
