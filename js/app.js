@@ -449,7 +449,25 @@
         else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${pr.id}</span>`;
         const isHl = hlr && ui.hl.pairings.has(pr.id);
         const isOk = isHl && ui.hl.ok && !V[pr.id];
-        h += `<div class="bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${isOk ? 'ok' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${isHl ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
+        let bl = left, bw = w, tcls = '';
+        if (lvl === 'full' || lvl === 'mid') {
+          // real-time segments: one per duty day, report → release, scaled inside day cells
+          const DAYM = 1440, segs = [];
+          for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
+            const a = Math.min(...ls.map(l => l.dep)) - (S.reportMin || 95), b = Math.max(...ls.map(l => l.arr)) + (S.releaseMin || 30);
+            segs.push({ x0: nw + a / DAYM * cw, x1: nw + b / DAYM * cw, ls }); }
+          if (segs.length) {
+            bl = segs[0].x0; bw = Math.max(4, segs[segs.length - 1].x1 - bl); tcls = ' timed';
+            let sh = '';
+            segs.forEach((g, i) => { if (i) sh += `<i class="conn" style="left:${segs[i - 1].x1 - bl}px;width:${Math.max(0, g.x0 - segs[i - 1].x1)}px"></i>`; sh += `<i class="seg" style="left:${g.x0 - bl}px;width:${Math.max(3, g.x1 - g.x0)}px"></i>`; });
+            if (lvl === 'full') { const ch = dayChains(pr);
+              const lgs = segs.map((g, i) => { const c = ch[i]; if (!c) return ''; const room = Math.max(g.x1 - g.x0, Math.min(cw - 4, (segs[i + 1] ? segs[i + 1].x0 : g.x0 + cw) - g.x0 - 4));
+                return `<div class="lg tl" style="left:${g.x0 - bl + 3}px;width:${room}px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`; }).join('');
+              inner = `${sh}<div class="bh tl">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div>${lgs}`;
+            } else inner = sh + inner.replace('class="bh"', 'class="bh tl"').replace('class="lg"', 'class="lg tl"');
+          }
+        }
+        h += `<div class="bar slot${slot}${tcls} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${isOk ? 'ok' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${isHl ? 'hl' : ''}" style="left:${bl}px;width:${bw}px" data-pr="${pr.id}">${inner}</div>`;
       }
       h += '</div>';
     }
