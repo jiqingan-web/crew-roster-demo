@@ -1440,6 +1440,7 @@
     progStage('repairFtl');
     repairFtl(st);
     if (st.lite) { progStage('bandPull'); liteEqualize(st); rhythmRepair(st); repairFtl(st); }
+    freeInstrForNewCapt(st); repairFtl(st);
     progStage('assignStandby');
     assignStandby(st);
     progStage('assignTraining');
@@ -1587,6 +1588,58 @@
     }
   }
 
+  // 新机长任务缺 T（须教员）：把一名教员从其冲突任务中换出（由同岗合格者顶替），再放入本任务 T 位（一步链式交换）
+  function freeInstrForNewCapt(st) {
+    let idx = buildIndex(st); let fixed = 0;
+    const assign = (q, pr, slot) => { pr.crew[slot] = q.id; idx.sched[q.id].push(pr); idx.hours[q.id] += pairingHours(pr); };
+    const unassign = (q, pr, slot) => { pr.crew[slot] = null; idx.sched[q.id] = idx.sched[q.id].filter(x => x !== pr); idx.hours[q.id] -= pairingHours(pr); };
+    // 让 q 可进入 pr 的 slot：直接可行，或把 q 唯一冲突任务 X 中的岗位让给合格替补 r。okFn 额外校验组合；成功则已写入
+    function relocate(q, pr, slot, okFn) {
+      if (pcOK(q, pr, st, idx, slot) && okFn(q)) { assign(q, pr, slot); return true; }
+      const days = new Set(daysTouched(pr, st));
+      const lo = Math.min(...days) - 3, hi = Math.max(...days) + 3;
+      const confl = (idx.sched[q.id] || []).filter(x => x !== pr && daysTouched(x, st).some(d => d >= lo && d <= hi));
+      for (const X of confl.slice(0, 3)) { if (tryMove(q, pr, slot, okFn, X)) return true; }
+      return false;
+    }
+    function tryMove(q, pr, slot, okFn, X) {
+      const xs = ['C', 'F', 'T'].find(k => X.crew[k] === q.id); const hx = pairingHours(X);
+      unassign(q, X, xs);
+      if (pcOK(q, pr, st, idx, slot) && okFn(q)) {
+        // 变体：X 的第三人为非新机长 → 升至 C，T 由合格副驾/他人补
+        const tX = idx.pm[X.crew.T];
+        if (xs === 'C' && tX && isCaptClass(tX.rank) && !isNew(tX.rank)) {
+          unassign(tX, X, 'T');
+          if (!pcOK(tX, X, st, idx, 'C')) assign(tX, X, 'T'); else { assign(tX, X, 'C');
+          const pool2 = st.pilots.filter(r => r !== q && !isNew(r.rank) && !Object.values(X.crew).includes(r.id) && !Object.values(pr.crew).includes(r.id) && idx.hours[r.id] + hx <= softCapOf(r, 'T') + 4).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+          for (const r of pool2) { if (!pcOK(r, X, st, idx, 'T')) continue; const crew = [tX, idx.pm[X.crew.F], r]; if (crewIssue(X, crew, st)) continue;
+            assign(r, X, 'T'); assign(q, pr, slot); return true; }
+          unassign(tX, X, 'C'); assign(tX, X, 'T'); } }
+        const need = xs === 'C' ? (r => isCaptClass(r.rank) && !isNew(r.rank)) : xs === 'F' ? (r => isFO(r.rank)) : (r => isNew((idx.pm[X.crew.C] || {}).rank) ? isInstr(r.rank) : !isNew(r.rank));
+        const pool = st.pilots.filter(r => r !== q && need(r) && !Object.values(X.crew).includes(r.id) && !Object.values(pr.crew).includes(r.id) && idx.hours[r.id] + hx <= softCapOf(r, xs) + 4).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        for (const r of pool) { if (!pcOK(r, X, st, idx, xs)) continue; const crew = ['C', 'F', 'T'].map(k => k === xs ? r : idx.pm[X.crew[k]]); if (crew.every(Boolean) && crewIssue(X, crew, st)) continue;
+          assign(r, X, xs); assign(q, pr, slot); return true; } }
+      assign(q, X, xs); return false;
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      idx = buildIndex(st);
+      for (const pr of st.pairings.filter(x => x.crew.C && x.crew.F && !x.crew.T && isNew((idx.pm[x.crew.C] || {}).rank))) {
+        const c0 = idx.pm[pr.crew.C], f = idx.pm[pr.crew.F];
+        // A：教员进 T
+        const instrs = st.pilots.filter(q => isInstr(q.rank) && q !== c0 && q !== f).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        if (instrs.some(q => relocate(q, pr, 'T', q2 => !crewIssue(pr, [c0, f, q2], st)))) { fixed++; continue; }
+        // B：非新机长替换 C（新机长让出），T 由任意合格者（可链式让位）补
+        unassign(c0, pr, 'C'); let done = false;
+        const caps = st.pilots.filter(q => isCaptClass(q.rank) && !isNew(q.rank) && q !== f && idx.hours[q.id] + pairingHours(pr) <= SOFT_MAX + 6).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        for (const q of caps) { if (!relocate(q, pr, 'C', q2 => pr.legs.every(l => legSeatedOK(q2, f, l, st) || legSeatedOK(f, q2, l, st)))) continue;
+          const ts = st.pilots.filter(t => t !== q && t !== f && t !== c0 && idx.hours[t.id] + pairingHours(pr) <= softCapOf(t, 'T') + 4).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+          if (ts.some(t => relocate(t, pr, 'T', t2 => !crewIssue(pr, [q, f, t2], st)))) { done = true; break; }
+          unassign(q, pr, 'C'); }
+        if (done) fixed++; else assign(c0, pr, 'C');
+      }
+    }
+    return fixed;
+  }
   // 新机长任务第三人必须是教员时，把高工时教员与低工时教员互换 T 位
   function spreadInstrT(st) {
     for (let it = 0; it < 8; it++) {
@@ -2511,7 +2564,7 @@
     for (const pr of affected) {
       const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === pilotId); pr.crew[slot] = null;
       let cands = candidates(st, pr, slot).filter(c => c.ok);
-      const crewOk = cands.filter(c => !c.crewWarn); if (crewOk.length) cands = crewOk;
+      const crewOk = cands.filter(c => !c.crewWarn); if (crewOk.length || ['C', 'F', 'T'].filter(k => k !== slot).every(k => pr.crew[k])) cands = crewOk; // 机组已满时不得引入组合违规（如新机长无教员）
       const noWarn = cands.filter(c => !c.warn); if (noWarn.length) cands = noWarn;
       // 首选：任务首日在备份的人员
       const d0 = daysTouched(pr, st)[0];
@@ -2547,7 +2600,7 @@
       const [ok2] = personCheck(q, pr, w, idx2, { ignorePrefs: true, slot }); const crew = ['C', 'F', 'T'].map(x => x === slot ? q : (pr.crew[x] && idx2.pm[pr.crew[x]]));
       if (ok2 && !crewIssue(pr, crew, w) && !(idx2.hours[q.id] + pairingHours(pr) > pilotHardCap(q, w))) {
         pr.crew[slot] = q.id;
-        const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id).sort((a, b) => (!!a.crewWarn - !!b.crewWarn) || (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
+        const bf = candidates(w, Q, sQ).filter(c => c.ok && !ban.has(c.p.id) && c.p.id !== q.id && !c.crewWarn).sort((a, b) => (!!a.crewWarn - !!b.crewWarn) || (!!a.warn - !!b.warn) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours)[0];
         pr.crew[slot] = null;
         if (bf) out.push({ q, Q, sQ, bf });
       }
@@ -2577,7 +2630,7 @@
       for (const v of vac) {
         const pr = prOf(w, v.id); const idx = buildIndex(w);
         let cands = candidates(w, pr, v.slot).filter(c => c.ok && !ban.has(c.p.id));
-        const crewOk = cands.filter(c => !c.crewWarn); if (crewOk.length) cands = crewOk;
+        const crewOk = cands.filter(c => !c.crewWarn); if (crewOk.length || ['C', 'F', 'T'].filter(k => k !== v.slot).every(k => pr.crew[k])) cands = crewOk; // 机组已满时不得引入组合违规（如新机长无教员）
         const sb = cands.filter(c => c.standby.length).sort((a, b) => a.hours - b.hours);
         let rest = cands.filter(c => !c.standby.length);
         const noPref = rest.filter(c => !c.warn); if (noPref.length) rest = noPref;
@@ -2816,7 +2869,7 @@
     if (!target) { st.demoHolesApplied = true; st.demoHoles = []; return []; }
     const already = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T)).length;
     // 优先保证足够的「易补」空洞供现场手填；总数控制在约 3–5（已有难填缺员时略多一点也可）
-    const want = Math.max(0, Math.max(target - already, Math.min(3, target)));
+    const want = Math.max(0, Math.max(target - already, Math.min(3, target, 6 - already))); // 总数尽量 ≤6
     if (!want) { st.demoHolesApplied = true; st.demoHoles = []; return []; }
     const idx = buildIndex(st);
     // 易补：已满员、≤2 天、无特殊机场、非 A321；优先清空副驾位（备员多）
