@@ -247,9 +247,38 @@
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">空缺</span>'}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 
+  // ---------------- 方案历史（最近 5 套）----------------
+  function solKpi(s) { return { coverage: s.coverage, holes: s.total - s.full, hard: s.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length,
+    min: s.all.min, max: s.all.max, std: s.all.std, gini: s.all.gini, g34: s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23, pref: s.prefRate }; }
+  function pushSolution(s, info) {
+    const H = st.solHist = st.solHist || []; st.solN = (st.solN || 0) + 1;
+    const crews = st.pairings.map(p => Object.assign({}, p.crew));
+    const diff = H.length ? C.crewDiff(crews, H[H.length - 1].crews) : null;
+    H.push({ n: st.solN, seed: info.seed != null ? info.seed : null, crews, standby: st.standby || null, training: st.training || null,
+      demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() });
+    while (H.length > 5) H.shift(); st.solIdx = H.length - 1;
+  }
+  function useSolution(i) {
+    const H = st.solHist || []; const h = H[i]; if (!h) return;
+    st.pairings.forEach((p, k) => { p.crew = Object.assign({}, h.crews[k]); delete p.demoHole; }); const dh = new Set(h.demoHoles || []);
+    st.pairings.forEach(p => { if (dh.has(p.id)) p.demoHole = true; });
+    st.standby = h.standby; st.training = h.training; st.solIdx = i; refresh(); toast(`已切换到方案 #${h.n}（seed ${h.seed}）`);
+  }
+  function solBadge() {
+    const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];
+    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="上一套">◀ 上一套</button><b>方案 #${h.n}</b><small>seed ${h.seed}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="下一套">下一套 ▶</button></span>`;
+  }
+  function solCompareHtml() {
+    const H = st.solHist || []; if (!H.length) return '';
+    const cur = st.solIdx != null ? st.solIdx : H.length - 1; const pc = x => (x * 100).toFixed(1) + '%';
+    return `<div class="panel"><h3>方案对比 <small>每次「一键自动填人」生成新种子方案；保留最近 ${H.length}/5 套 · 差异 = 与上一套相比换人的岗位比例</small></h3>
+      <table><tr><th>方案</th><th>seed</th><th>满员率</th><th>空洞</th><th>硬违规(非空洞)</th><th>工时区间</th><th>标准差</th><th>基尼</th><th>休3–4天占比</th><th>意向满足</th><th>与上一套差异</th><th></th></tr>${H.map((h, i) => { const k = h.kpi;
+        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>#${h.n}</b></td><td class="mut">${h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>`;
+  }
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-sol]'); if (b && !b.disabled) useSolution(+b.dataset.sol); });
   function renderKpis() {
     const hb = sum.hard ? 'bad' : 'good';
-    $('#kpis').innerHTML = `<span>任务<b>${sum.total}</b></span><span class="${sum.coverage < 1 ? 'bad' : 'good'}">满员率<b>${(sum.coverage * 100).toFixed(1)}%</b></span>
+    $('#kpis').innerHTML = solBadge() + `<span>任务<b>${sum.total}</b></span><span class="${sum.coverage < 1 ? 'bad' : 'good'}">满员率<b>${(sum.coverage * 100).toFixed(1)}%</b></span>
       <span class="${hb}">硬性违规<b>${sum.hard}</b></span><span>工时区间<b>${sum.all.min.toFixed(0)}–${sum.all.max.toFixed(0)}h</b></span><span>意向休息满足<b>${(sum.prefRate * 100).toFixed(1)}%</b></span>`;
   }
   // ---------------- 主线（路演：4 步） + 更多功能 ----------------
@@ -304,7 +333,7 @@
   function rOps() {
     const m = C.opsMetrics(st); const S = st.settings;
     const zoneCls = { ideal: 'z-ideal', idle: 'z-idle', alert: 'z-alert', critical: 'z-critical' }[m.zone] || 'z-idle';
-    let h = `<div class="panel"><h3>运营看板 <small>基于当前排班快照 · 本月机号 ${m.nAircraft}（模板池 ${m.fleetTemplate}）· 任务 ${m.nPairings} 组</small></h3>
+    let h = solCompareHtml() + `<div class="panel"><h3>运营看板 <small>基于当前排班快照 · 本月机号 ${m.nAircraft}（模板池 ${m.fleetTemplate}）· 任务 ${m.nPairings} 组</small></h3>
       <div class="satrow">
         <div class="satcard ${zoneCls}">
           <div class="olab">饱和度</div>
@@ -1521,8 +1550,8 @@
           + 'self.RosterLiteRoster=' + JSON.stringify(window.RosterLiteRoster || null) + ';\n'
           + 'self.RosterRulesConfig=' + JSON.stringify(window.RosterRulesConfig || null) + ';\n'
           + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData, self.RosterLiteRoster, self.RosterRulesConfig);\n'
-          + 'self.onmessage=function(e){var d=e.data;try{C.autoFill(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
-          + 'self.postMessage({type:"done",crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null});}'
+          + 'self.onmessage=function(e){var d=e.data;try{var info=C.autoFillDiverse(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
+          + 'self.postMessage({type:"done",info:info,crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null});}'
           + 'catch(err){self.postMessage({type:"error",msg:String(err&&err.stack||err)});}};';
         workerURL = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
       }
@@ -1542,7 +1571,7 @@
     if (!b) { b = document.createElement('button'); b.id = 'pcancel'; b.className = 'btn sm'; b.type = 'button'; b.textContent = '取消'; b.style.marginTop = '10px'; box.appendChild(b); }
     return b;
   }
-  function finishAuto(t0, cb) {
+  function finishAuto(t0, cb, info) {
     let demoN = 0, holeN = 0;
     if (st.sample) {
       // 每次重新填人时允许再留洞 / 再注入（受设置开关控制）
@@ -1554,6 +1583,7 @@
       if (st.settings && st.settings.demoAnomalies) { const d = C.injectDemoAnomalies(st) || []; demoN = d.length; }
     }
     const s = C.summarize(st); lastSolveMs = Math.round(performance.now() - t0);
+    pushSolution(s, info || {});
     $('#pfill').style.width = '100%';
     setTimeout(() => { $('#progress').classList.add('hidden'); refresh();
       const unf = s.total - s.full;
@@ -1564,12 +1594,15 @@
     const p = $('#progress'); p.classList.remove('hidden');
     showAutoStatus({ pct: 0, stage: '启动后台计算', elapsed: 0 });
     const t0 = performance.now();
+    // 每次点击新种子：方案不同但合法；lite 内部 3 候选择优且与历史方案差异 ≥40%
+    const seed = (window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4e9)) % 1000000000;
+    const opts = { seed, prevCrews: (st.solHist || []).slice(-4).map(h => h.crews), minDiff: 0.4, tries: LITE ? 3 : 1 };
     const cancelBtn = ensureCancelBtn();
     const w = makeAutoWorker();
     const runMain = () => { // 退回：主线程同步计算（界面在计算期间不会刷新）
       if (cancelBtn) cancelBtn.style.display = 'none';
       showAutoStatus({ pct: 0.02, stage: '后台线程不可用，主线程计算中…', elapsed: 0 });
-      setTimeout(() => { C.autoFill(st); autoJob = null; finishAuto(t0, cb); }, 60);
+      setTimeout(() => { const info = C.autoFillDiverse(st, opts); autoJob = null; finishAuto(t0, cb, info); }, 60);
     };
     if (!w) { autoJob = { main: true }; runMain(); return; }
     autoJob = { w };
@@ -1580,11 +1613,11 @@
       w.terminate(); autoJob = null;
       if (m.type === 'done') {
         st.pairings.forEach((pr, i) => { pr.crew = m.crews[i]; }); st.standby = m.standby; st.training = m.training;
-        finishAuto(t0, cb);
+        finishAuto(t0, cb, m.info);
       } else { console.error(m.msg); if (!started) { autoJob = { main: true }; runMain(); } else { p.classList.add('hidden'); toast('自动排班出错：' + esc(String(m.msg).split('\n')[0])); } }
     };
     w.onerror = ev => { ev.preventDefault && ev.preventDefault(); if (!autoJob || autoJob.w !== w) return; w.terminate(); autoJob = { main: true }; runMain(); };
-    w.postMessage({ st: JSON.parse(JSON.stringify(st)), opts: {} });
+    w.postMessage({ st: JSON.parse(JSON.stringify(st)), opts });
   }
 
   // ---------------- 启动 ----------------

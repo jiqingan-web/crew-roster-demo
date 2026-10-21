@@ -1052,6 +1052,26 @@
       done() { cb({ pct: 1, round: K, rounds: K, stage: '完成', key: 'done', detail: '', elapsed: (Date.now() - t0) / 1000, eta: 0 }); }
     };
   }
+  function solutionScore(s) {
+    const fly = (s.per || []).filter(x => x.hours > 0.5);
+    const inBand = fly.length ? fly.filter(x => x.hours >= 40 && x.hours <= 60).length / fly.length : 0;
+    return s.hard * 1e6 + s.soft * 1e3 + (1 - (s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23)) * 90 + (1 - inBand) * 120 + s.all.std * 0.15;
+  }
+  function crewDiff(a, b) { let n = 0, d = 0; a.forEach((c, i) => { const o = b[i] || {}; ['C', 'F', 'T'].forEach(k => { if (!c[k] && !o[k]) return; n++; if (c[k] !== o[k]) d++; }); }); return n ? d / n : 0; }
+  // 每次点击：新种子 → 不同但合法的方案；lite 内部跑 2–3 个种子取 KPI 最优且与历史方案差异 ≥ minDiff
+  function autoFillDiverse(st, opts) {
+    opts = opts || {}; const seed = opts.seed != null ? opts.seed >>> 0 : (Date.now() % 1e9) >>> 0;
+    const tries = opts.tries || (st.lite ? 3 : 1); const prev = opts.prevCrews || []; const minDiff = opts.minDiff != null ? opts.minDiff : 0.4;
+    const onS = opts.onStatus; let best = null;
+    for (let i = 0; i < tries; i++) { const sd = (seed + i * 7919) >>> 0;
+      const s = autoFill(st, Object.assign({}, opts, { seed: sd, onStatus: onS ? (x => onS(Object.assign({}, x, { pct: (i + (x.pct || 0)) / tries, detail: (x.detail ? x.detail + ' · ' : '') + `候选 ${i + 1}/${tries}` }))) : null }));
+      const crews = st.pairings.map(p => Object.assign({}, p.crew));
+      const d = prev.length ? Math.min(...prev.map(pc => crewDiff(crews, pc))) : 1;
+      const sc = solutionScore(s) + (d < minDiff ? 1e7 : 0);
+      if (!best || sc < best.sc) best = { sc, crews, sb: JSON.stringify(st.standby || null), tr: JSON.stringify(st.training || null), seed: sd, diff: d }; }
+    st.pairings.forEach((p, i) => p.crew = best.crews[i]); st.standby = JSON.parse(best.sb); st.training = JSON.parse(best.tr);
+    return { seed: best.seed, diff: best.diff, tries };
+  }
   function autoFill(st, opts) {
     opts = opts || {};
     const big = (st.pairings || []).length > 800;
@@ -1059,14 +1079,10 @@
     FDP_PLAN_CACHE = new WeakMap(); const softNew0 = SOFT_NEW; if (st.lite) SOFT_NEW = 58;
     PROG = opts.onStatus ? makeProgress(opts.onStatus, K, opts.stageSeq || (st.lite ? STAGE_SEQ_LITE : STAGE_SEQ_MAIN)) : null; PROG_N = 0;
     try {
-    const score = s => {
-      const fly = (s.per || []).filter(x => x.hours > 0.5);
-      const inBand = fly.length ? fly.filter(x => x.hours >= 40 && x.hours <= 60).length / fly.length : 0;
-      return s.hard * 1e6 + s.soft * 1e3 + (1 - (s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23)) * 90 + (1 - inBand) * 120 + s.all.std * 0.15;
-    };
+    const score = solutionScore;
     for (let k = 0; k < K; k++) {
       if (PROG) PROG.round(k);
-      const res = autoFillOnce(st, Object.assign({}, opts, { noise: k ? rng(9173 * k + 7) : null,
+      const res = autoFillOnce(st, Object.assign({}, opts, { noise: opts.seed != null ? rng((opts.seed >>> 0) * 31 + 9173 * k + 7) : k ? rng(9173 * k + 7) : null, noiseAmp: opts.noiseAmp,
         onProgress: opts.onProgress ? (x => opts.onProgress((k + x) / K)) : null }));
       const sc = score(res);
       if (!best || sc < best.sc) best = { sc, crew: st.pairings.map(p => Object.assign({}, p.crew)), sb: JSON.stringify(st.standby || null), k };
@@ -1192,7 +1208,7 @@
           // 教员仅 ~6% 编制：新机长任 C 需教员陪飞，教员接近满载时少排新机长 C 位
           if (free('C') && isNew(c.rank)) sc += 0.25 + 1.2 * instrBusy;
           if (free('C') && isInstr(c.rank)) sc += 0.35 + 1.0 * instrBusy; // 教员优先留给新机长带飞 T 位
-          if (nz) sc += nz() * 0.25;
+          if (nz) sc += nz() * (opts.noiseAmp || 0.25);
           if (!best || sc < best.sc) best = { sc, c, f, t };
         }
         if (best && capt.indexOf(c) >= 3) break;
@@ -2977,7 +2993,7 @@
   }
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
-    RULES_CONFIG: RC, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
+    RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, generateLiteSample, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
