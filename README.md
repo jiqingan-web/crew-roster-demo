@@ -12,7 +12,7 @@ css/style.css       深蓝航空运控风格样式
 js/sample-data.js   示例机场扩展 + 16 完整日真实机径模板（改编自 30 天甘特；不含原始 xlsx）
 js/core.js          核心：示例数据生成 / 规则 / 自动填人求解器 / 校验 / 指标 / 请假调配（浏览器与 Node 通用）
 js/charts.js        自写轻量 SVG 图表
-js/app.js           界面逻辑
+js/app/*.js         界面逻辑（00-base … 09-main，按序加载的经典脚本，共享全局作用域）
 test/test.js        Node 无界面测试：node test/test.js
 screenshots/*.png   各主要视图截图（供 PPT）
 ```
