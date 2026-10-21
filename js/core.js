@@ -1,12 +1,13 @@
 /* 机组排班助手 - 核心模块（数据生成 / 规则 / 求解器 / 校验 / 指标）
  * 浏览器中挂载到 window.RosterCore，在 Node 中可 require()。 */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'));
-  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
-})(typeof self !== 'undefined' ? self : this, function (SampleData) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'), require('./lite-roster.js'));
+  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null, root.RosterLiteRoster || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
+})(typeof self !== 'undefined' ? self : this, function (SampleData, LiteRoster) {
   'use strict';
   const YEAR = 2026, MONTH = 11, DAYS = 30, DAY = 1440;
   const SD = SampleData || {};
+  const LR = (LiteRoster && LiteRoster.LITE_ROSTER) || (LiteRoster && LiteRoster.default && LiteRoster.default.LITE_ROSTER) || null;
   const SAMPLE_WEEK_PATHS = SD.SAMPLE_WEEK_PATHS || [];
   const SAMPLE_META = SD.SAMPLE_META || {};
   const SQUADS_AIRBUS = ['空客一中队', '空客二中队', '空客三中队', '空客四中队', '空客五中队', '空客六中队', '空客七中队', '空客八中队'];
@@ -382,36 +383,49 @@
   }
   // ---------------- 轻量版（lite/）：单中队 ~100 人，任务量按人均 12–14 值勤日裁剪 ----------------
   function liteRankMix() {
-    return [['TC', 1], ['TB', 2], ['TL', 4], ['J3', 27], ['机长A', 2], ['机长B', 2],
-      ['F7', 13], ['F6', 12], ['F5', 12], ['F4', 12], ['F3', 13]]; // 38 机长（含 7 教员、4 新机长）+ 62 副驾
+    // 七中队·演示实际编制（化名）；保留函数供测试/文档
+    if (LR && LR.length) {
+      const m = {}; LR.forEach(p => { m[p.rank] = (m[p.rank] || 0) + 1; });
+      return Object.keys(m).sort().map(rk => [rk, m[rk]]);
+    }
+    return [['TC', 2], ['TB', 4], ['TL', 8], ['J3', 15], ['机长A', 2], ['机长B', 3], ['SPIC', 1], ['US', 1],
+      ['F8', 1], ['F7', 16], ['F6', 12], ['F5', 5], ['F4', 15], ['F3', 15], ['F1', 1]];
   }
   function generateLiteSample(seed, opt) {
     opt = opt || {};
     const r = rng(seed || 20261101);
-    const pick = a => a[Math.floor(r() * a.length)];
-    const specialAll = Object.keys(AIRPORTS).filter(c => AUTH_CATS.includes((AIRPORTS[c] && AIRPORTS[c][3]) || 'NONE'));
-    const byCat = c => specialAll.filter(x => AIRPORTS[x][3] === c);
-    const used = new Set(); const pilots = []; let no = 30100;
-    const squad = SQUADS_AIRBUS[0];
-    liteRankMix().forEach(([rk, n]) => { for (let i = 0; i < n; i++) {
-      let nm; do { nm = pick(SUR) + pick(GIV); } while (used.has(nm)); used.add(nm);
-      no += 1 + Math.floor(r() * 9);
-      const auth = assignAuthForRank(rk, r, specialAll, byCat);
-      if ((rk === 'F4' || rk === 'F5') && !auth.includes('ZULS')) auth.push('ZULS');
-      pilots.push({ id: 'E' + no, name: nm, rank: rk, auth, prefs: [], leave: [], squad, fleet: 'A320', health: defaultHealth() });
-    } });
+    if (!LR || !LR.length) throw new Error('lite roster missing');
+    // 化名人员固定；prefs/leave/health 仍按种子轻扰，保证无人不适飞
+    const pilots = LR.map(src => {
+      const p = {
+        id: src.id, name: src.name, rank: src.rank, auth: (src.auth || []).slice(),
+        prefs: [], leave: [], squad: src.squad || '七中队·演示', fleet: src.fleet || 'A320',
+        health: defaultHealth()
+      };
+      if (src.rnpAuth && src.rnpAuth.length) p.rnpAuth = src.rnpAuth.slice();
+      if (src.qualNotes && src.qualNotes.length) p.qualNotes = src.qualNotes.slice();
+      if (src.traineeCapt) p.traineeCapt = true;
+      if (src.requalCapt) p.requalCapt = true;
+      return p;
+    });
     const S = defaultSettings();
-    // 少量请假（2 人·3 天）+ 每人 ≤2 个意向休息日
-    [7, 52].forEach((i, k) => { const s0 = 6 + k * 11; for (let d = s0; d < s0 + 3; d++) pilots[i].leave.push(d); });
+    S.demoHoles = 3; // 已有少量结构性空洞时，总数仍落在 3–5
+    // 少量请假（2 人·3 天，按种子选下标）+ 每人 ≤2 个意向休息日
+    const leaveIdx = [Math.floor(r() * pilots.length), Math.floor(r() * pilots.length)];
+    leaveIdx.forEach((i, k) => { const s0 = 6 + k * 11; for (let d = s0; d < s0 + 3 && d <= DAYS; d++) if (!pilots[i].leave.includes(d)) pilots[i].leave.push(d); });
     pilots.forEach(p => { let t = 0; while (p.prefs.length < 2 && t++ < 50) { const d = 1 + Math.floor(r() * DAYS);
       if (!p.prefs.includes(d) && !p.leave.includes(d)) p.prefs.push(d); } p.prefs.sort((a, b) => a - b); });
-    // 少量体检/健康限制（软限制，不停飞，保证无人闲置）
-    [[11, { noPlateau: true, note: '高原机场暂不适任（演示）' }], [40, { noNight: true, bpNote: '血压偏高随访中', note: '限制夜航（演示）' }],
-     [77, { medExamExpiry: '2026-11-20', bpNote: '须携带血压记录本' }]].forEach(([i, h]) => { pilots[i].health = Object.assign(defaultHealth(), h); });
-    // 任务：同完整版的真实日径模板铺满整月（演示补全），只取若干空客机号，使 值勤人日 ≈ 人数×目标日 / 3
+    // 少量软性健康限制（不停飞）
+    const hi = [Math.floor(r() * pilots.length), Math.floor(r() * pilots.length), Math.floor(r() * pilots.length)];
+    const H = [
+      { noPlateau: true, note: '高原机场暂不适任（演示）' },
+      { noNight: true, bpNote: '血压偏高随访中', note: '限制夜航（演示）' },
+      { medExamExpiry: '2026-11-20', bpNote: '须携带血压记录本' }
+    ];
+    H.forEach((h, k) => { pilots[hi[k]].health = Object.assign(defaultHealth(), h); });
+    // 任务量：人均 ~12.3 值勤日；拉萨占比高的机号后置
     const all = buildPairingsFromWeek(r, { maxPairings: 1800 }).filter(p => p.ac !== 'C909');
     const byReg = {}; all.forEach(p => { const g = p.legs[0].reg; (byReg[g] = byReg[g] || []).push(p); });
-    // 单中队机长运力有限：特殊机场（拉萨须两名 J3+）占比 >60% 的机号排后，避免机长位结构性缺口
     const spShare = g => { let a = 0, b = 0; byReg[g].forEach(p => { a += p.ndays; if (p.legs.some(l => isSpecial(l.from) || isSpecial(l.to))) b += p.ndays; }); return b / Math.max(1, a); };
     const regs = Object.keys(byReg).sort((x, y) => (spShare(x) > 0.6) - (spShare(y) > 0.6) || x.localeCompare(y));
     const want = Math.round(pilots.length * (opt.dutyDays || 12.3) / 3 * (opt.load || 1));
@@ -424,9 +438,10 @@
     }
     chosen.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     chosen.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
-    return { version: 1, sample: true, lite: true, sampleSchema: 9, settings: S, pilots, pairings: chosen, fills: [],
+    return { version: 1, sample: true, lite: true, sampleSchema: 10, settings: S, pilots, pairings: chosen, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [], sampleMeta: SAMPLE_META };
   }
+
 
   function buildPairingsFromWeek(r, opt) {
     const meta = SAMPLE_META || {};
@@ -1289,6 +1304,7 @@
     repairCrewIssues(st);
     progStage('repairFtl');
     repairFtl(st);
+    if (st.lite) { progStage('bandPull'); liteEqualize(st); }
     progStage('assignStandby');
     assignStandby(st);
     progStage('assignTraining');
@@ -1873,6 +1889,42 @@
   }
   const sbOK = (a, d) => a[d] === '' && a[d - 1] !== 'D' && a[d + 1] !== 'D';
   function freeRuns(a) { const r = []; let s = 0; for (let d = 1; d <= DAYS + 1; d++) { if (d <= DAYS && a[d] === '') { if (!s) s = d; } else if (s) { r.push([s, d - 1]); s = 0; } } return r; }
+  // 轻量版：同职级把偏高工时者的任务匀给同级偏低者，压低 0–1 个碎片尾部（不改硬规则）
+  function liteEqualize(st) {
+    for (let pass = 0; pass < 6; pass++) {
+      const idx = buildIndex(st); let moved = 0;
+      const by = {}; st.pilots.forEach(p => { if (!(p.health && p.health.noFly)) (by[p.rank] = by[p.rank] || []).push(p); });
+      Object.keys(by).forEach(rk => {
+        const xs = by[rk]; if (xs.length < 2) return;
+        const over = xs.filter(p => idx.hours[p.id] > (SOFT_AIM + 4)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        const under = xs.filter(p => idx.hours[p.id] < 40).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        for (const hi of over) {
+          if (idx.hours[hi.id] <= (SOFT_AIM + 4)) continue;
+          for (const lo of under) {
+            if (idx.hours[lo.id] >= 40) break;
+            for (const pr of (idx.sched[hi.id] || []).slice()) {
+              const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
+              if (Object.values(pr.crew).includes(lo.id)) continue;
+              const h = pairingHours(pr);
+              if (idx.hours[hi.id] - h < 45) continue;
+              if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+              if (!pcOK(lo, pr, st, idx, slot)) continue;
+              const crew = ['C', 'F', 'T'].map(k => k === slot ? lo : idx.pm[pr.crew[k]]);
+              if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
+              pr.crew[slot] = lo.id;
+              idx.sched[hi.id] = idx.sched[hi.id].filter(x => x !== pr);
+              idx.hours[hi.id] -= h;
+              (idx.sched[lo.id] = idx.sched[lo.id] || []).push(pr);
+              idx.hours[lo.id] += h;
+              moved++; break;
+            }
+          }
+        }
+      });
+      if (!moved) break;
+    }
+  }
+
   function assignStandby(st) {
     const S = st.settings; const idx = buildIndex(st); st.standby = {}; st.pilots.forEach(p => st.standby[p.id] = []);
     const ds = dayStatus(st, idx);

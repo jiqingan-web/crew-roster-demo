@@ -20,7 +20,7 @@
         // 在 migratePilots 改写中队名之前检测旧示例（一大队等）
         const LEGACY = new Set(['一大队', '二大队', '三大队', '教学中队']);
         const isSampleish = s.sample === true;
-        const stale = (LITE ? !s.lite : (s.pilots.length < 500 || s.lite))
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 10 || s.pilots.length !== 101) : (s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
           || !s.sampleSchema || s.sampleSchema < 7;
         if (isSampleish && stale) {
@@ -1467,7 +1467,8 @@
     try {
       if (!workerURL) {
         const src = 'self.RosterSampleData=' + JSON.stringify(window.RosterSampleData || null) + ';\n'
-          + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData);\n'
+          + 'self.RosterLiteRoster=' + JSON.stringify(window.RosterLiteRoster || null) + ';\n'
+          + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData, self.RosterLiteRoster);\n'
           + 'self.onmessage=function(e){var d=e.data;try{C.autoFill(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
           + 'self.postMessage({type:"done",crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null});}'
           + 'catch(err){self.postMessage({type:"error",msg:String(err&&err.stack||err)});}};';
