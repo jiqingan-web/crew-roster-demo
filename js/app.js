@@ -501,7 +501,7 @@
           if (segs.length) {
             bl = segs[0].x0; bw = Math.max(4, segs[segs.length - 1].x1 - bl); tcls = ' timed';
             let sh = '';
-            segs.forEach((g, i) => { if (i) sh += `<i class="conn" style="left:${segs[i - 1].x1 - bl}px;width:${Math.max(0, g.x0 - segs[i - 1].x1)}px"></i>`; sh += `<i class="seg" style="left:${g.x0 - bl}px;width:${Math.max(3, g.x1 - g.x0)}px"></i>`; });
+            segs.forEach((g, i) => {  sh += `<i class="seg" style="left:${g.x0 - bl}px;width:${Math.max(3, g.x1 - g.x0)}px"></i>`; });
             if (lvl === 'full') { const ch = dayChains(pr);
               const lgs = segs.map((g, i) => { const c = ch[i]; if (!c) return ''; const room = Math.max(g.x1 - g.x0, Math.min(cw - 4, (segs[i + 1] ? segs[i + 1].x0 : g.x0 + cw) - g.x0 - 4));
                 return `<div class="lg tl" style="left:${g.x0 - bl + 3}px;width:${room}px">${blkDay(c)}</div>`; }).join('');
