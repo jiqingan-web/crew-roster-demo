@@ -5,7 +5,7 @@ if (!fs.existsSync(MAP)) { console.log('NAMES SKIP (no offline name_map)'); proc
 const R = JSON.parse(fs.readFileSync(MAP, 'utf8')).map.map(x => x.real);
 const C = require('../js/core.js'); let fail = 0;
 const chk = (n, ok, info) => { console.log('NAMES ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) fail++; };
-const hitN = names => names.filter(n => R.includes(n)).length;
+const hitN = names => names.filter(n => R.some(r => n.includes(r))).length; // 含子串
 for (const s of [undefined, 1, 2, 3, 7, 42, 99, 2027]) chk('main sample seed ' + s, hitN(C.generateSample(s).pilots.map(p => p.name)) === 0);
 chk('lite aliases', hitN(C.generateLiteSample(1).pilots.map(p => p.name)) === 0);
 const blk = new Set(C.generateSample(5).pilots.slice(0, 50).map(p => p.name));
