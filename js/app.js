@@ -244,50 +244,6 @@
   function apHtml(c) { const n = C.apName(c, st); return C.isSpecial(c, st) ? `<span class="red">${esc(n)}</span>` : esc(n); }
   function dayChains(pr) { const out = []; for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
     out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
-
-  // 甘特：按日历日拆成时刻定位胶囊；标签优先 24h 时刻，窄块逐级省略
-  function dayDutySegs(pr) {
-    const by = {};
-    pr.legs.forEach(l => {
-      const day = Math.floor(l.dep / C.DAY) + 1;
-      (by[day] = by[day] || []).push(l);
-    });
-    const rep = (st.settings && st.settings.reportMin) || 60, rel = (st.settings && st.settings.releaseMin) || 30;
-    return Object.keys(by).map(Number).sort((a, b) => a - b).map(day => {
-      const ls = by[day].slice().sort((a, b) => a.dep - b.dep);
-      const dep = ls[0].dep, arr = Math.max(...ls.map(l => l.arr));
-      // 值勤期：报到 → 退场（同日边界内可视化）
-      const t0 = (day - 1) * C.DAY, t1 = day * C.DAY;
-      const start = Math.max(t0, dep - rep), end = Math.min(t1 - 1, arr + rel);
-      return { day, ls, dep, arr, start, end, flt: ls[0].flt };
-    });
-  }
-  function barLabel(pr, slot, seg, wPx, lvl, badge, cw) {
-    const hm = m => { m = ((m % C.DAY) + C.DAY) % C.DAY; return String(Math.floor(m / 60)).padStart(2, '0') + ':' + String(m % 60).padStart(2, '0'); };
-    const t = `${hm(seg.start)}–${hm(seg.end)}`; // 08:30–15:20
-    const tCompact = `${parseInt(hm(seg.start), 10)}–${parseInt(hm(seg.end), 10)}`; // 8–15
-    const flt = (seg.flt || '').replace(/^EU0+/, 'EU') || '';
-    const id = pr.id;
-    const slotN = C.SLOT_NAME[slot] || slot;
-    // 日视图列宽足够时优先完整时刻（即使用时长短导致块窄）
-    const dayView = (cw || 0) >= 100;
-    if (wPx < 18) return '';
-    if (wPx < 28) return `<div class="bh">${badge}${hm(seg.start).slice(0, 5)}</div>`;
-    if (!dayView && wPx < 40) return `<div class="bh">${badge}${tCompact}</div>`;
-    if (wPx < (dayView ? 44 : 70)) return `<div class="bh" style="font-size:${dayView && wPx < 70 ? 9 : 10}px;letter-spacing:-.2px">${badge}${t}</div>`;
-    if (wPx < 100) return `<div class="bh">${badge}${t}</div>${flt ? `<div class="lg bflt">${esc(flt)}</div>` : ''}`;
-    if (wPx < 140) return `<div class="bh">${badge}${t} <span class="bflt">${esc(flt || id)}</span></div>`;
-    const aps = lvl === 'full' ? `<div class="lg">${[seg.ls[0].from, ...seg.ls.map(l => l.to)].map(apHtml).join('-')}</div>` : '';
-    return `<div class="bh">${badge}${t}</div><div class="lg"><span class="bflt">${esc(flt)}</span> · ${id}[${slotN}]</div>${aps}`;
-  }
-  function dayTicksHtml(cw) {
-    if (cw < 64) return '';
-    // 3 6 9 12 15 18 21（参考公司甘特）
-    const marks = [3, 6, 9, 12, 15, 18, 21];
-    return `<div class="gticks">${marks.map(h => `<span>${h}</span>`).join('')}</div>`;
-  }
-
-
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">空缺</span>'}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 
@@ -456,7 +412,7 @@
   let _rz; addEventListener('resize', () => { clearTimeout(_rz); _rz = setTimeout(() => { if (tab === 'gantt' && st) { ui.fitAvail = 0; if (ui.fit) ui.cw = fitCw(C.DAYS, 170); rGantt(); } }, 150); });
   function rGantt() {
     const cw = ui.cw, nw = NW(); let lvl = cw >= 110 ? 'full' : cw >= 40 ? 'mid' : cw >= 16 ? 'small' : 'tiny';
-    let rh = { full: 52, mid: 34, small: 18, tiny: 9 }[lvl]; const m = pm(); const V = violByPairing();
+    let rh = { full: 66, mid: 40, small: 18, tiny: 9 }[lvl]; const m = pm(); const V = violByPairing();
     const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
     let ps = st.pilots.slice().sort((a, b) => order[C.rankGroup(a.rank)] - order[C.rankGroup(b.rank)] || C.RANK_VAL[b.rank] - C.RANK_VAL[a.rank] || a.id.localeCompare(b.id));
     if (ui.gg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.gg);
@@ -466,17 +422,13 @@
     const idx = C.buildIndex(st); const S = st.settings;
     let h = `${demoFillBanner()}${exportBarHtml('<span class="mut">人员视图可导出班表/月历</span>')}
       <div class="toolbar"><input id="gq" placeholder="搜索 姓名/员工号/级别" value="${esc(ui.gq)}"> <select id="gg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.gg ? 'selected' : ''}>${g}</option>`).join('')}</select>
-      <div class="legend"><span><i style="background:#4aa3e8;border-radius:3px"></i>机长位</span><span><i style="background:#3fbf86;border-radius:3px"></i>副驾驶位</span><span><i style="background:#e0a23a;border-radius:3px"></i>观察员</span>
-      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息</span><span><i style="background:#1a3a5c;border:1px solid #5aa0e6"></i>培训</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span class="mut">块内 24h 时刻·航班</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位</span><span>点击可调整</span></div>
+      <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>观察员</span>
+      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#1a3a5c;border:1px solid #5aa0e6"></i>培训</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>备份</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>请假</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
       ${ui.hl ? `<div class="hlbar ${ui.hl.ok ? 'ok' : ''}">${ui.hl.ok ? '✔ 已更新并合规' : '已高亮刚应用的调配'}（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
       <div class="gbox"><div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
-    const ticks = dayTicksHtml(cw);
-    for (let d = 1; d <= C.DAYS; d++) {
-      const we = [0, 6].includes(dow(d)) ? 'we' : '';
-      const lab = cw >= 70 ? `${dateOf(d)} 周${WK[dow(d)]}` : cw >= 26 ? `${d} ${WK[dow(d)]}` : cw >= 12 ? String(d) : (d % 5 === 0 || d === 1 ? String(d) : '');
-      h += `<div class="gday ${we}" title="${dateOf(d)} 周${WK[dow(d)]}"><div class="gd">${lab}</div>${ticks}</div>`;
-    }
+    const ticks = cw >= 64 ? `<div class="gticks">${[3, 6, 9, 12, 15, 18, 21].map(x => `<span style="left:${x / 24 * 100}%">${x}</span>`).join('')}</div>` : '';
+    for (let d = 1; d <= C.DAYS; d++) h += `<div class="gday ${[0, 6].includes(dow(d)) ? 'we' : ''}" title="${dateOf(d)} 周${WK[dow(d)]}">${cw >= 70 ? `${dateOf(d)} 周${WK[dow(d)]}` : cw >= 26 ? `${d}<br>${WK[dow(d)]}` : cw >= 12 ? d : (d % 5 === 0 || d === 1 ? d : '')}${ticks}</div>`;
     h += '</div>';
     for (const p of ps) {
       const hr = idx.hours[p.id]; const bad = hr > (S.hardMaxHours || 100); const amb = false;
@@ -488,27 +440,16 @@
       h += '</div>';
       for (const pr of idx.sched[p.id]) {
         const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id);
+        const gap = cw >= 20 ? 2 : 0.5; const left = nw + (pr.start - 1) * cw + gap, w = Math.max(1, pr.ndays * cw - 2 * gap);
         const rk = C.pairingRisk(pr, st, st.actuals && Object.keys(st.actuals).length ? st.actuals : null); const rb = RISK_BADGE[rk.risk];
         const badge = rb ? `<span class="rbadge r-${rk.risk}" title="执勤风险：${rb[1]} · D${rk.worst.d} FDP ${C.fmtH(rk.worst.fdp)} / 限制 ${C.fmtH(rk.worst.limit)} · 余量 ${rk.worst.buffer} 分钟">${rb[0]}</span>` : '';
+        let inner = '';
+        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}] ${crewTxt(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${c.html}<br><span class="mut" style="color:#b9cbe8">${c.ls.map(l => l.flt).join(' ')}</span></div>`).join('')}</div>`; }
+        else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pr.id} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(apHtml).join('·')}</div>`;
+        else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${pr.id}</span>`;
         const isHl = hlr && ui.hl.pairings.has(pr.id);
         const isOk = isHl && ui.hl.ok && !V[pr.id];
-        const cls = `bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${isOk ? 'ok' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${isHl ? 'hl' : ''}`;
-        // 按日历日时刻定位（公司甘特风格）；极窄缩放时退回整段日块以免看不见
-        const segs = dayDutySegs(pr);
-        if (lvl === 'tiny' || cw < 18) {
-          const gap = 0.5; const left = nw + (pr.start - 1) * cw + gap, w = Math.max(2, pr.ndays * cw - 2 * gap);
-          h += `<div class="${cls}" style="left:${left}px;width:${w}px" data-pr="${pr.id}" title="${pr.id} ${C.fmtT(pr.legs[0].dep)}–${C.fmtT(pr.legs[pr.legs.length - 1].arr)}"></div>`;
-        } else {
-          segs.forEach(seg => {
-            const t0 = (seg.day - 1) * C.DAY;
-            const x0 = (seg.start - t0) / C.DAY, x1 = (seg.end - t0) / C.DAY;
-            const pad = cw >= 40 ? 1.5 : 0.5;
-            const left = nw + (seg.day - 1) * cw + Math.max(0, x0) * cw + pad;
-            const w = Math.max(3, (Math.min(1, x1) - Math.max(0, x0)) * cw - 2 * pad);
-            const inner = barLabel(pr, slot, seg, w, lvl, badge + fillBadge(pr.id) + demoTag(pr), cw);
-            h += `<div class="${cls}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
-          });
-        }
+        h += `<div class="bar slot${slot} ${rb ? 'rk-' + rk.risk : ''} ${V[pr.id] ? 'viol' : ''} ${isOk ? 'ok' : ''} ${fillsOf(pr.id).length ? 'has-fill' : ''} ${isHl ? 'hl' : ''}" style="left:${left}px;width:${w}px" data-pr="${pr.id}">${inner}</div>`;
       }
       h += '</div>';
     }
