@@ -1,9 +1,9 @@
 /* 机组排班助手 - 核心模块（数据生成 / 规则 / 求解器 / 校验 / 指标）
  * 浏览器中挂载到 window.RosterCore，在 Node 中可 require()。 */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'), require('./lite-roster.js'));
-  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null, root.RosterLiteRoster || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
-})(typeof self !== 'undefined' ? self : this, function (SampleData, LiteRoster) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'), require('./lite-roster.js'), require('./rules-config.js'));
+  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null, root.RosterLiteRoster || null, root.RosterRulesConfig || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
+})(typeof self !== 'undefined' ? self : this, function (SampleData, LiteRoster, RulesConfig) {
   'use strict';
   const YEAR = 2026, MONTH = 11, DAYS = 30, DAY = 1440;
   const SD = SampleData || {};
@@ -36,9 +36,32 @@
   const GROUPS = ['教员', '机长', '新机长', '副驾驶'];
 
   // RE12 巡航座位搭配：左座 -> 右座是否允许
+  // ---------- 规则配置（rules/crew_rules.yaml → js/rules-config.js；修订规则只改配置）----------
+  const RC = (RulesConfig && (RulesConfig.RULES_CONFIG || (RulesConfig.default && RulesConfig.default.RULES_CONFIG))) || null;
+  const EO = (RC && RC.engine_options) || {};
+  const CAPT_ORDER = (RC && RC.captain_levels && RC.captain_levels.order) || ['US', 'J0', 'J1', 'J2', 'J3', 'TL', 'TB', 'TC'];
+  const RANK_ALIAS = { '机长A': 'J0', '机长B': 'J0' }; // 公司“机长A/B”（新机长）按 J0 套矩阵
+  const capKey = r => RANK_ALIAS[r] || r;
+  const capLv = r => CAPT_ORDER.indexOf(capKey(r));
+  const fNum = s => +String(s || 'F0').replace(/\D/g, '');
+  const FO_GROUPS = (RC && RC.fo_levels && RC.fo_levels.groups) || { low: ['F1', 'F2', 'F3'], mid: ['F4', 'F5'], high: ['F6', 'F7', 'F8'] };
+  function foGroup(r) { for (const k in FO_GROUPS) if (FO_GROUPS[k].includes(r)) return k; return null; }
+  function foComboKey(a, b) { const o = ['low', 'mid', 'high']; const x = [foGroup(a), foGroup(b)].sort((p, q) => o.indexOf(p) - o.indexOf(q)); return x[0] + '_' + x[1]; }
+  function foComboAllowed(a, b) { const al = RC && RC.fo_combination_matrix && RC.fo_combination_matrix.allow; const k = foComboKey(a, b); return !al || al[k] !== false; }
+  function foComboScore(a, b) { const ps = RC && RC.fo_combination_matrix && RC.fo_combination_matrix.preference_score; return (ps && ps[foComboKey(a, b)]) || 0; }
+  const SPIC_EXCL = (RC && RC.captain_levels && RC.captain_levels.excluded_from_roster) || ['SPIC'];
+  // 特殊机场规则键 ↔ 引擎机场类别
+  const RULE_CAT = { LXA: 'LHASA', LJG: 'HIGH', KMG: 'PLATEAU' };
+  const CAT_RULE = {}; Object.keys(RULE_CAT).forEach(k => CAT_RULE[RULE_CAT[k]] = k);
+  const SAR = (RC && RC.special_airport_rules) || {};
+  function sarOf(cat) { const k = CAT_RULE[cat] || cat; return SAR[k] ? Object.assign({ key: k }, SAR[k]) : null; }
+  const ageOf = p => p && (p.age != null ? +p.age : p.birthYear ? YEAR - (+p.birthYear) : null);
+
   function seatOK(L, R) {
     if (!isCaptClass(L)) return false;
-    if (L === 'SPIC') return isInstr(R);
+    if (L === 'SPIC') return SPIC_EXCL.includes('SPIC') ? false : isInstr(R); // RE12：SPIC 不作为责任机长（左座）
+    const mx = RC && RC.cruise_pairing_matrix && RC.cruise_pairing_matrix.by_captain_level[capKey(L)];
+    if (mx) return isCaptClass(R) || (isFO(R) && RANK_VAL[R] >= fNum(mx.min_fo));
     if (isInstr(L)) return true;
     if (['US', 'J0', 'J1', '机长A', '机长B'].includes(L)) return isCaptClass(R) || (isFO(R) && RANK_VAL[R] >= 4);
     if (['J2', 'J3'].includes(L)) return isCaptClass(R) || (isFO(R) && RANK_VAL[R] >= 3);
@@ -56,7 +79,7 @@
     ZJSY: ['三亚', 18.3, 109.41], ZJHK: ['海口', 19.93, 110.46], ZSHC: ['杭州', 30.23, 120.43],
     ZSNJ: ['南京', 31.74, 118.86], ZHHH: ['武汉', 30.78, 114.21], ZLXY: ['西安', 34.45, 108.75],
     ZWWW: ['乌鲁木齐', 43.9, 87.47], ZYHB: ['哈尔滨', 45.62, 126.25], ZSQD: ['青岛', 36.36, 120.09],
-    ZSAM: ['厦门', 24.54, 118.13], ZPPP: ['昆明', 25.1, 102.93], ZGNN: ['南宁', 22.61, 108.17],
+    ZSAM: ['厦门', 24.54, 118.13], ZPPP: ['昆明', 25.1, 102.93, 'PLATEAU'], ZGNN: ['南宁', 22.61, 108.17],
     ZBYN: ['太原', 37.75, 112.63], ZHCC: ['郑州', 34.52, 113.84], ZSJN: ['济南', 36.86, 117.22],
     ZGOW: ['揭阳', 23.55, 116.5], ZSFZ: ['福州', 25.93, 119.66], ZLLL: ['兰州', 36.52, 103.62],
     ZBHH: ['呼和浩特', 40.85, 111.82], ZUGY: ['贵阳', 26.54, 106.8], ZYYJ: ['延吉', 42.88, 129.45],
@@ -68,9 +91,18 @@
     ZBLL: ['吕梁', 37.68, 111.14, 'US'], ZBXZ: ['忻州', 38.6, 112.97, 'US'],
   };
   const AIRPORTS = Object.assign({}, AIRPORTS_BASE, SD.SAMPLE_AIRPORTS || {});
+  // 配置驱动：special_airport_rules 的机场名/同组成员 → 机场类别（含昆明 KMG 新增为一般高原）
+  Object.keys(SAR).forEach(k => { const cat = RULE_CAT[k] || k; const ru = SAR[k];
+    const names = [String(ru.name || '').split('(')[0]].concat(ru.group_members || []);
+    Object.keys(AIRPORTS).forEach(c => { const a = AIRPORTS[c]; if (a && names.includes(a[0])) { AIRPORTS[c] = a.slice(0, 3).concat([cat]); } }); });
+  // 机场分类清单（一/二/三/四类、复杂）：界面标签
+  const CLASS_LABEL = { class_1_high_plateau: '一类·高高原', class_2: '二类', class_3: '三类', class_4: '四类', complex_airport: '复杂' };
+  function apClass(c, st) { const nm = apName(c, st); const L = (RC && RC.airport_category_list) || {};
+    for (const fl of ['A320', 'ARJ21']) { const g = L[fl] || {}; for (const k of Object.keys(CLASS_LABEL)) if ((g[k] || []).includes(nm)) return { key: k, label: CLASS_LABEL[k], fleet: fl }; }
+    return null; }
   const CAT_DESC = {
-    LHASA: '拉萨：两名飞行员均需 J3 及以上', HIGH: '高原/复杂机场：J2/J3+F6以上，或教员+F5以上',
-    PLATEAU: '一般高原机场：J2/J3+F5以上，或教员+F4以上', ZBCF: '赤峰：J2/J3/教员 + F4以上',
+    LHASA: '拉萨（一类·高高原）：双机长（J3/教员 + J3+）+ 副驾驶，均需资质', HIGH: '高原/复杂机场：J2/J3+F6以上，或教员+F5以上',
+    PLATEAU: '一般高原（昆明等）：J2/J3+F5以上，或教员+F4以上', ZBCF: '赤峰：J2/J3/教员 + F4以上',
     J1: '克拉玛依：左座 J1 及以上', US: '茅台/吕梁/忻州：左座 US 及以上', NONE: '无特殊要求' };
   const AUTH_CATS = ['LHASA', 'HIGH', 'PLATEAU', 'ZBCF'];
   function apName(c, st) { const a = (st && st.airports && st.airports[c]) || AIRPORTS[c]; return a ? a[0] : c; }
@@ -80,6 +112,14 @@
 
   // 特殊机场座位规则（L 左座, R 右座）
   function catOK(cat, L, R) {
+    const ru = sarOf(cat);
+    if (ru) { // RE12 第六节 + 手册17章（配置驱动）
+      if (!(ru.captain_levels || []).includes(capKey(L))) return false;
+      if (isCaptClass(R)) return !ru.second_pilot_min || capLv(R) >= CAPT_ORDER.indexOf(ru.second_pilot_min);
+      if (ru.second_pilot_min && EO.lxa_double_captain !== false && !EO.lxa_fallback_fo_min_single_captain) return false;
+      const mn = ru.fo_min_by_captain ? ru.fo_min_by_captain[capKey(L)] : ru.fo_min;
+      return !mn || (isFO(R) && RANK_VAL[R] >= fNum(mn));
+    }
     switch (cat) {
       case 'LHASA': return isJ3plus(L) && isJ3plus(R);
       case 'HIGH': return (isJ2plus(L) && !isInstr(L) && foLevel(R) >= 6) || (isInstr(L) && foLevel(R) >= 5);
@@ -406,6 +446,9 @@
       if (src.qualNotes && src.qualNotes.length) p.qualNotes = src.qualNotes.slice();
       if (src.traineeCapt) p.traineeCapt = true;
       if (src.requalCapt) p.requalCapt = true;
+      // 不可跳级（airport_category_list.qualification_note）：持一/二类资质者补全昆明(三类)资质——演示补全（非实飞台账）
+      const hi = p.auth.some(c => ['LHASA', 'HIGH', 'ZBCF'].includes(apCat(c)));
+      Object.keys(AIRPORTS).filter(c => apCat(c) === 'PLATEAU' && AIRPORTS[c][0] === '昆明').forEach(c => { if (hi && !p.auth.includes(c)) { p.auth.push(c); (p.authDemo = p.authDemo || []).push(c); } });
       return p;
     });
     const S = defaultSettings();
@@ -714,7 +757,8 @@
     if (!seatOK(L.rank, R.rank)) return false;
     for (const c of [leg.from, leg.to]) { const cat = apCat(c, st);
       if (cat === 'NONE') continue;
-      if (AUTH_CATS.includes(cat) && (!L.auth.includes(c) || !R.auth.includes(c))) return false;
+      const ru = sarOf(cat); const needQ = ru ? ru.crew_qualification_required !== false : AUTH_CATS.includes(cat);
+      if (needQ && (!(L.auth || []).includes(c) || !(R.auth || []).includes(c))) return false;
       if (!catOK(cat, L.rank, R.rank)) return false; }
     if ((leg.ac === 'A321' || leg.ac === 'A21N') && !isJ2plus(L.rank)) return false;
     return true;
@@ -723,17 +767,91 @@
     const cs = crewPilots.filter(Boolean);
     if (cs.length < 3) return null; // 不完整机组不做组合判定
     // 新机长执飞须组内有教员（教员可任执飞座之一）；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
-    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
-    if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '机组无机长';
+    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '[RE12-新机长] 新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
+    if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '[RE12-机组] 机组无机长';
+    const xr = extraCrewIssue(p, cs, st); if (xr) return xr;
     for (const leg of p.legs) {
       let ok = false;
       for (let i = 0; i < 3 && !ok; i++) for (let j = 0; j < 3 && !ok; j++) if (i !== j && legSeatedOK(cs[i], cs[j], leg, st)) ok = true;
       if (!ok) { const c = [leg.from, leg.to].find(x => isSpecial(x, st));
-        return `D${leg.d} ${leg.flt} ${apName(leg.from, st)}-${apName(leg.to, st)}：无满足${c ? '特殊机场(' + apName(c, st) + ')授权/' : ''}座位搭配规则的左右座组合`; }
+        const ru = c && sarOf(apCat(c, st));
+        return `[${ru ? 'RE12-6/17章 special_airport_rules.' + ru.key : c ? 'RE12-6 特殊机场' : 'RE12-3 cruise_pairing_matrix'}] D${leg.d} ${leg.flt} ${apName(leg.from, st)}-${apName(leg.to, st)}：无满足${c ? '特殊机场(' + apName(c, st) + ')授权/' : ''}座位搭配规则的左右座组合`; }
     }
     // F1 只能与教员在右座；F2 须有教员
-    if (cs.some(x => x.rank === 'F1' || x.rank === 'F2') && !cs.some(x => isInstr(x.rank))) return 'F1/F2 须与教员同组';
+    if (cs.some(x => x.rank === 'F1' || x.rank === 'F2') && !cs.some(x => isInstr(x.rank))) return '[RE12-操作 F1/F2] F1/F2 须与教员同组';
     return null;
+  }
+  // 配置驱动的组级硬规则：搭配限制表 / FO-FO 矩阵 / 高高原双机长 / 体检特许 / 年龄（有数据才生效）
+  function restrictionSet(st) { const a = (st && st.restrictions) || []; if (st && st._rsSrc === a && st._rsSet) return st._rsSet;
+    const s = new Set(); a.forEach(r => { if (!r || !r.a || !r.b) return; s.add(r.a + '|' + r.b); s.add(r.b + '|' + r.a); });
+    if (st) { Object.defineProperty(st, '_rsSet', { value: s, writable: true, configurable: true, enumerable: false }); Object.defineProperty(st, '_rsSrc', { value: a, writable: true, configurable: true, enumerable: false }); } return s; }
+  function extraCrewIssue(p, cs, st) {
+    if (EO.restriction_table_hard !== false && st && st.restrictions && st.restrictions.length) { const rs = restrictionSet(st);
+      for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) if (rs.has(cs[i].id + '|' + cs[j].id)) return `[restriction_table] 搭配限制表：${cs[i].name} 与 ${cs[j].name} 不可同机`; }
+    const fos = cs.filter(x => isFO(x.rank));
+    for (let i = 0; i < fos.length; i++) for (let j = i + 1; j < fos.length; j++) if (!foComboAllowed(fos[i].rank, fos[j].rank))
+      return `[RE12 fo_combination_matrix.${foComboKey(fos[i].rank, fos[j].rank)}] 两名副驾驶 ${fos[i].rank}+${fos[j].rank} 搭配禁止`;
+    const cats = new Set(); p.legs.forEach(l => [l.from, l.to].forEach(c => cats.add(apCat(c, st))));
+    const PR = RC && RC.plateau_airport_rules; const cr = PR && PR.crew_requirements;
+    for (const cat of cats) { const ru = sarOf(cat); if (!ru || ru.category !== 'high_plateau') continue;
+      if (ru.second_pilot_min && EO.lxa_double_captain !== false && cr) {
+        const caps = cs.filter(x => isCaptClass(x.rank) && capLv(x.rank) >= CAPT_ORDER.indexOf(ru.second_pilot_min));
+        if (caps.length < (cr.high_plateau_min_captains || 2)) return `[17.1.3 crew_requirements.high_plateau_min_captains] ${ru.name}：须至少 ${cr.high_plateau_min_captains || 2} 名 ${ru.second_pilot_min}+ 机长`;
+        if (fos.length < (cr.high_plateau_min_fos || 0)) return `[17.1.3 crew_requirements.high_plateau_min_fos] ${ru.name}：须至少 ${cr.high_plateau_min_fos} 名副驾驶（第三人）`; }
+      const ms = PR && PR.medical_standards; if (ms && ms.special_qualified_excluded) { const x = cs.find(q => q.health && q.health.specialQualified);
+        if (x) return `[17.1.4 medical_standards.special_qualified_excluded] ${x.name} 为体检特许合格，不得参与高高原（${ru.name}）`; }
+      const al = PR && PR.age_limits; if (al) {
+        const old = cs.find(q => ageOf(q) != null && ageOf(q) >= al.high_plateau_max_age);
+        if (old) return `[17.1.3 age_limits.high_plateau_max_age] ${old.name} ${ageOf(old)} 岁 ≥ ${al.high_plateau_max_age}，不进高高原`;
+        const ca = cs.filter(q => isCaptClass(q.rank)); if (ca.length >= 2 && ca.every(q => ageOf(q) != null)) { const sum = ca.slice(0, 2).reduce((a, q) => a + ageOf(q), 0);
+          if (al.age_sum_strict_less ? sum >= al.captain_pair_age_sum_max : sum > al.captain_pair_age_sum_max) return `[17.1.3 age_limits.captain_pair_age_sum_max] 机长年龄和 ${sum} 不小于 ${al.captain_pair_age_sum_max}`; } } }
+    const sr = RC && RC.senior_pilot_rule;
+    if (sr && sr.enabled && EO.senior_pilot_rule_active) { const sen = cs.find(q => isCaptClass(q.rank) && ageOf(q) != null && ageOf(q) >= sr.age_threshold);
+      if (sen) { const mn = fNum(isInstr(sen.rank) ? sr.instructor_min_fo_level : sr.captain_min_fo_level); const lo = fos.find(f => RANK_VAL[f.rank] < mn);
+        if (lo) return `[RE12-5.10 senior_pilot_rule] ${sen.name}(${ageOf(sen)}岁) 带队须搭配 F${mn}+，${lo.name} 为 ${lo.rank}`; } }
+    return null;
+  }
+  // 搭配限制表导入：rows = [[人员A, 人员B, 限制类型], ...] 或 CSV 文本；按员工号或姓名匹配
+  function parseRestrictions(input, pilots) {
+    const rows = Array.isArray(input) ? input : String(input || '').split(/\r?\n/).map(l => l.split(/[,\t，]/).map(x => x.trim()));
+    const sch = (RC && RC.restriction_table_schema) || { columns: ['人员A', '人员B', '限制类型'], default_type: '不可同机' };
+    const find = k => { k = String(k || '').trim(); if (!k) return null; return pilots.find(p => p.id === k) || pilots.find(p => p.name === k) || null; };
+    const pairs = [], unknown = [];
+    rows.forEach((r, i) => { if (!r || r.length < 2 || !String(r[0] || '').trim()) return; if (i === 0 && String(r[0]).includes(sch.columns[0])) return;
+      const A = find(r[0]), B = find(r[1]); const type = String(r[2] || '').trim() || sch.default_type;
+      if (!A || !B || A === B) { unknown.push(String(r[0]) + '/' + String(r[1])); return; }
+      if (type === sch.default_type) pairs.push({ a: A.id, b: B.id, type }); });
+    return { pairs, unknown };
+  }
+  // 规则库（规则说明页 + 校验引用）
+  function rulesCatalog(st) {
+    const anyAge = !!(st && st.pilots && st.pilots.some(p => ageOf(p) != null));
+    const anySQ = !!(st && st.pilots && st.pilots.some(p => p.health && p.health.specialQualified));
+    const nR = ((st && st.restrictions) || []).length; const PR = (RC && RC.plateau_airport_rules) || {};
+    const ageSt = anyAge ? '生效' : '待年龄数据';
+    const R = [
+      { id: 'cruise_pairing_matrix', src: 'RE12 第三节', kind: '硬', status: '生效', desc: 'US/J0/J1→右座≥F4；J2/J3→≥F3；TL/TB/TC→F1起（右座为机长类恒可）', impl: 'seatOK / legSeatedOK' },
+      { id: 'captain_levels.excluded_from_roster', src: 'RE12', kind: '硬', status: '生效', desc: 'SPIC 不作为责任机长（左座）', impl: 'seatOK' },
+      { id: 'fo_combination_matrix.allow', src: 'RE12', kind: '硬', status: '生效', desc: '两名副驾驶 low_low(F1–F3 + F1–F3) 禁止', impl: 'extraCrewIssue' },
+      { id: 'fo_combination_matrix.preference_score', src: 'RE12', kind: '软', status: '生效', desc: Object.entries((RC && RC.fo_combination_matrix.preference_score) || {}).map(([k, v]) => k + ' ' + v).join(' · '), impl: '自动排班评分' },
+      { id: 'three_person_crew', src: 'RE12', kind: '硬', status: '生效', desc: '第三成员不上座、免座位矩阵，最低 F1；观察员任意级别（含机长）；仍须资质/体检/限制表', impl: 'crewIssue（任两人可成上座对）' },
+      { id: 'special_airport_rules.LXA', src: 'RE12 第六节 + 手册17.1.3', kind: '硬', status: EO.lxa_double_captain !== false ? '生效（双机长）' : '生效（F6 近似）', desc: '拉萨：左座 J3/TL/TB/TC，右座机长 ≥J3（双机长）+ 第三人副驾驶；两上座均需拉萨资质', impl: 'catOK + extraCrewIssue' },
+      { id: 'special_airport_rules.LJG', src: 'RE12 第六节', kind: '硬', status: '生效', desc: '丽江/西双版纳/西昌/西宁/大连：机长 J2+；J2/J3→F6+，TL+→F5+；两上座均需资质', impl: 'catOK' },
+      { id: 'special_airport_rules.KMG', src: 'RE12 第六节 / 手册17章', kind: '硬', status: '生效', desc: '昆明（一般高原）：机长 J2+；J2/J3→F5+，TL+→F4+；两上座均需资质', impl: 'catOK' },
+      { id: 'airport_category_list', src: '资质规定 / 飞行技术管理手册', kind: '展示', status: '生效', desc: '一类(高高原)/二类/三类/四类/复杂 标签；不可跳级（示例资质按此补全）', impl: 'apClass / 界面标签' },
+      { id: 'plateau_airport_rules.crew_requirements', src: '手册 17.1.3(2)(5)', kind: '硬', status: '生效', desc: '高高原至少 2 名机长 + 1 名副驾驶；机长起降', impl: 'extraCrewIssue' },
+      { id: 'plateau_airport_rules.age_limits', src: '手册 17.1.3(2)(3)(4)', kind: '硬', status: ageSt, desc: `≥${PR.age_limits && PR.age_limits.high_plateau_max_age} 岁不进高高原；双机长年龄和 <${PR.age_limits && PR.age_limits.captain_pair_age_sum_max}`, impl: 'extraCrewIssue（无年龄数据不生效）' },
+      { id: 'senior_pilot_rule', src: 'RE12 第五节.10', kind: '硬', status: !EO.senior_pilot_rule_active ? '停用（用户指示）· 待年龄数据' : ageSt, desc: '58 岁以上机长带队搭配 F6+（教员 F5+）', impl: 'extraCrewIssue（engine_options.senior_pilot_rule_active）' },
+      { id: 'medical_standards.special_qualified_excluded', src: '手册 17.1.4', kind: '硬', status: anySQ ? '生效' : '生效（暂无特许标记人员）', desc: '体检特许合格人员不进高高原（人员健康标记 specialQualified）', impl: 'extraCrewIssue' },
+      { id: 'restriction_table_schema', src: '公司搭配限制表', kind: '硬', status: nR ? `生效（${nR} 对）` : '生效（未导入）', desc: '人员A/人员B/限制类型(不可同机) → 不可同组', impl: 'extraCrewIssue / 导入按钮' },
+      { id: 'experience_requirements', src: '手册 17.1.3(6)', kind: '展示', status: '仅展示（无经历小时数据）', desc: Object.entries(PR.experience_requirements || {}).map(([k, v]) => k + '=' + v).join(' · '), impl: '规则库' },
+      { id: 'medical_standards', src: '手册 17.1.4', kind: '展示', status: '仅展示', desc: '心率 ' + ((PR.medical_standards || {}).preflight_heart_rate_min) + '–' + ((PR.medical_standards || {}).preflight_heart_rate_max) + '；血氧 非高原≥' + ((PR.medical_standards || {}).preflight_spo2_non_plateau) + '% 高原≥' + ((PR.medical_standards || {}).preflight_spo2_plateau) + '%；禁酒 ' + ((PR.medical_standards || {}).alcohol_banned_hours) + 'h', impl: '规则库' },
+      { id: 'arj21_restriction', src: '手册17章 总经理声明', kind: '展示', status: '仅展示（本演示无 ARJ21 高高原航线）', desc: ((PR.arj21_restriction || {}).aircraft_regs || []).join('/') + ' 仅 ' + ((PR.arj21_restriction || {}).route_only || ''), impl: '规则库' },
+      { id: 'operating_rules_reference', src: 'RE12 操作级', kind: '展示', status: '仅展示（操作级，非排班约束）', desc: ((RC && RC.operating_rules_reference) || []).join('；'), impl: '规则库' },
+      { id: 'RE12-操作 F1/F2', src: 'RE12（既有引擎规则）', kind: '硬', status: '生效', desc: 'F1/F2 须与教员同组', impl: 'crewIssue' },
+      { id: 'RE12-新机长', src: 'RE12（既有引擎规则）', kind: '硬', status: '生效', desc: '新机长执飞须有 TL+ 教员同组', impl: 'crewIssue' },
+    ];
+    return { meta: (RC && RC.meta) || null, sha: RC && RC._sha1, rules: R };
   }
   // T=观察员：任意级别可上；RE12 座位规则只约束执飞双人座对
   const SLOT_NAME = { C: '机', F: '副', T: '观察' };
@@ -1068,8 +1186,7 @@
           let sc = (free('C') ? ratio(c.id) + gd(c) + blk(c) + act(c) : 0)
             + (free('F') ? ratio(f.id) + gd(f) + blk(f) + act(f) : 0)
             + (free('T') ? ratio(t.id) + gd(t) + blk(t) + act(t, true) : 0);
-          if (isFO(f.rank) && isFO(t.rank)) { const a = RANK_VAL[f.rank], b = RANK_VAL[t.rank];
-            if ((a >= 6 && b >= 6) || (a <= 4 && b <= 4)) sc += 0.08; }
+          if (isFO(f.rank) && isFO(t.rank)) sc -= 0.006 * foComboScore(f.rank, t.rank); // RE12 fo_combination_matrix.preference_score（软）
           // 第三人：非新机长任务优先副驾驶，把机长工时留给 C 位（非歧视某副驾级别）
           if (free('T') && isCaptClass(t.rank) && !isNew(c.rank)) sc += isNew(t.rank) ? 0.1 : 1.2; // 新机长可任观察员补足值勤天数（不占教员）
           // 教员仅 ~6% 编制：新机长任 C 需教员陪飞，教员接近满载时少排新机长 C 位
@@ -1304,7 +1421,7 @@
     repairCrewIssues(st);
     progStage('repairFtl');
     repairFtl(st);
-    if (st.lite) { progStage('bandPull'); liteEqualize(st); }
+    if (st.lite) { progStage('bandPull'); liteEqualize(st); rhythmRepair(st); repairFtl(st); }
     progStage('assignStandby');
     assignStandby(st);
     progStage('assignTraining');
@@ -1373,7 +1490,7 @@
           if (gain0 <= 0.2) continue;
           const pool = st.pilots.filter(q => q.id !== p.id && !Object.values(pr.crew).includes(q.id)
             && (slot === 'C' ? isCaptClass(q.rank) && (!isNew(q.rank) || idx.hours[q.id] + h <= softCapOf(q, slot)) : slot === 'F' ? isFO(q.rank) : (isNew((idx.pm[pr.crew.C] || {}).rank) ? isInstr(q.rank) : true))
-            && idx.hours[q.id] > 0.5 && idx.hours[q.id] + h <= softCapOf(q, slot) && rankGroup(q.rank) === rankGroup(p.rank));
+            && idx.hours[q.id] > 0.5 && idx.hours[q.id] + h <= softCapOf(q, slot) && (rankGroup(q.rank) === rankGroup(p.rank) || (slot !== 'F' && isCaptClass(q.rank) && isCaptClass(p.rank) && !isNew(q.rank) && !isNew(p.rank))));
           let best = null, bs = -0.25;
           for (const q of pool) {
             const rd = rhythmDelta(q, pr, st, idx);
@@ -2006,7 +2123,7 @@
       });
       if (crew.every(Boolean)) {
         const iss = crewIssue(pr, crew, st);
-        if (iss) { const t = iss.includes('新机长') ? '新机长无教员' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
+        if (iss) { const t = iss.includes('新机长') ? '新机长无教员' : iss.includes('restriction_table') ? '搭配限制表' : iss.includes('fo_combination_matrix') ? 'FO搭配矩阵' : iss.includes('17.1.') ? '高高原机组' : iss.includes('senior_pilot_rule') ? '58岁带队' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
           const demo = pr.demoAnomaly ? '【演示异常】' : '';
           add(t, 'hard', `${demo}${pr.id} ${iss}`, pr); }
       }
@@ -2860,6 +2977,7 @@
   }
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
+    RULES_CONFIG: RC, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
     generateSample, generateLiteSample, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };

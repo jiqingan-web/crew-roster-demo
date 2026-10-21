@@ -1,0 +1,224 @@
+# =============================================================================
+# 机组搭配与高原/特殊机场规则（正式版）
+# -----------------------------------------------------------------------------
+# 依据：
+#   1. 《飞行部空客机型操作及搭配上座规定(RE12)》（飞行部 2026-09-11）
+#   2. 成都航空《公司运行手册》第 17 章「高原机场和特殊机场运行」（Re07-00）
+# 说明：所有规则均可配置；修订手册时只需修改本文件，无需改代码。
+# =============================================================================
+
+meta:
+  source: "RE12 + 运行手册第17章"
+  source_date: "RE12 2026-09-11 / 手册17章 2025-09-01"
+  version: "RE12+17章-1.0"
+
+# ------------------------------ 机组构成 ------------------------------------
+# 当前排班引擎为「1 机长 + 2 副驾驶」固定结构。
+# 注意：运行手册 17.1.3(2) 要求高高原机场「至少 2 名机长 + 1 名副驾驶」，
+#       双机长制需引擎支持双机长位后方可完整实现，见 plateau_airport_rules。
+crew_composition:
+  captain: 1
+  first_officer: 2
+
+# ------------------------------ 技术等级定义 --------------------------------
+# 机长技术等级（由低到高）。SPIC 为在训副驾驶，不作为责任机长排班。
+captain_levels:
+  order: [US, J0, J1, J2, J3, TL, TB, TC]
+  instructor_levels: [TL, TB, TC]      # 飞行教员/检查员等级
+  excluded_from_roster: [SPIC]         # 不参与机长排班的等级
+
+# 副驾驶级别（F1~F8，F8 最高）
+fo_levels:
+  order: [F1, F2, F3, F4, F5, F6, F7, F8]
+  groups:
+    low:  [F1, F2, F3]
+    mid:  [F4, F5]
+    high: [F6, F7, F8]
+
+# ------------------------------ 三人制运行 ----------------------------------
+# 满足上座要求（机长 + 上座副驾驶）后，第三成员不上座、不受左座×右座矩阵限制。
+three_person_crew:
+  enabled: true
+  third_member:
+    exempt_from_seat_matrix: true
+    min_level: F1
+    remark: "第三成员不上座；仍需满足资质、体检限制、搭配限制表与法规额度"
+
+# ------------------------------ 上座搭配矩阵（RE12 第三节）--------------------
+# 左座（机长等级）对右座（上座副驾驶）的最低级别要求：
+#   US/J0/J1 → 最低 F4；J2/J3 → 最低 F3；TL/TB/TC → 不限（F1 起）
+cruise_pairing_matrix:
+  by_captain_level:
+    US: { min_fo: F4 }
+    J0: { min_fo: F4 }
+    J1: { min_fo: F4 }
+    J2: { min_fo: F3 }
+    J3: { min_fo: F3 }
+    TL: { min_fo: F1 }
+    TB: { min_fo: F1 }
+    TC: { min_fo: F1 }
+
+# ------------------------------ FO-FO 搭配矩阵 -------------------------------
+# allow: 硬约束；preference_score: 软约束优先级（越高越优先）
+fo_combination_matrix:
+  allow:
+    low_low:   false
+    low_mid:   true
+    low_high:  true
+    mid_mid:   true
+    mid_high:  true
+    high_high: true
+  preference_score:
+    low_low:   -999
+    low_mid:   10
+    low_high:  10
+    mid_mid:   2
+    mid_high:  3
+    high_high: 2
+
+# ------------------------------ 58 周岁带队规则（RE12 第五节.10）-------------
+senior_pilot_rule:
+  enabled: true
+  age_threshold: 58
+  captain_min_fo_level: F6        # 58+ 机长带队：全程搭配 F6(含)以上
+  instructor_min_fo_level: F5     # 58+ 教员(TL/TB/TC)带队：全程搭配 F5(含)以上
+
+# =============================================================================
+# 高原/特殊机场规则（运行手册第 17 章）—— 权威依据
+# =============================================================================
+plateau_airport_rules:
+  # ---- 17.1.1 定义 --------------------------------------------------------
+  definitions:
+    general_plateau: "海拔 1524m(5000ft)及以上、低于 2438m(8000ft)"
+    high_plateau: "海拔 2438m(8000ft)及以上"
+    special_airport: "净空/气象/飞行程序复杂，要求机长特殊资格的机场"
+    note: "公司内部进一步分类详见《飞行技术管理手册》与《运行规范》C0003"
+
+  # ---- 17.1.3(2)(3) 年龄限制 ----------------------------------------------
+  age_limits:
+    high_plateau_max_age: 55       # 55周岁(含)以上原则上不进高高原；局方特批可进但不任责任机长
+    captain_pair_age_sum_max: 110  # 17.1.3(4)a：机长+机长年龄相加 < 110 岁
+    age_sum_strict_less: true      # 严格小于 110
+
+  # ---- 17.1.3(6) 经历要求 ------------------------------------------------
+  experience_requirements:
+    fo_general_plateau_hours: 300          # 副驾本机型 300h → 一般高原/特殊机场
+    fo_high_plateau_total_hours: 500       # 副驾总计 500h
+    fo_high_plateau_type_hours: 300        # 副驾本机型 300h → 高高原
+    captain_general_plateau_hours: 500     # 机长本机型 500h 机长经历 → 一般高原责任机长
+    captain_high_plateau_hours: 1000       # 机长本机型 1000h → 高高原责任机长
+    captain_high_plateau_segments: 8       # 该机场起降 ≥8 航段
+    captain_high_plateau_landings: 3       # 其中 ≥3 次落地（不含模拟机）
+
+  # ---- 17.1.3(2)(5) 机组配备 ----------------------------------------------
+  crew_requirements:
+    high_plateau: "双机长制：至少 2 名机长 + 1 名副驾驶；第三成员座配观察员或副驾驶"
+    high_plateau_min_captains: 2
+    high_plateau_min_fos: 1
+    general_plateau: "双机长制，或 1 名机长 + 1 名副驾驶"
+    high_plateau_captain_takeoff_landing: true   # 高高原必须由机长起降，严禁副驾驶起降
+    responsibility_captain_no_major_error_1yr: true  # 责任机长一年内无严重差错以上不安全记录
+
+  # ---- 17.1.4 航空卫生（知识展示，不进排班硬约束，供放行/体检模块引用）----
+  medical_standards:
+    prohibited_conditions: [心血管疾病, 冠状动脉硬化, 脑血管疾病, 严重心律失常, 贫血, 糖代谢异常, 胸肺疾病及其后遗症]
+    special_qualified_excluded: true   # 特许合格人员原则上不得参与高高原
+    preflight_heart_rate_min: 50
+    preflight_heart_rate_max: 100
+    preflight_spo2_non_plateau: 94     # 非高原(海拔<1524m) 指尖血氧 ≥94%
+    preflight_spo2_plateau: 90         # 高原(≥1524m) 指尖血氧 ≥90%
+    alcohol_banned_hours: 24
+    training_interval_months: 24       # 每 24 日历月一次航空医学培训（2 学时）
+    extra_recuperation_hours: 300      # 每年高高原累计 300h → 额外 1 次疗养
+
+  # ---- ARJ21 高高原机型/航线限制（17 章总经理声明）--------------------------
+  arj21_restriction:
+    aircraft_regs: [B-652F, B-656C, B-658A, B-658C]
+    route_only: "喀什=塔什库尔干"
+
+# =============================================================================
+# 特殊/高原机场搭配规定（RE12 第六节 + 手册 17 章）—— 排班硬约束
+# =============================================================================
+# captain_levels: 允许的机长等级；fo_min/fo_min_by_captain: 上座副驾最低级别；
+# crew_qualification_required: 关键阶段 PF/PM 是否均需该机场资质。
+special_airport_rules:
+  LXA:
+    name: "拉萨(高高原/一类)"
+    category: "high_plateau"
+    airport_class: 1
+    captain_levels: [J3, TL, TB, TC]
+    second_pilot_min: J3                    # 手册 17.1.3：高高原双机长（2 机长 + 1 副驾驶）
+    # 引擎当前为 1 机长 + 2 副驾驶结构，高高原双机长位尚未实现；
+    # 现以上座副驾 F6(含)以上近似，待引擎支持双机长位后改用 second_pilot_min。
+    fo_min: F6
+    crew_qualification_required: true
+    extra: "夜间须具备夜航资质的教员操作起落；昼间正侧风≤15m/s、夜间≤10m/s、中雨以上禁止着陆"
+  LJG:
+    name: "丽江(特殊机场二类)"                 # 同组：西双版纳/西昌/西宁/大连
+    category: "general_plateau"
+    airport_class: 2
+    group_members: ["丽江", "西双版纳", "西昌", "西宁", "大连"]
+    captain_levels: [J2, J3, TL, TB, TC]
+    fo_min_by_captain:
+      J2: F6
+      J3: F6
+      TL: F5
+      TB: F5
+      TC: F5
+    crew_qualification_required: true
+  KMG:
+    name: "昆明(一般高原机场)"
+    category: "general_plateau"
+    captain_levels: [J2, J3, TL, TB, TC]
+    fo_min_by_captain:
+      J2: F5
+      J3: F5
+      TL: F4
+      TB: F4
+      TC: F4
+    crew_qualification_required: true
+
+# =============================================================================
+# 机场分类完整清单（权威数据源，源自资质规定与《飞行技术管理手册》）
+# 供数据生成、资质台账、界面展示使用；三字码以《运行规范》C0003 为准。
+# =============================================================================
+airport_category_list:
+  A320:
+    class_1_high_plateau: [拉萨]
+    class_2: [丽江, 西双版纳, 西宁, 大连, 西昌]
+    class_3: [昆明, 兰州, 张掖, 嘉峪关, 昭苏, 巴里坤]
+    class_4: [赤峰, 张家界]
+    complex_airport: [延吉, 茅台]
+  ARJ21:
+    class_1_high_plateau: [塔什库尔干, 巴音布鲁克]
+    class_2: [西昌]
+    class_4: [伊春]
+    complex_airport: [那拉提, 喀纳斯, 胡占德, 奥什, 黄山, 加格达奇, 茅台]
+  qualification_note: "不可跳级：二类须先有三/四类；一类须先有二/三类；机长一类需 1000h、二类 1000h(A320)/500h(ARJ21)、三类 500h、四类 300-500h"
+
+# ------------------------------ 操作级规则（知识展示，不进排班约束）-----------
+operating_rules_reference:
+  - "F2 不能操作起落，除非机长本机型教员经历时间超过 100 小时"
+  - "F1 仅实施转升检查时可作为 PM 上座"
+  - "副驾驶 A320 经历时间少于 50 小时，只能作为 PM 配合完成起飞/着陆"
+  - "A321 机型运行需技术等级 J2 及以上的飞行员操作起落"
+  - "F5(含)以下副驾驶禁止使用襟翼3着陆；所有副驾驶夜航禁止襟翼3着陆"
+  - "飞行员禁止执行盘旋进近，TB 及以上教员除外"
+  - "高原/特殊机场运行：飞行关键阶段 PF/PM 都应具备资质；教员作 PF 时应在左座"
+  - "高高原机场：必须由机长起降，严禁副驾驶起降、严禁双操作"
+
+# 人员搭配限制表（Excel 导入）的列定义
+restriction_table_schema:
+  columns: ["人员A", "人员B", "限制类型"]
+  default_type: "不可同机"
+
+# =============================================================================
+# 引擎开关（排班助手追加；非手册原文。修订规则时可在此调整，无需改代码）
+# =============================================================================
+engine_options:
+  lxa_double_captain: true            # 拉萨按 17.1.3 双机长：上座两人均为机长(左 captain_levels，右 ≥ second_pilot_min)，第三人副驾驶
+  lxa_fallback_fo_min_single_captain: false   # true 时才允许“单机长 + 上座副驾 ≥ fo_min”近似
+  observer_any_rank: true             # 用户规则：观察员(第三人)任意级别（≥ three_person_crew.third_member.min_level）
+  age_rules_require_age_data: true    # 无年龄数据时年龄类规则不生效（规则库显示“待年龄数据”）
+  senior_pilot_rule_active: false     # 用户 2026-10 指示：暂不执行 58 周岁带队规则
+  restriction_table_hard: true        # 搭配限制表（不可同机）为硬约束

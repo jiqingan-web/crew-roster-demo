@@ -337,3 +337,5 @@ tr.issueJump{cursor:pointer}tr.issueJump:hover td{background:#1a3a5c}
 .mgd.tr{background:#1a3a5c}
 .export-bar{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 4px;align-items:center}
 .demo-fill-note{background:#1a2a3a;border:1px solid #3a6a9a;border-radius:8px;padding:8px 12px;margin:8px 0;font-size:12px;color:#a8c8e8}
+.apcls{font-size:8px;color:#9fb6da;margin-left:1px;font-weight:600}
+.apcls-l{display:inline-block;padding:0 5px;border-radius:3px;background:#1d3358;color:#cfe0ff;font-size:11px;margin:0 2px}

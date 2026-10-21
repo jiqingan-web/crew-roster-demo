@@ -241,7 +241,7 @@
   }
 
 
-  function apHtml(c) { const n = C.apName(c, st); return C.isSpecial(c, st) ? `<span class="red">${esc(n)}</span>` : esc(n); }
+  function apHtml(c) { const n = C.apName(c, st); const k = C.apClass && C.apClass(c, st); const tag = k ? `<sup class="apcls" title="机场分类：${k.label}（${k.fleet}）">${k.label[0]}</sup>` : ''; return C.isSpecial(c, st) ? `<span class="red" title="${esc(C.CAT_DESC[C.apCat(c, st)] || '')}${k ? ' · ' + k.label : ''}">${esc(n)}</span>${tag}` : esc(n) + tag; }
   function dayChains(pr) { const out = []; for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
     out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">空缺</span>'}`).join(' / '); }
@@ -253,7 +253,7 @@
       <span class="${hb}">硬性违规<b>${sum.hard}</b></span><span>工时区间<b>${sum.all.min.toFixed(0)}–${sum.all.max.toFixed(0)}h</b></span><span>意向休息满足<b>${(sum.prefRate * 100).toFixed(1)}%</b></span>`;
   }
   // ---------------- 主线（路演：4 步） + 更多功能 ----------------
-  const MORE_TABS = { roster: '人员总览', welfare: '员工福利', fills: '补位历史', settings: '设置' };
+  const MORE_TABS = { roster: '人员总览', welfare: '员工福利', fills: '补位历史', rules: '规则库', settings: '设置' };
   function toggleMore() { const p = $('#morePanel'); const open = p.classList.contains('hidden'); p.classList.toggle('hidden', !open); $('#btnMore').setAttribute('aria-expanded', open ? 'true' : 'false'); }
   function closeMore() { const p = $('#morePanel'); if (p) p.classList.add('hidden'); const b = $('#btnMore'); if (b) b.setAttribute('aria-expanded', 'false'); }
   function goTab(t) { tab = t; ui.hl = null; location.hash = t; closeIssuePanel(); closeMore(); render(); }
@@ -277,7 +277,7 @@
   function render() {
     document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     renderStory();
-    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, fills: rFills, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
 
 
@@ -637,7 +637,7 @@
   // ---------------- 校验报告 ----------------
   function rReport() {
     const s = sum, S = st.settings;
-    const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突'];
+    const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突', '搭配限制表', 'FO搭配矩阵', '高高原机组', '58岁带队'];
     const card = (lab, val, sub, cls) => `<div class="card"><div class="lab">${lab}</div><div class="val ${cls || ''}">${val}</div><div class="sub">${sub}</div></div>`;
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
     const demos = st.pairings.filter(p => p.demoAnomaly);
@@ -1142,6 +1142,38 @@
   function undoLeave() { const x = leaveHist.pop(); if (!x) return; st = JSON.parse(x.snap); ui.hl = null; leaveOpts = null; leaveHoles = null; holePrev = null; refresh(); toast('已撤销：' + esc(x.label)); }
 
 
+  // ---------------- 规则库（rules/crew_rules.yaml → js/rules-config.js）----------------
+  async function readTable(file) {
+    if (/\.xlsx$/i.test(file.name) && window.JSZip) {
+      const z = await JSZip.loadAsync(await file.arrayBuffer()); const P = new DOMParser();
+      const ssx = z.file('xl/sharedStrings.xml'); const ss = ssx ? [...P.parseFromString(await ssx.async('string'), 'text/xml').getElementsByTagName('si')].map(n => n.textContent) : [];
+      const sh = z.file('xl/worksheets/sheet1.xml') || z.file(/xl\/worksheets\/sheet\d+\.xml/)[0];
+      const doc = P.parseFromString(await sh.async('string'), 'text/xml');
+      return [...doc.getElementsByTagName('row')].map(r => { const out = []; [...r.getElementsByTagName('c')].forEach(c => { const ref = c.getAttribute('r') || ''; const col = ref.replace(/\d+/g, '').split('').reduce((a, ch) => a * 26 + ch.charCodeAt(0) - 64, 0) - 1;
+        const v = c.getElementsByTagName('v')[0]; const is = c.getElementsByTagName('is')[0]; const t = c.getAttribute('t');
+        out[col] = t === 's' ? ss[+(v && v.textContent)] : is ? is.textContent : v ? v.textContent : ''; }); return out; });
+    }
+    return await file.text();
+  }
+  function rRules() {
+    const cat = C.rulesCatalog(st); const RC = C.RULES_CONFIG || {}; const L = RC.airport_category_list || {};
+    const stCls = s => /^生效/.test(s) ? 'okc' : /待|停用/.test(s) ? 'warnc' : 'mut';
+    const rs = st.restrictions || []; const pm = {}; st.pilots.forEach(p => pm[p.id] = p);
+    let h = `<div class="panel"><div class="flex"><h3 style="margin:0">规则库 · ${esc((cat.meta || {}).source || '')}</h3><span class="mut" style="margin-left:10px">版本 ${esc((cat.meta || {}).version || '—')} · ${esc((cat.meta || {}).source_date || '')} · 配置指纹 ${esc(cat.sha || '')}</span></div>
+      <div class="note">规则来自 <code>rules/crew_rules.yaml</code>（生成 <code>js/rules-config.js</code>）；修订手册只需改 YAML 并运行 <code>python3 scripts/gen_rules_config.py</code>。校验报告中的违规均以 [规则ID] 开头引用下表。</div>
+      <table><tr><th>规则 ID</th><th>出处</th><th>类型</th><th>状态</th><th>内容</th><th>引擎实现</th></tr>${cat.rules.map(r => `<tr><td><code>${esc(r.id)}</code></td><td>${esc(r.src)}</td><td>${r.kind}</td><td class="${stCls(r.status)}">${esc(r.status)}</td><td style="white-space:normal">${esc(r.desc)}</td><td class="mut">${esc(r.impl)}</td></tr>`).join('')}</table></div>
+      <div class="panel"><h3>机场分类（airport_category_list）</h3><div class="note">${Object.keys(L).filter(fl => L[fl] && typeof L[fl] === 'object').map(fl => `<b>${fl}</b>：` + Object.keys(L[fl]).map(k => `<span class="apcls-l">${({ class_1_high_plateau: '一类·高高原', class_2: '二类', class_3: '三类', class_4: '四类', complex_airport: '复杂' })[k] || k}</span> ${(L[fl][k] || []).map(esc).join('、')}`).join('；')).join('<br>')}<br>${esc(L.qualification_note || '')}<br>甘特/任务中机场名后上标：一/二/三/四/复 = 分类；红色 = 需特殊授权/搭配。</div></div>
+      <div class="panel"><div class="flex"><h3 style="margin:0">搭配限制表（不可同机）</h3><span class="mut" style="margin-left:10px">${rs.length} 对</span>
+        <label class="btn sm" style="margin-left:auto">导入 CSV / xlsx<input type="file" id="rsFile" accept=".csv,.txt,.xlsx" style="display:none"></label><button class="btn sm" id="rsClear">清空</button></div>
+      <div class="note">列：${esc(((RC.restriction_table_schema || {}).columns || []).join(' / '))}；限制类型留空按「${esc((RC.restriction_table_schema || {}).default_type || '不可同机')}」。人员可填员工号或姓名。导入后作为硬约束参与自动排班与校验。</div>
+      ${rs.length ? `<table><tr><th>人员A</th><th>人员B</th><th>类型</th></tr>${rs.map(r => `<tr><td>${esc((pm[r.a] || {}).name || r.a)} <span class="mut">${esc(r.a)}</span></td><td>${esc((pm[r.b] || {}).name || r.b)} <span class="mut">${esc(r.b)}</span></td><td>${esc(r.type)}</td></tr>`).join('')}</table>` : ''}</div>`;
+    $('#main').innerHTML = h;
+    $('#rsFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const res = C.parseRestrictions(await readTable(f), st.pilots);
+      const key = r => [r.a, r.b].sort().join('|'); const have = new Set((st.restrictions || []).map(key));
+      st.restrictions = (st.restrictions || []).concat(res.pairs.filter(r => !have.has(key(r)))); refresh();
+      toast(`导入 ${res.pairs.length} 对${res.unknown.length ? '；未匹配 ' + res.unknown.length + ' 行：' + res.unknown.slice(0, 5).join('，') : ''}`); } catch (err) { toast('导入失败：' + err.message); } };
+    $('#rsClear').onclick = () => { st.restrictions = []; refresh(); };
+  }
   function rFills() {
     ensureFills();
     let h = `<div class="panel"><h3>补位历史 <small>请假调配应用后的补位记录；甘特/任务上显示「补位」角标</small></h3>
@@ -1487,7 +1519,8 @@
       if (!workerURL) {
         const src = 'self.RosterSampleData=' + JSON.stringify(window.RosterSampleData || null) + ';\n'
           + 'self.RosterLiteRoster=' + JSON.stringify(window.RosterLiteRoster || null) + ';\n'
-          + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData, self.RosterLiteRoster);\n'
+          + 'self.RosterRulesConfig=' + JSON.stringify(window.RosterRulesConfig || null) + ';\n'
+          + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData, self.RosterLiteRoster, self.RosterRulesConfig);\n'
           + 'self.onmessage=function(e){var d=e.data;try{C.autoFill(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
           + 'self.postMessage({type:"done",crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null});}'
           + 'catch(err){self.postMessage({type:"error",msg:String(err&&err.stack||err)});}};';
