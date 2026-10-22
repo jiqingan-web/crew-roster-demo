@@ -173,6 +173,7 @@
       // 飞行值勤期（FDP）限制：默认值参考 CCAR-121 部（非扩编机组 表A），可按公司规定修改
       fdpTable: defaultFdpTable(), fdpAugmented: false, fdpAugLimitH: 16, fdpRiskHigh: 60, fdpRiskMed: 120, minTurnMin: 35, minOvernightRestH: 10,
       // 路演：默认关闭故意植入的【演示异常】；开启时最多植入 1 项
+      highIntensity: false, hiTargetH: 85, // 高强度模式：机长线(J3+/教员)软目标上移；硬规则不变
       demoAnomalies: false,
       // 自动填人后故意留下的易补空洞数（便于现场演示补位）
       demoHoles: 4 };
@@ -190,6 +191,7 @@
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
       if (S.demoHoles == null) S.demoHoles = 4;
+      if (S.highIntensity == null) S.highIntensity = false; if (S.hiTargetH == null) S.hiTargetH = 85;
       if (S.maxOffCapt != null && S.maxOffCapt <= 4) S.maxOffCapt = 999; // 取消机长类每日休息上限
     }
     return S;
@@ -1436,14 +1438,17 @@
     return d;
   }
   // 新机长任 C 需教员陪飞 → C 位工时软顶较低；任观察员(T)不需教员，按普通软顶
-  const softCapOf = (p, slot) => isNew(p.rank) && slot !== 'T' ? SOFT_NEW + 4 : SOFT_MAX;
+  const softCapOf = (p, slot) => isNew(p.rank) && slot !== 'T' ? SOFT_NEW + 4 : SM(p);
   // 先免 FTL 快检，通过后再做完整 FTL（R8/48h/第5日等硬规则不放松）
   function pcOK(q, pr, st, idx, slot) {
     if (!personCheck(q, pr, st, idx, { ignorePrefs: true, slot, skipFtl: true })[0]) return false;
     return personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0];
   }
   // 软工时带（实飞校准：月值勤 12–14 天 × 2 段/日 ≈ 4–4.5h → 典型 45–64h；硬顶仍为法规 100h）
-  const SOFT_MAX = 70, SOFT_AIM = 63; let SOFT_NEW = 36; // 轻量版教员/新机长比例高，autoFill 内放宽
+  const SOFT_MAX = 70, SOFT_AIM = 63; let SOFT_NEW = 36; let HI = 0;
+  // 高强度模式：机长线(J3+/TL/TB/TC)软顶=HI、目标=HI-7；其余仍 70/63
+  const capLine = p => !!p && lhasaRankOK(p.rank);
+  const SM = p => (HI && capLine(p)) ? HI : SOFT_MAX; const SA = p => (HI && capLine(p)) ? HI - 7 : SOFT_AIM; // 轻量版教员/新机长比例高，autoFill 内放宽
   // ---------- 求解器 ----------
   // 多次随机扰动求解，取最优（硬违规最少 → 软违规最少 → 节奏/工时更均衡）
   // ---------- 进度上报（Worker/主线程共用）：阶段 + 节流心跳 ----------
@@ -1585,7 +1590,7 @@
     opts = opts || {};
     const big = (st.pairings || []).length > 800;
     const K = opts.attempts != null ? opts.attempts : (big ? 3 : st.lite ? 1 : 8); let best = null;
-    FDP_PLAN_CACHE = new WeakMap(); const softNew0 = SOFT_NEW; if (st.lite) SOFT_NEW = 58;
+    FDP_PLAN_CACHE = new WeakMap(); const softNew0 = SOFT_NEW; if (st.lite) SOFT_NEW = 58; HI = st.settings.highIntensity ? (+st.settings.hiTargetH || 85) : 0;
     PROG = opts.onStatus ? makeProgress(opts.onStatus, K, opts.stageSeq || (st.lite ? STAGE_SEQ_LITE : STAGE_SEQ_MAIN)) : null; PROG_N = 0;
     try {
     const score = solutionScore;
@@ -1603,7 +1608,7 @@
     clearHardSeats(st);
     if (!opts.noSwap) { swapFillHoles(st, { ms: 4000 }); clearHardSeats(st); }
     const out = summarize(st); out.attempt = best.k + 1; return out;
-    } finally { if (PROG) PROG.done(); PROG = null; FDP_PLAN_CACHE = null; SOFT_NEW = softNew0; }
+    } finally { if (PROG) PROG.done(); PROG = null; FDP_PLAN_CACHE = null; SOFT_NEW = softNew0; HI = 0; }
   }
   function autoFillOnce(st, opts) {
     opts = opts || {}; const nz = opts.noise; const S = st.settings; const keep = !!opts.keepExisting;
@@ -1658,7 +1663,7 @@
       const gdc = {}; const gd = p => gdc[p.id] != null ? gdc[p.id] : (gdc[p.id] = gw * (gapCost(p, idx.sched[p.id].concat([pr]), st) - gapCost(p, idx.sched[p.id], st)));
       const free = s => !pr.crew[s];
       const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs, slot, skipFtl: big })[0];
-      const instrL = pilots.filter(x => isInstr(x.rank)); const instrBusy = instrL.filter(x => idx.hours[x.id] > SOFT_MAX - 8).length / Math.max(1, instrL.length);
+      const instrL = pilots.filter(x => isInstr(x.rank)); const instrBusy = instrL.filter(x => idx.hours[x.id] > SM(x) - 8).length / Math.max(1, instrL.length);
       const cur = { C: pr.crew.C && idx.pm[pr.crew.C], F: pr.crew.F && idx.pm[pr.crew.F], T: pr.crew.T && idx.pm[pr.crew.T] };
       const inCrew = id => Object.values(pr.crew).includes(id);
       const pool = primaryOnly ? pilots.filter(p => primary[p.id]) : pilots;
@@ -1713,8 +1718,8 @@
             }
             if (h < 25) return -1.05;
             if (h < 40) return -0.7;
-            if (h <= (SOFT_MAX - 5)) return -0.1;
-            if (h <= (SOFT_MAX + 2)) return 0.55;
+            if (h <= (SM(p) - 5)) return -0.1;
+            if (h <= (SM(p) + 2)) return 0.55;
             return 1.15;
           };
           let sc = (free('C') ? ratio(c.id) + gd(c) + blk(c) + act(c) : 0)
@@ -1849,7 +1854,7 @@
       const order = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
       const sortR = arr => arr.sort((a, b) => (primary[b.id] ? 1 : 0) - (primary[a.id] ? 1 : 0)
         || (idx.hours[a.id] < 40 ? 0 : 1) - (idx.hours[b.id] < 40 ? 0 : 1)
-        || (idx.hours[a.id] < (SOFT_MAX - 10) ? 0 : 1) - (idx.hours[b.id] < (SOFT_MAX - 10) ? 0 : 1)
+        || (idx.hours[a.id] < (SM(a) - 10) ? 0 : 1) - (idx.hours[b.id] < (SM(b) - 10) ? 0 : 1)
         || idx.hours[a.id] - idx.hours[b.id]);
       for (const pr of order) {
         const free = s => !pr.crew[s];
@@ -1857,18 +1862,18 @@
         const inCrew = id => Object.values(pr.crew).includes(id);
         if (free('C')) {
           let caps = st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C'));
-          if (caps.some(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 5))) caps = caps.filter(p => primary[p.id]);
+          if (caps.some(p => primary[p.id] && idx.hours[p.id] < (SM(p) - 5))) caps = caps.filter(p => primary[p.id]);
           const c = sortR(caps)[0]; if (c) { pr.crew.C = c.id; idx.sched[c.id].push(pr); idx.hours[c.id] += pairingHours(pr); }
         }
         if (free('F')) {
           let fos = st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'));
-          if (fos.some(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 5))) fos = fos.filter(p => primary[p.id]);
+          if (fos.some(p => primary[p.id] && idx.hours[p.id] < (SM(p) - 5))) fos = fos.filter(p => primary[p.id]);
           const f = sortR(fos)[0]; if (f) { pr.crew.F = f.id; idx.sched[f.id].push(pr); idx.hours[f.id] += pairingHours(pr); }
         }
         if (free('T') && pr.crew.C && pr.crew.F) {
           const needInstr = isNew(idx.pm[pr.crew.C].rank);
           let ts = st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank)));
-          if (ts.some(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 5))) ts = ts.filter(p => primary[p.id]);
+          if (ts.some(p => primary[p.id] && idx.hours[p.id] < (SM(p) - 5))) ts = ts.filter(p => primary[p.id]);
           const t = sortR(ts)[0];
           if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) { pr.crew.T = t.id; idx.sched[t.id].push(pr); idx.hours[t.id] += pairingHours(pr); } }
         }
@@ -1895,7 +1900,7 @@
     (function refillAfterConcentrate() {
       const idx = buildIndex(st);
       const sortR = arr => arr.sort((a, b) => {
-        const band = p => { const h = idx.hours[p.id]; if (h >= 18 && h < (SOFT_MAX - 5)) return 0; if (h >= 5 && h < SOFT_MAX) return 1; if (h < 5) return 3; return 2; };
+        const band = p => { const h = idx.hours[p.id]; if (h >= 18 && h < (SM(p) - 5)) return 0; if (h >= 5 && h < SM(p)) return 1; if (h < 5) return 3; return 2; };
         return band(a) - band(b) || idx.hours[a.id] - idx.hours[b.id];
       });
       for (const pr of st.pairings) {
@@ -1979,16 +1984,16 @@
       const inCrew = id => Object.values(pr.crew).includes(id);
       const put = (slot, p) => { pr.crew[slot] = p.id; (idx.sched[p.id] = idx.sched[p.id] || []).push(pr); idx.hours[p.id] += pairingHours(pr); };
       const pick = (pool) => {
-        const band = pool.filter(p => idx.hours[p.id] >= 12 && idx.hours[p.id] < (SOFT_MAX - 2));
-        const use = band.length ? band : pool.filter(p => idx.hours[p.id] < (SOFT_MAX - 2));
+        const band = pool.filter(p => idx.hours[p.id] >= 12 && idx.hours[p.id] < (SM(p) - 2));
+        const use = band.length ? band : pool.filter(p => idx.hours[p.id] < (SM(p) - 2));
         return sortR(use)[0];
       };
       if (!pr.crew.C) { const c = pick(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C'))); if (c) put('C', c); }
       if (!pr.crew.F) { const f = pick(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'))); if (f) put('F', f); }
       if (!pr.crew.T && pr.crew.C && pr.crew.F) {
         const needInstr = isNew(idx.pm[pr.crew.C].rank);
-        const pool = st.pilots.filter(p => !inCrew(p.id) && (!needInstr || isInstr(p.rank)) && idx.hours[p.id] < SOFT_MAX + 6);
-        const band = p => { const h = idx.hours[p.id]; return h >= 12 && h < SOFT_MAX - 2 ? 0 : h < 12 ? 1 : 2; };
+        const pool = st.pilots.filter(p => !inCrew(p.id) && (!needInstr || isInstr(p.rank)) && idx.hours[p.id] < SM(p) + 6);
+        const band = p => { const h = idx.hours[p.id]; return h >= 12 && h < SM(p) - 2 ? 0 : h < 12 ? 1 : 2; };
         pool.sort((a, b) => band(a) - band(b) || idx.hours[a.id] - idx.hours[b.id]);
         let bt = null, bs = Infinity, nv = 0;
         for (const t of pool) {
@@ -2034,7 +2039,7 @@
           let best = null, bs = -0.25;
           for (const q of pool) {
             const rd = rhythmDelta(q, pr, st, idx);
-            const net = gain0 - rd - 0.01 * Math.abs((idx.hours[q.id] + h) - SOFT_AIM);
+            const net = gain0 - rd - 0.01 * Math.abs((idx.hours[q.id] + h) - SA(q));
             if (net <= bs) continue;
             if (!pcOK(q, pr, st, idx, slot)) continue;
             const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
@@ -2069,7 +2074,7 @@
           const holder = idx.pm[tid]; if (!holder || isInstr(holder.rank) && false) continue;
           const hd = dd(tid);
           if (!(hd >= 13 || idx.hours[tid] > SOFT_AIM + 2)) continue;
-          const h = pairingHours(pr); if (idx.hours[p.id] + h > SOFT_MAX) continue;
+          const h = pairingHours(pr); if (idx.hours[p.id] + h > SM(p)) continue;
           const rd = rhythmDelta(p, pr, st, idx);
           if (rd >= bs) continue;
           if (!pcOK(p, pr, st, idx, 'T')) continue;
@@ -2094,7 +2099,7 @@
       if (pr.crew.T || !pr.crew.C) continue;
       const c0 = idx.pm[pr.crew.C]; if (!c0 || !isNew(c0.rank)) continue;
       const h = pairingHours(pr);
-      const pool = st.pilots.filter(q => isCaptClass(q.rank) && !isNew(q.rank) && !isInstr(q.rank) && !Object.values(pr.crew).includes(q.id) && idx.hours[q.id] + h <= SOFT_MAX + 8)
+      const pool = st.pilots.filter(q => isCaptClass(q.rank) && !isNew(q.rank) && !isInstr(q.rank) && !Object.values(pr.crew).includes(q.id) && idx.hours[q.id] + h <= SM(q) + 8)
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       for (const q of pool) {
         if (!pcOK(q, pr, st, idx, 'C')) continue;
@@ -2151,7 +2156,7 @@
         if (instrs.some(q => relocate(q, pr, 'T', q2 => !crewIssue(pr, [c0, f, q2], st)))) { fixed++; continue; }
         // B：非新机长替换 C（新机长让出），T 由任意合格者（可链式让位）补
         unassign(c0, pr, 'C'); let done = false;
-        const caps = st.pilots.filter(q => isCaptClass(q.rank) && !isNew(q.rank) && q !== f && idx.hours[q.id] + pairingHours(pr) <= SOFT_MAX + 6).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        const caps = st.pilots.filter(q => isCaptClass(q.rank) && !isNew(q.rank) && q !== f && idx.hours[q.id] + pairingHours(pr) <= SM(q) + 6).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         for (const q of caps) { if (!relocate(q, pr, 'C', q2 => pr.legs.every(l => legSeatedOK(q2, f, l, st) || legSeatedOK(f, q2, l, st)))) continue;
           const ts = st.pilots.filter(t => t !== q && t !== f && t !== c0 && idx.hours[t.id] + pairingHours(pr) <= softCapOf(t, 'T') + 4).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
           if (ts.some(t => relocate(t, pr, 'T', t2 => !crewIssue(pr, [q, f, t2], st)))) { done = true; break; }
@@ -2165,13 +2170,13 @@
   function spreadInstrT(st) {
     for (let it = 0; it < 8; it++) {
       const idx = buildIndex(st); let moved = 0;
-      const fat = st.pilots.filter(p => isInstr(p.rank) && idx.hours[p.id] > (SOFT_MAX - 2))
+      const fat = st.pilots.filter(p => isInstr(p.rank) && idx.hours[p.id] > (SM(p) - 2))
         .sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
       const thin = st.pilots.filter(p => isInstr(p.rank) && idx.hours[p.id] < 48 && !(p.health && p.health.noFly))
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       if (!fat.length || !thin.length) break;
       for (const hi of fat) {
-        if (idx.hours[hi.id] <= (SOFT_MAX - 2)) continue;
+        if (idx.hours[hi.id] <= (SM(hi) - 2)) continue;
         for (const pr of (idx.sched[hi.id] || []).slice()) {
           if (pr.crew.T !== hi.id) continue;
           const cp = idx.pm[pr.crew.C]; if (!cp || !isNew(cp.rank)) continue; // 仅动「新机长+教员」义务位
@@ -2216,7 +2221,7 @@
         if (xs.length < 6) return;
         const total = xs.reduce((a, p) => a + idx.hours[p.id], 0);
         if (total < 20) return;
-        const aimR = AIM, capR = MEAN_CAP; // 新机长 C 位另有 softCapOf 约束，T 位不限
+        const hiR = HI && lhasaRankOK(rk); const aimR = hiR ? HI - 7 : AIM, capR = hiR ? HI - 2 : MEAN_CAP; // 新机长 C 位另有 softCapOf 约束，T 位不限
         let want = Math.round(total / aimR);
         while (want < xs.length && want > 0 && total / want > capR) want++;
         // 夹在约 48%–75%：跨级闲置比例接近，且不把人均抬过硬顶
@@ -2228,7 +2233,7 @@
         const ranked = xs.slice().sort((a, b) => idx.hours[b.id] - idx.hours[a.id] || a.id.localeCompare(b.id));
         const keep = new Set(ranked.slice(0, want).map(p => p.id));
         // 若保留者已临近满载，再扩一小批，避免只能卸洞
-        let takers = ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < (SOFT_MAX - 5));
+        let takers = ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < (SM(p) - 5));
         if (takers.length < Math.ceil(want * 0.3) && want < xs.length) {
           for (const p of ranked) {
             if (keep.has(p.id)) continue;
@@ -2244,14 +2249,14 @@
             const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === lo.id); if (!slot) continue;
             const h = pairingHours(pr);
             let best = null;
-            let tryList = takers.concat(ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < SOFT_MAX && !takers.includes(p)));
+            let tryList = takers.concat(ranked.filter(p => keep.has(p.id) && idx.hours[p.id] < SM(p) && !takers.includes(p)));
             // F/T：若同级接不住，允许其它副驾级别中 20–55h 者接手（仍不喂 0h 新人）
             if ((slot === 'F' || slot === 'T') && isFO(lo.rank)) {
-              const extra = st.pilots.filter(p => isFO(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < (SOFT_MAX - 5));
+              const extra = st.pilots.filter(p => isFO(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < (SM(p) - 5));
               tryList = tryList.concat(extra.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]));
             }
             if (slot === 'C' && isCaptClass(lo.rank)) {
-              const extra = st.pilots.filter(p => isCaptClass(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < (SOFT_MAX - 5));
+              const extra = st.pilots.filter(p => isCaptClass(p.rank) && p.rank !== lo.rank && idx.hours[p.id] >= 18 && idx.hours[p.id] < (SM(p) - 5));
               tryList = tryList.concat(extra.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]));
             }
             let bestSc = Infinity, nValid = 0;
@@ -2294,10 +2299,10 @@
     (function shavePeaks() {
       const idx = buildIndex(st);
       for (let guard = 0; guard < 40; guard++) {
-        const over = st.pilots.filter(p => idx.hours[p.id] > SOFT_MAX).sort((a, b) => idx.hours[b.id] - idx.hours[a.id])[0];
+        const over = st.pilots.filter(p => idx.hours[p.id] > SM(p)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id])[0];
         if (!over) break;
         const under = st.pilots.filter(p => {
-          if (idx.hours[p.id] >= (SOFT_MAX - 10) || (p.health && p.health.noFly)) return false;
+          if (idx.hours[p.id] >= (SM(p) - 10) || (p.health && p.health.noFly)) return false;
           if (isCaptClass(over.rank)) return isCaptClass(p.rank);
           if (isFO(over.rank)) return isFO(p.rank);
           return p.rank === over.rank;
@@ -2349,7 +2354,7 @@
         if (h < 16) return true; // 主班碎片
         return false;
       }).sort((a, b) => (primary[a.id] ? 1 : 0) - (primary[b.id] ? 1 : 0) || idx.hours[a.id] - idx.hours[b.id]);
-      const takers = st.pilots.filter(p => primary[p.id] && idx.hours[p.id] < (SOFT_MAX - 2))
+      const takers = st.pilots.filter(p => primary[p.id] && idx.hours[p.id] < (SM(p) - 2))
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       if (!donors.length || !takers.length) break;
       for (const lo of donors) {
@@ -2363,7 +2368,7 @@
             if (slot === 'C' && !isCaptClass(q.rank)) continue;
             if (slot === 'F' && !isFO(q.rank)) continue;
             if (slot !== 'T' && rankGroup(q.rank) !== rankGroup(lo.rank) && !(slot === 'C')) continue;
-            if (idx.hours[q.id] + h > (SOFT_MAX + 2)) continue; // 软顶，硬顶仍由 personCheck/FTL 卡
+            if (idx.hours[q.id] + h > (SM(q) + 2)) continue; // 软顶，硬顶仍由 personCheck/FTL 卡
             if (!pcOK(q, pr, st, idx, slot)) continue;
             const crew = ['C', 'F', 'T'].map(k => k === slot ? q : idx.pm[pr.crew[k]]);
             if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
@@ -2393,11 +2398,11 @@
       st.pilots.forEach(p => { (ranks[p.rank] = ranks[p.rank] || []).push(p); });
       Object.keys(ranks).forEach(rk => {
         const xs = ranks[rk];
-        const over = xs.filter(p => idx.hours[p.id] > (SOFT_MAX - 5)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        const over = xs.filter(p => idx.hours[p.id] > (SM(p) - 5)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
         const under = xs.filter(p => primary[p.id] && idx.hours[p.id] < 40 && !(p.health && p.health.noFly))
           .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         for (const hi of over) {
-          if (idx.hours[hi.id] <= (SOFT_MAX - 5)) continue;
+          if (idx.hours[hi.id] <= (SM(hi) - 5)) continue;
           for (const pr of (idx.sched[hi.id] || []).slice()) {
             const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
         if (pr.pin && pr.pin[slot] === hi.id) continue; // 固定带飞对不拆
@@ -2429,7 +2434,7 @@
       // 2) 非新机长任务：观察员位上的机长 → 不足 40h 的副驾（释放机长飞 C）
       for (const pr of st.pairings) {
         const tid = pr.crew.T; if (!tid) continue;
-        const tp = idx.pm[tid]; if (!tp || !isCaptClass(tp.rank) || (isNew(tp.rank) && idx.hours[tp.id] < SOFT_AIM)) continue; // 新机长任观察员是补足值勤，不换走
+        const tp = idx.pm[tid]; if (!tp || !isCaptClass(tp.rank) || (isNew(tp.rank) && idx.hours[tp.id] < SA(tp))) continue; // 新机长任观察员是补足值勤，不换走
         const cp = idx.pm[pr.crew.C]; if (cp && isNew(cp.rank)) continue;
         const h = pairingHours(pr);
         const underFo = st.pilots.filter(p => isFO(p.rank) && primary[p.id] && idx.hours[p.id] < 40 && !(p.health && p.health.noFly))
@@ -2459,12 +2464,12 @@
   function bandBalance(st, target) {
     for (let it = 0; it < 4; it++) {
       const idx = buildIndex(st); let moved = 0;
-      const over = st.pilots.filter(p => idx.hours[p.id] > SOFT_MAX).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+      const over = st.pilots.filter(p => idx.hours[p.id] > SM(p)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
       const under = st.pilots.filter(p => idx.hours[p.id] < 40 && !(p.health && p.health.noFly))
         .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
       if (!over.length || !under.length) break;
       for (const hi of over) {
-        if (idx.hours[hi.id] <= SOFT_MAX) continue;
+        if (idx.hours[hi.id] <= SM(hi)) continue;
         const list = (idx.sched[hi.id] || []).slice().sort((a, b) => pairingHours(b) - pairingHours(a));
         for (const pr of list) {
           const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
@@ -2572,7 +2577,7 @@
         let done = false;
         for (const c of cl) {
           const ids = [...new Set(c.reasons.map(r => (r.match(/\((PR\d+)\)/) || [])[1]))];
-          const others = ids.map(id => st.pairings.find(x => x.id === id));
+          const others = ids.map(id => st.pairings.find(x => x.id === id)).filter(Boolean); if (!others.length) continue;
           const saved = others.map(o => ({ o, s: ['C', 'F', 'T'].find(k => o.crew[k] === c.p.id) }));
           saved.forEach(x => x.o.crew[x.s] = null);
           if (!candidates(st, pr, slot).find(z => z.p.id === c.p.id && z.ok)) { saved.forEach(x => x.o.crew[x.s] = c.p.id); continue; }
@@ -2660,7 +2665,7 @@
         if (Object.values(pr.crew).includes(lo.id)) continue;
         const h = pairingHours(pr);
         if (idx.hours[hi.id] - h < minKeep) continue;
-        if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+        if (idx.hours[lo.id] + h > SM(lo)) continue;
         if (!pcOK(lo, pr, st, idx, slot)) continue;
         const crew = ['C', 'F', 'T'].map(k => k === slot ? lo : idx.pm[pr.crew[k]]);
         if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
@@ -2717,7 +2722,7 @@
                 if (Object.values(pr.crew).includes(lo.id)) continue;
                 const h = pairingHours(pr);
                 if (idx.hours[hi.id] - h < 30) continue;
-                if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+                if (idx.hours[lo.id] + h > SM(lo)) continue;
                 if (!pcOK(lo, pr, st, idx, 'T')) continue;
                 const crew = ['C', 'F', 'T'].map(k => k === 'T' ? lo : idx.pm[pr.crew[k]]);
                 if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
@@ -2801,10 +2806,10 @@
       });
       Object.keys(by).forEach(rk => {
         const xs = by[rk]; if (xs.length < 2) return;
-        const over = xs.filter(p => idx.hours[p.id] > (SOFT_AIM + 4)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        const over = xs.filter(p => idx.hours[p.id] > (SA(p) + 4)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
         const under = xs.filter(p => idx.hours[p.id] < 40).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         for (const hi of over) {
-          if (idx.hours[hi.id] <= (SOFT_AIM + 4)) continue;
+          if (idx.hours[hi.id] <= (SA(hi) + 4)) continue;
           for (const lo of under) {
             if (idx.hours[lo.id] >= 40) break;
             if (tryMove(idx, hi, lo, 45)) { moved++; break; }
@@ -2831,7 +2836,7 @@
                 if (Object.values(pr.crew).includes(lo.id)) continue;
                 const h = pairingHours(pr);
                 if (idx.hours[hi.id] - h < 30) continue;
-                if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+                if (idx.hours[lo.id] + h > SM(lo)) continue;
                 const saved = pr.crew[slot];
                 pr.crew[slot] = null;
                 const hit = candidates(st, pr, slot).find(c => c.p.id === lo.id && c.ok);
@@ -2979,6 +2984,7 @@
             : `${p.name}(${p.rank}) ${h.toFixed(1)}h > ${pCap}h（公司/法规月上限 ${CCAR121.monthFlightH}h）`,
           pilot: p.id });
       }
+      if (h > 80 && h <= pCap + 1e-9) ded.push({ type: '高强度', level: 'soft', msg: `${p.name}(${p.rank}) 本月 ${h.toFixed(1)}h > 80h：高强度（合规，留意疲劳与延误余量）`, pilot: p.id });
       const ytd = +(p.ytdFlightH || 0);
       if (ytd + h > CCAR121.yearFlightH + 1e-9) addFtl('年飞行超限', `${p.name} YTD+本月 ${(ytd + h).toFixed(1)}h > ${CCAR121.yearFlightH}h`, null, p.id);
       const sched = idx.sched[p.id] || [];
@@ -3685,6 +3691,22 @@
   // 在近满员排班上，清空若干「易补」任务的副驾位，便于现场演示空洞换人（非 FTL 硬失败）
 
   // ---------- 一键自动纠错：空洞/硬违规的 BFS 换人链（深度≤4） ----------
+  // 延误鲁棒性：每段 +m 分钟且在同一值勤期内逐段累积（第 i 段推迟 m×(i+1)），报到时刻按计划不变、轮挡时间不变；
+  // 比较延误前后的硬违规（执勤期/日飞行/休息/FTL/144h/第5日等），返回新增受影响的人与任务
+  function delayRobustness(st, mins) {
+    const base = validate(st).filter(v => v.level === 'hard');
+    const key = v => v.type + '|' + (v.pilot || '') + '|' + (v.pairing || '');
+    const b = new Set(base.map(key)); const out = {};
+    (Array.isArray(mins) ? mins : [mins]).forEach(m => {
+      const w = JSON.parse(JSON.stringify(st)); w.settings.reportMin = (w.settings.reportMin || 60) + m;
+      w.pairings.forEach(pr => { let i = 0, prev = null;
+        pr.legs.forEach(l => { if (prev != null && l.dep - prev > 8 * 60) i = 0; prev = l.arr; i++; l.dep += m * i; l.arr += m * i; }); });
+      const nv = validate(w).filter(v => v.level === 'hard' && !b.has(key(v)));
+      out[m] = { mins: m, newHard: nv.length, pilots: [...new Set(nv.filter(v => v.pilot).map(v => v.pilot))].length,
+        pairings: [...new Set(nv.filter(v => v.pairing).map(v => v.pairing))].length, byType: nv.reduce((a, v) => (a[v.type] = (a[v.type] || 0) + 1, a), {}) };
+    });
+    return out;
+  }
   function cloneCrewState(st) {
     return JSON.parse(JSON.stringify({ pairings: st.pairings.map(p => ({ id: p.id, crew: Object.assign({}, p.crew) })), standby: st.standby || {}, fills: st.fills || [] }));
   }
@@ -4058,7 +4080,7 @@
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
-    transferCandidates, applyTransfer, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
+    transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };

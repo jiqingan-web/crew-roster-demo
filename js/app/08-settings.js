@@ -8,6 +8,11 @@
       ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
       ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
+      <h3 style="margin-top:14px">高强度模式</h3>
+      <label class="flex"><input type="checkbox" id="hiMode" ${S.highIntensity ? 'checked' : ''}> 高强度模式：允许把工时集中到机长线（J3+/教员），普通模式软目标 ≤70–75h</label>
+      ${num('hiTargetH', '高强度·机长线软目标', '小时（默认85，须 ≤ 硬上限）')}
+      <div class="note">仅调整软目标；121.487 月100h、7日FDP 60h、月FDP 210h、144h内48h休息、121.495(b)第5日、公司上限照常硬卡。&gt;80h 者在校验中列为软提示「高强度」。</div>
+      <div style="margin:6px 0"><button class="btn sm" id="dlyChk">延误鲁棒性检查（+30/+60 分钟/段）</button> <span id="dlyOut" class="mut"></span></div>
       <h3 style="margin-top:14px">路演演示</h3>
       <label class="flex"><input type="checkbox" id="demoAnom" ${S.demoAnomalies ? 'checked' : ''}> 自动填人后植入【演示异常】（默认关；开启时至多 1 项座位硬违规）</label>
       ${num('demoHoles', '自动填人后预留易补空洞数', '个（建议 3–5）')}
@@ -27,10 +32,12 @@
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);
       document.querySelectorAll('.fdpin').forEach(i => S.fdpTable[+i.dataset.r].lim[+i.dataset.c] = +i.value); S.fdpAugmented = false;
-      S.honorPrefs = $('#hp').checked; S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
+      S.honorPrefs = $('#hp').checked; S.highIntensity = $('#hiMode').checked; S.hiTargetH = Math.min(+S.hiTargetH || 85, S.hardMaxHours || 100); S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
       st.airports = {}; document.querySelectorAll('[data-cat]').forEach(s => { const a = C.AIRPORTS[s.dataset.cat].slice(0, 3); if (s.value !== 'NONE') a[3] = s.value; st.airports[s.dataset.cat] = a; });
       refresh(); toast('设置已保存，校验结果已更新');
     };
+    $('#dlyChk').onclick = () => { const r = C.delayRobustness(st, [30, 60]);
+      $('#dlyOut').innerHTML = [30, 60].map(m => `+${m}min：新增硬超限 <b class="${r[m].newHard ? 'red' : ''}">${r[m].newHard}</b> 项（${r[m].pilots} 人 / ${r[m].pairings} 任务）${Object.entries(r[m].byType).map(([k, v]) => k + '×' + v).join('，')}`).join('；'); };
     $('#fdpReset').onclick = () => { S.fdpTable = C.defaultFdpTable(); rSettings(); toast('已恢复默认 FDP 表（尚未保存）'); };
   }
 
