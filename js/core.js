@@ -488,6 +488,206 @@
   }
 
 
+
+  // 值勤连续性：每日从成都(ZUUU/ZUTF)始发并返回（少数外站过夜例外）；任务最终回基地。
+  // 优先裁剪到基地起降；无法裁剪则改为短程基地往返；插入回程时控制日飞行≤7.5h。
+  function ensurePairingContinuity(pairings, r) {
+    const BASE = { ZUUU: 1, ZUTF: 1 };
+    const pickBase = () => (r() < 0.72 ? 'ZUTF' : 'ZUUU');
+    const DESTS = Object.keys(AIRPORTS).filter(c => !BASE[c] && AIRPORTS[c] && (AIRPORTS[c][3] || 'NONE') === 'NONE');
+    // 近程目的地优先（块时短），避免回程撑爆表A
+    const NEAR = DESTS.map(c => [c, Math.min(blockMin('ZUTF', c) || 999, blockMin('ZUUU', c) || 999)]).filter(x => x[1] <= 150).map(x => x[0]);
+    let seq = 6800 + Math.floor(r() * 200);
+    function synthFlt() { seq += 1 + Math.floor(r() * 13); return 'EU' + String(seq % 10000).padStart(4, '0'); }
+    function makeLeg(from, to, dep, ac, reg, d) {
+      const bm = Math.max(40, blockMin(from, to) || 80);
+      return { d: d, flt: synthFlt(), from: from, to: to, dep: dep, arr: dep + bm, ac: ac, reg: reg, pos: true };
+    }
+    function flightMin(legs) { return legs.reduce((s, l) => s + (l.arr - l.dep), 0); }
+    function fixIntra(legs) {
+      if (legs.length < 2) return legs;
+      const out = [Object.assign({}, legs[0])];
+      for (let i = 1; i < legs.length; i++) {
+        const prev = out[out.length - 1];
+        const next = Object.assign({}, legs[i]);
+        if (prev.to !== next.from) {
+          const bm = Math.max(40, blockMin(prev.to, next.from) || 80);
+          let dep = Math.max(prev.arr + 40, next.dep - bm - 40);
+          if (dep + bm + 30 > next.dep) { const sh = dep + bm + 35 - next.dep; next.dep += sh; next.arr += sh; }
+          out.push(makeLeg(prev.to, next.from, dep, prev.ac || next.ac, prev.reg || next.reg, prev.d));
+        }
+        out.push(next);
+      }
+      return out;
+    }
+    function roundTrip(template, d, ac, reg) {
+      const base = pickBase();
+      const nearPool = NEAR.length ? NEAR : DESTS;
+      const fromTpl = (template || []).flatMap(l => [l.from, l.to]).filter(c => c && !BASE[c]);
+      const shortTpl = fromTpl.filter(c => blockMin(base, c) <= 160);
+      const pool = shortTpl.length ? shortTpl : nearPool;
+      const dest = pool[Math.floor(r() * pool.length)] || 'ZLXY';
+      const absDay0 = template && template[0] ? Math.floor(template[0].dep / DAY) * DAY : 0;
+      const dep1 = absDay0 + (7 * 60 + Math.floor(r() * 90));
+      const l1 = makeLeg(base, dest, dep1, ac, reg, d);
+      return [l1, makeLeg(dest, base, l1.arr + 50, ac, reg, d)];
+    }
+    function trimToBaseStart(legs) {
+      const i0 = legs.findIndex(l => BASE[l.from]);
+      return i0 > 0 ? legs.slice(i0) : legs;
+    }
+    function trimToBaseEnd(legs) {
+      let i1 = -1;
+      for (let i = legs.length - 1; i >= 0; i--) if (BASE[legs[i].to]) { i1 = i; break; }
+      return i1 >= 0 ? legs.slice(0, i1 + 1) : legs;
+    }
+    function ensureEndBase(legs, ac, reg, d) {
+      if (!legs.length) return roundTrip(null, d, ac, reg);
+      if (BASE[legs[legs.length - 1].to]) return legs;
+      const trimmed = trimToBaseEnd(legs);
+      if (BASE[trimmed[trimmed.length - 1].to] && trimmed.length) return trimmed;
+      // 插入回程；若超 7.5h 飞行则改为短程往返
+      const base = pickBase();
+      const last = legs[legs.length - 1];
+      const ret = makeLeg(last.to, base, last.arr + 45, last.ac || ac, last.reg || reg, d);
+      const trial = legs.concat([ret]);
+      if (flightMin(trial) <= 450 && trial.length <= 4) return trial;
+      return roundTrip(legs, d, ac, reg);
+    }
+
+    pairings.forEach(pr => {
+      const byD = {};
+      pr.legs.forEach(l => { (byD[l.d] = byD[l.d] || []).push(Object.assign({}, l)); });
+      const days = Object.keys(byD).map(Number).sort((a, b) => a - b);
+      days.forEach(d => byD[d].sort((a, b) => a.dep - b.dep));
+
+      // 先识别「裁剪前」自然过夜，再归一化
+      const layoverAfter = {};
+      for (let di = 0; di < days.length - 1; di++) {
+        const a = byD[days[di]], b = byD[days[di + 1]];
+        if (!BASE[a[a.length - 1].to] && a[a.length - 1].to === b[0].from) layoverAfter[days[di]] = true;
+      }
+      // 少数：从成都始发、外站结束的日，保留过夜（约 8%）
+      if (days.length >= 2 && r() < 0.14) {
+        const cands = days.slice(0, -1).filter(d => !layoverAfter[d] && BASE[byD[d][0].from] && !BASE[byD[d][byD[d].length - 1].to]);
+        if (cands.length) layoverAfter[cands[Math.floor(r() * cands.length)]] = true;
+      }
+
+      const newLegs = [];
+      let prevEnd = null;
+      days.forEach((d, di) => {
+        let legs = byD[d].map(l => Object.assign({}, l));
+        const ac0 = legs[0].ac, reg0 = legs[0].reg;
+        const layStart = di > 0 && layoverAfter[days[di - 1]];
+        const layEnd = !!layoverAfter[d] && di < days.length - 1;
+
+        if (layStart && prevEnd && !BASE[prevEnd.to]) {
+          // 过夜日：必须从过夜站始发
+          if (legs[0].from !== prevEnd.to) {
+            const i = legs.findIndex(l => l.from === prevEnd.to);
+            if (i >= 0) legs = legs.slice(i);
+            else {
+              const bm = Math.max(40, blockMin(prevEnd.to, legs[0].from) || 80);
+              const dayStart = Math.floor(legs[0].dep / DAY) * DAY;
+              const dep = Math.max(dayStart + 6 * 60, legs[0].dep - bm - 45);
+              if (dep + bm + 35 <= legs[0].dep) legs = [makeLeg(prevEnd.to, legs[0].from, dep, ac0, reg0, d)].concat(legs);
+              else { legs = roundTrip(byD[d], d, ac0, reg0); /* 放弃过夜 */ }
+            }
+          }
+        } else {
+          legs = trimToBaseStart(legs);
+          if (!legs.length || !BASE[legs[0].from]) legs = roundTrip(byD[d], d, ac0, reg0);
+        }
+
+        if (layEnd) {
+          // 外站结束：若当前已在基地则无过夜；若与次日不衔接，落到次日始发站（短段）或放弃
+          let last = legs[legs.length - 1];
+          const nextFrom = byD[days[di + 1]][0].from;
+          if (BASE[last.to]) {
+            // keep at base — overnight cancelled effectively
+          } else if (last.to !== nextFrom) {
+            const target = !BASE[nextFrom] ? nextFrom : null;
+            if (target) {
+              const add = makeLeg(last.to, target, last.arr + 45, last.ac || ac0, last.reg || reg0, d);
+              if (flightMin(legs.concat([add])) <= 450) legs = legs.concat([add]);
+              else legs = ensureEndBase(legs, ac0, reg0, d);
+            } else legs = ensureEndBase(legs, ac0, reg0, d);
+          }
+        } else {
+          legs = ensureEndBase(legs, ac0, reg0, d);
+        }
+
+        legs = fixIntra(legs);
+        if (flightMin(legs) > 450 || legs.length > 4) legs = roundTrip(legs, d, ac0, reg0);
+
+        // 最终约束
+        const startOk = BASE[legs[0].from] || (layStart && prevEnd && legs[0].from === prevEnd.to);
+        if (!startOk) legs = roundTrip(legs, d, ac0, reg0);
+        if (!layEnd && !BASE[legs[legs.length - 1].to]) legs = ensureEndBase(legs, ac0, reg0, d);
+
+        legs.forEach(l => newLegs.push(l));
+        prevEnd = { to: legs[legs.length - 1].to, arr: legs[legs.length - 1].arr };
+      });
+
+      // 最终调和：日界要么同站过夜，要么两端均在成都；任务回基地；控飞行时长
+      (function reconcile() {
+        const by = {};
+        newLegs.forEach(l => { (by[l.d] = by[l.d] || []).push(l); });
+        const ds = Object.keys(by).map(Number).sort((a, b) => a - b);
+        for (let di = 0; di < ds.length; di++) {
+          let legs = by[ds[di]];
+          if (flightMin(legs) > 450 || legs.length > 4) {
+            legs = roundTrip(legs, ds[di], legs[0].ac, legs[0].reg);
+            by[ds[di]] = legs;
+          }
+          const last = legs[legs.length - 1];
+          if (di < ds.length - 1) {
+            const next = by[ds[di + 1]][0];
+            const ok = (BASE[last.to] && BASE[next.from]) || last.to === next.from;
+            if (!ok) {
+              // 强制本日回成都
+              if (!BASE[last.to]) {
+                const fixed = ensureEndBase(legs, last.ac, last.reg, ds[di]);
+                by[ds[di]] = fixed;
+              }
+              // 次日若仍非成都始发，改往返
+              if (!BASE[by[ds[di + 1]][0].from]) {
+                const n0 = by[ds[di + 1]];
+                by[ds[di + 1]] = roundTrip(n0, ds[di + 1], n0[0].ac, n0[0].reg);
+              }
+            }
+          } else if (!BASE[last.to]) {
+            by[ds[di]] = ensureEndBase(legs, last.ac, last.reg, ds[di]);
+          }
+        }
+        // 过夜衔接：若本日外站结束，次日必须同站；否则次回成都往返已处理
+        for (let di = 0; di < ds.length - 1; di++) {
+          const a = by[ds[di]], b = by[ds[di + 1]];
+          const end = a[a.length - 1].to;
+          if (!BASE[end] && b[0].from !== end) {
+            by[ds[di]] = ensureEndBase(a, a[0].ac, a[0].reg, ds[di]);
+            if (!BASE[b[0].from]) by[ds[di + 1]] = roundTrip(b, ds[di + 1], b[0].ac, b[0].reg);
+          }
+        }
+        newLegs.length = 0;
+        ds.forEach(d => by[d].forEach(l => newLegs.push(l)));
+      })();
+      if (newLegs.length && !BASE[newLegs[newLegs.length - 1].to]) {
+        const last = newLegs[newLegs.length - 1];
+        const dayLegs = newLegs.filter(l => l.d === last.d);
+        const add = makeLeg(last.to, pickBase(), last.arr + 50, last.ac, last.reg, last.d);
+        if (flightMin(dayLegs.concat([add])) > 450) {
+          const repl = roundTrip(dayLegs, last.d, last.ac, last.reg);
+          pr.legs = newLegs.filter(l => l.d !== last.d).concat(repl);
+          return;
+        }
+        newLegs.push(add);
+      }
+      pr.legs = newLegs;
+    });
+    return pairings;
+  }
+
   function buildPairingsFromWeek(r, opt) {
     const meta = SAMPLE_META || {};
     const abRegs = new Set(meta.sampleRegsAirbus || []);
@@ -649,6 +849,9 @@
     const maxP = opt.maxPairings || 1800;
     pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep || a.id.localeCompare(b.id));
     const out = pairings.slice(0, maxP);
+    out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
+    ensurePairingContinuity(out, r);
+    out.sort((a, b) => a.legs[0].dep - b.legs[0].dep || a.id.localeCompare(b.id));
     out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
     return out;
   }
@@ -1439,8 +1642,9 @@
     repairCrewIssues(st);
     progStage('repairFtl');
     repairFtl(st);
-    if (st.lite) { progStage('bandPull'); liteEqualize(st); rhythmRepair(st); repairFtl(st); }
+    if (st.lite) { progStage('bandPull'); rhythmRepair(st); repairFtl(st); }
     freeInstrForNewCapt(st); repairFtl(st);
+    if (st.lite) { liteEqualize(st); rhythmRepair(st); repairFtl(st); liteEqualize(st); }
     progStage('assignStandby');
     assignStandby(st);
     progStage('assignTraining');
@@ -2079,9 +2283,141 @@
   function freeRuns(a) { const r = []; let s = 0; for (let d = 1; d <= DAYS + 1; d++) { if (d <= DAYS && a[d] === '') { if (!s) s = d; } else if (s) { r.push([s, d - 1]); s = 0; } } return r; }
   // 轻量版：同职级把偏高工时者的任务匀给同级偏低者，压低 0–1 个碎片尾部（不改硬规则）
   function liteEqualize(st) {
-    for (let pass = 0; pass < 6; pass++) {
+    function tryMove(idx, hi, lo, minKeep) {
+      for (const pr of (idx.sched[hi.id] || []).slice()) {
+        const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
+        if (Object.values(pr.crew).includes(lo.id)) continue;
+        const h = pairingHours(pr);
+        if (idx.hours[hi.id] - h < minKeep) continue;
+        if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+        if (!pcOK(lo, pr, st, idx, slot)) continue;
+        const crew = ['C', 'F', 'T'].map(k => k === slot ? lo : idx.pm[pr.crew[k]]);
+        if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
+        pr.crew[slot] = lo.id;
+        idx.sched[hi.id] = idx.sched[hi.id].filter(x => x !== pr);
+        idx.hours[hi.id] -= h;
+        (idx.sched[lo.id] = idx.sched[lo.id] || []).push(pr);
+        idx.hours[lo.id] += h;
+        return true;
+      }
+      return false;
+    }
+    for (let pass = 0; pass < 8; pass++) {
       const idx = buildIndex(st); let moved = 0;
       const by = {}; st.pilots.forEach(p => { if (!(p.health && p.health.noFly)) (by[p.rank] = by[p.rank] || []).push(p); });
+      // 先拉起闲置（同职级），允许供体降至 25h
+      Object.keys(by).forEach(rk => {
+        const xs = by[rk]; if (xs.length < 2) return;
+        const idle = xs.filter(p => idx.hours[p.id] < 8).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        const donors = xs.filter(p => idx.hours[p.id] >= 40).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        for (const lo of idle) {
+          let guard = 0;
+          while (idx.hours[lo.id] < 8 && guard++ < 6) {
+            let got = false;
+            for (const hi of donors) {
+              if (tryMove(idx, hi, lo, 25)) { moved++; got = true; break; }
+            }
+            if (!got) break;
+          }
+        }
+      });
+      // 仍闲置：跨职级仅观察员位救援
+      {
+        const idle = st.pilots.filter(p => !(p.health && p.health.noFly) && idx.hours[p.id] < 8);
+        const donors = st.pilots.filter(p => !(p.health && p.health.noFly) && idx.hours[p.id] >= 45)
+          .sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        for (const lo of idle) {
+          let guard = 0;
+          while (idx.hours[lo.id] < 8 && guard++ < 6) {
+            let got = false;
+            for (const hi of donors) {
+              for (const pr of (idx.sched[hi.id] || []).slice()) {
+                if (pr.crew.T !== hi.id) continue;
+                if (Object.values(pr.crew).includes(lo.id)) continue;
+                const h = pairingHours(pr);
+                if (idx.hours[hi.id] - h < 30) continue;
+                if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+                if (!pcOK(lo, pr, st, idx, 'T')) continue;
+                const crew = ['C', 'F', 'T'].map(k => k === 'T' ? lo : idx.pm[pr.crew[k]]);
+                if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
+                pr.crew.T = lo.id;
+                idx.sched[hi.id] = idx.sched[hi.id].filter(x => x !== pr);
+                idx.hours[hi.id] -= h;
+                (idx.sched[lo.id] = idx.sched[lo.id] || []).push(pr);
+                idx.hours[lo.id] += h;
+                moved++; got = true; break;
+              }
+              if (got) break;
+            }
+            if (!got) break;
+          }
+        }
+      }
+      // 短工时↔长任务交换：仍 <8h 者用同级长任务对换
+      Object.keys(by).forEach(rk => {
+        const xs = by[rk]; if (xs.length < 2) return;
+        const short = xs.filter(p => idx.hours[p.id] < 8);
+        for (const lo of short) {
+          const loPrs = (idx.sched[lo.id] || []).slice();
+          for (const hi of xs.filter(p => idx.hours[p.id] >= 45).sort((a, b) => idx.hours[b.id] - idx.hours[a.id])) {
+            if (idx.hours[lo.id] >= 8) break;
+            for (const hiPr of (idx.sched[hi.id] || []).slice()) {
+              const hiSlot = ['C', 'F', 'T'].find(k => hiPr.crew[k] === hi.id); if (!hiSlot) continue;
+              const hiH = pairingHours(hiPr);
+              if (hiH < 8) continue;
+              if (idx.hours[hi.id] - hiH + (loPrs[0] ? pairingHours(loPrs[0]) : 0) < 25) continue;
+              // 尝试：把 hi 的长任务给 lo；若 lo 有短任务则给 hi
+              if (Object.values(hiPr.crew).includes(lo.id)) continue;
+              let loPr = null, loSlot = null, loSaved = null, hiSaved = hiPr.crew[hiSlot];
+              if (loPrs.length) {
+                loPr = loPrs[0];
+                loSlot = ['C', 'F', 'T'].find(k => loPr.crew[k] === lo.id);
+                if (!loSlot || Object.values(loPr.crew).includes(hi.id)) continue;
+                loSaved = loPr.crew[loSlot];
+                // 临时摘下双方，再验合法性
+                loPr.crew[loSlot] = null;
+              }
+              hiPr.crew[hiSlot] = null;
+              // 重建轻量 idx 时间：直接用 pcOK（其 build 依赖 crew 表）
+              const okLo = pcOK(lo, hiPr, st, buildIndex(st), hiSlot);
+              const okHi = !loPr || pcOK(hi, loPr, st, buildIndex(st), loSlot);
+              let crewBad = false;
+              if (okLo) {
+                const crewHi = ['C', 'F', 'T'].map(k => k === hiSlot ? lo : idx.pm[hiPr.crew[k] || (k === hiSlot ? null : hiSaved && k === hiSlot ? null : hiPr.crew[k])]);
+                // 手动组装
+                const cHi = { C: hiPr.crew.C, F: hiPr.crew.F, T: hiPr.crew.T }; cHi[hiSlot] = lo.id;
+                const crewArr = ['C', 'F', 'T'].map(k => cHi[k] ? idx.pm[cHi[k]] : (k === hiSlot ? lo : null));
+                if (crewArr.every(Boolean) && crewIssue(hiPr, crewArr, st)) crewBad = true;
+              }
+              if (okLo && okHi && loPr && !crewBad) {
+                const cLo = { C: loPr.crew.C, F: loPr.crew.F, T: loPr.crew.T }; cLo[loSlot] = hi.id;
+                const crewArr2 = ['C', 'F', 'T'].map(k => cLo[k] ? idx.pm[cLo[k]] : (k === loSlot ? hi : null));
+                if (crewArr2.every(Boolean) && crewIssue(loPr, crewArr2, st)) crewBad = true;
+              }
+              if (!(okLo && okHi && !crewBad)) {
+                hiPr.crew[hiSlot] = hiSaved;
+                if (loPr) loPr.crew[loSlot] = loSaved;
+                continue;
+              }
+              // commit（座位已清空）
+              hiPr.crew[hiSlot] = lo.id;
+              idx.sched[hi.id] = idx.sched[hi.id].filter(x => x !== hiPr);
+              idx.hours[hi.id] -= hiH;
+              (idx.sched[lo.id] = idx.sched[lo.id] || []).push(hiPr);
+              idx.hours[lo.id] += hiH;
+              if (loPr) {
+                const loH = pairingHours(loPr);
+                loPr.crew[loSlot] = hi.id;
+                idx.sched[lo.id] = idx.sched[lo.id].filter(x => x !== loPr);
+                idx.hours[lo.id] -= loH;
+                (idx.sched[hi.id] = idx.sched[hi.id] || []).push(loPr);
+                idx.hours[hi.id] += loH;
+              }
+              moved++; break;
+            }
+          }
+        }
+      });
       Object.keys(by).forEach(rk => {
         const xs = by[rk]; if (xs.length < 2) return;
         const over = xs.filter(p => idx.hours[p.id] > (SOFT_AIM + 4)).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
@@ -2090,27 +2426,59 @@
           if (idx.hours[hi.id] <= (SOFT_AIM + 4)) continue;
           for (const lo of under) {
             if (idx.hours[lo.id] >= 40) break;
-            for (const pr of (idx.sched[hi.id] || []).slice()) {
-              const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === hi.id); if (!slot) continue;
-              if (Object.values(pr.crew).includes(lo.id)) continue;
-              const h = pairingHours(pr);
-              if (idx.hours[hi.id] - h < 45) continue;
-              if (idx.hours[lo.id] + h > SOFT_MAX) continue;
-              if (!pcOK(lo, pr, st, idx, slot)) continue;
-              const crew = ['C', 'F', 'T'].map(k => k === slot ? lo : idx.pm[pr.crew[k]]);
-              if (crew.every(Boolean) && crewIssue(pr, crew, st)) continue;
-              pr.crew[slot] = lo.id;
-              idx.sched[hi.id] = idx.sched[hi.id].filter(x => x !== pr);
-              idx.hours[hi.id] -= h;
-              (idx.sched[lo.id] = idx.sched[lo.id] || []).push(pr);
-              idx.hours[lo.id] += h;
-              moved++; break;
-            }
+            if (tryMove(idx, hi, lo, 45)) { moved++; break; }
           }
         }
       });
       if (!moved) break;
     }
+    // 最终兜底：用 candidates() 给仍 <8h 的人再挂一趟（优先观察员）
+    (function rescueIdle() {
+      for (let round = 0; round < 5; round++) {
+        const idx = buildIndex(st);
+        const needy = st.pilots.filter(p => !(p.health && p.health.noFly) && idx.hours[p.id] < 8)
+          .sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        if (!needy.length) return;
+        let got = false;
+        for (const lo of needy) {
+          const donors = st.pilots.filter(p => p.id !== lo.id && idx.hours[p.id] >= 50)
+            .sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+          for (const hi of donors) {
+            for (const slot of ['T', 'F', 'C']) {
+              for (const pr of (idx.sched[hi.id] || []).slice()) {
+                if (pr.crew[slot] !== hi.id) continue;
+                if (Object.values(pr.crew).includes(lo.id)) continue;
+                const h = pairingHours(pr);
+                if (idx.hours[hi.id] - h < 30) continue;
+                if (idx.hours[lo.id] + h > SOFT_MAX) continue;
+                const saved = pr.crew[slot];
+                pr.crew[slot] = null;
+                const hit = candidates(st, pr, slot).find(c => c.p.id === lo.id && c.ok);
+                if (!hit) { pr.crew[slot] = saved; continue; }
+                const crew = ['C', 'F', 'T'].map(k => {
+                  const id = k === slot ? lo.id : pr.crew[k];
+                  return id ? idx.pm[id] : (k === slot ? lo : null);
+                });
+                // 填回试算
+                pr.crew[slot] = lo.id;
+                if (crew.every(Boolean) && crewIssue(pr, ['C', 'F', 'T'].map(k => idx.pm[pr.crew[k]]), st)) {
+                  pr.crew[slot] = saved; continue;
+                }
+                idx.sched[hi.id] = idx.sched[hi.id].filter(x => x !== pr);
+                idx.hours[hi.id] -= h;
+                (idx.sched[lo.id] = idx.sched[lo.id] || []).push(pr);
+                idx.hours[lo.id] += h;
+                got = true; break;
+              }
+              if (got) break;
+            }
+            if (got) break;
+          }
+          if (got) break;
+        }
+        if (!got) return;
+      }
+    })();
   }
 
   function assignStandby(st) {
@@ -3067,6 +3435,6 @@
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
-    generateSample, generateLiteSample, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });

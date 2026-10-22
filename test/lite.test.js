@@ -36,6 +36,32 @@ for (const seed of [20261101, 7, 42]) {
   chk(seed + ' rest3-4 >=40% & > rest2', g34 >= 0.4 && g34 > g2, (100 * g34).toFixed(0) + '% vs ' + (100 * g2).toFixed(0) + '%');
   chk(seed + ' rest0-1 <=10%, no 5+ blocks', g01 <= 0.1 && b5 === 0, (100 * g01).toFixed(0) + '%');
   const tr = st.pilots.map(p => ((st.training || {})[p.id] || []).length);
+
+  // 值勤连续性：日内衔接；任务起讫成都；日间要么同站过夜要么两端均在成都
+  const BASE = { ZUUU: 1, ZUTF: 1 };
+  let contOk = true, contInfo = '';
+  for (const pr of st.pairings) {
+    const byD = {};
+    pr.legs.forEach(l => { (byD[l.d] = byD[l.d] || []).push(l); });
+    const days = Object.keys(byD).map(Number).sort((a, b) => a - b);
+    for (const d of days) {
+      const legs = byD[d];
+      for (let i = 0; i < legs.length - 1; i++) if (legs[i].to !== legs[i + 1].from) { contOk = false; contInfo = pr.id + ' D' + d + ' chain'; }
+    }
+    const last = byD[days[days.length - 1]].slice(-1)[0];
+    if (!BASE[last.to]) { contOk = false; contInfo = pr.id + ' end ' + last.to; }
+    if (!BASE[byD[days[0]][0].from] && !(days.length > 1)) { /* single day must start base */ }
+    if (!BASE[byD[days[0]][0].from]) { contOk = false; contInfo = pr.id + ' start ' + byD[days[0]][0].from; }
+    for (let di = 0; di < days.length - 1; di++) {
+      const a = byD[days[di]].slice(-1)[0], b = byD[days[di + 1]][0];
+      const ok = (BASE[a.to] && BASE[b.from]) || a.to === b.from;
+      if (!ok) { contOk = false; contInfo = pr.id + ' lay ' + a.to + '!=' + b.from; }
+      // non-layover day end must be Chengdu; layover next-start away ok if matched
+      if (!(a.to === b.from) && (!BASE[a.to] || !BASE[b.from])) { contOk = false; contInfo = pr.id + ' daybound'; }
+    }
+  }
+  chk(seed + ' pairing continuity', contOk, contInfo);
+
   chk(seed + ' schema10', st.sampleSchema === 10);
   chk(seed + ' training 1-2', Math.min(...tr) >= 1 && Math.max(...tr) <= 2);
   const sb = st.pilots.map(p => ((st.standby || {})[p.id] || []).length);
