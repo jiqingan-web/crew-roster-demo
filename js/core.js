@@ -3247,6 +3247,191 @@
 
   // ---------- 路演：故意易补空洞（优先）+ 可选至多 1 项演示异常 ----------
   // 在近满员排班上，清空若干「易补」任务的副驾位，便于现场演示空洞换人（非 FTL 硬失败）
+
+  // ---------- 一键自动纠错：空洞/硬违规的 BFS 换人链（深度≤4） ----------
+  function cloneCrewState(st) {
+    return JSON.parse(JSON.stringify({ pairings: st.pairings.map(p => ({ id: p.id, crew: Object.assign({}, p.crew) })), standby: st.standby || {}, fills: st.fills || [] }));
+  }
+  function applyCrewState(st, snap) {
+    const by = {}; st.pairings.forEach(p => by[p.id] = p);
+    (snap.pairings || []).forEach(p => { if (by[p.id]) by[p.id].crew = Object.assign({}, p.crew); });
+    if (snap.standby) st.standby = JSON.parse(JSON.stringify(snap.standby));
+  }
+  function countHoles(st) { return st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length; }
+  function hardBeyondUnfilled(st) { return validate(st).filter(x => x.level === 'hard' && x.type !== '未满员').length; }
+  function problemScore(st) { return countHoles(st) * 10 + hardBeyondUnfilled(st); }
+
+  function listHoles(st) {
+    const out = [];
+    st.pairings.forEach(pr => ['C', 'F', 'T'].forEach(slot => { if (!pr.crew[slot]) out.push({ pairingId: pr.id, slot }); }));
+    return out;
+  }
+
+  // BFS：为 (pr,slot) 找一条换人链。节点=人员占用；边=从其他任务挪人并回填。
+  function findSwapChain(st, pairingId, slot, maxDepth) {
+    maxDepth = maxDepth == null ? 4 : maxDepth;
+    const pr0 = prOf(st, pairingId); if (!pr0 || pr0.crew[slot]) return null;
+    // depth 0: direct candidate
+    const direct = candidates(st, pr0, slot).filter(c => c.ok && !c.crewWarn)
+      .sort((a, b) => a.hours - b.hours);
+    if (direct[0]) return { moves: [{ pairingId, slot, from: null, to: direct[0].p.id, kind: 'direct' }], person: direct[0].p.id };
+
+    // BFS over chains: state key = temporary unassign set
+    // Use iterative deepening on chainOpts-like search
+    function tryDepth(depth) {
+      // recursive search
+      const ban = new Set();
+      function dfs(pr, sl, d, path) {
+        if (d > depth) return null;
+        // direct at this level
+        const dirs = candidates(st, pr, sl).filter(c => c.ok && !c.crewWarn && !ban.has(c.p.id)).sort((a, b) => a.hours - b.hours);
+        if (dirs[0]) return path.concat([{ pairingId: pr.id, slot: sl, from: null, to: dirs[0].p.id, kind: d === 0 ? 'direct' : 'backfill' }]);
+        if (d === depth) return null;
+        const chains = chainOpts(st, pr, sl, ban, 8);
+        for (const ch of chains) {
+          ban.add(ch.q.id); ban.add('PR:' + ch.Q.id);
+          // temporarily apply: take q from Q, put q into pr
+          const savedQ = ch.Q.crew[ch.sQ], savedP = pr.crew[sl];
+          ch.Q.crew[ch.sQ] = null;
+          pr.crew[sl] = ch.q.id;
+          // backfill Q
+          const step1 = { pairingId: pr.id, slot: sl, from: null, to: ch.q.id, kind: 'pull', via: ch.Q.id };
+          const step2need = { pairingId: ch.Q.id, slot: ch.sQ, from: ch.q.id, to: null, kind: 'hole' };
+          // try backfill Q directly or deeper
+          const bfDirs = candidates(st, ch.Q, ch.sQ).filter(c => c.ok && !c.crewWarn && !ban.has(c.p.id)).sort((a, b) => a.hours - b.hours);
+          let rest = null;
+          if (bfDirs[0]) {
+            rest = path.concat([step1, { pairingId: ch.Q.id, slot: ch.sQ, from: ch.q.id, to: bfDirs[0].p.id, kind: 'backfill' }]);
+          } else {
+            const deeper = dfs(ch.Q, ch.sQ, d + 1, path.concat([step1]));
+            if (deeper) rest = deeper;
+          }
+          // revert
+          ch.Q.crew[ch.sQ] = savedQ; pr.crew[sl] = savedP;
+          ban.delete(ch.q.id); ban.delete('PR:' + ch.Q.id);
+          if (rest) return rest;
+        }
+        return null;
+      }
+      return dfs(pr0, slot, 0, []);
+    }
+    for (let d = 1; d <= maxDepth; d++) {
+      const path = tryDepth(d);
+      if (path && path.length) return { moves: path, depth: d };
+    }
+    return null;
+  }
+
+  function autoCorrectPlan(st, opt) {
+    opt = opt || {};
+    const maxDepth = opt.maxDepth || 4;
+    const snap0 = cloneCrewState(st);
+    const idx0 = buildIndex(st);
+    const beforeHours = {}; st.pilots.forEach(p => { beforeHours[p.id] = idx0.hours[p.id] || 0; });
+    const beforeDuty = {};
+    const ds0 = dayStatus(st, idx0);
+    st.pilots.forEach(p => { let n = 0; for (let d = 1; d <= DAYS; d++) if (ds0[p.id][d] === 'D') n++; beforeDuty[p.id] = n; });
+
+    const w = st; // mutate then restore if building plan only — apply moves on working copy via JSON
+    const work = JSON.parse(JSON.stringify({ pilots: st.pilots, pairings: st.pairings, settings: st.settings, standby: st.standby || {}, training: st.training || {}, fills: st.fills || [], lite: st.lite, sample: st.sample }));
+    // re-link: use work as mutable state sharing pilot objects from clone
+    const planMoves = [];
+    const touched = new Set();
+    let guard = 0;
+    const startScore = problemScore(work);
+    while (guard++ < 40) {
+      const holes = listHoles(work);
+      if (!holes.length && hardBeyondUnfilled(work) === 0) break;
+      let progressed = false;
+      for (const h of holes) {
+        const chain = findSwapChain(work, h.pairingId, h.slot, maxDepth);
+        if (!chain) continue;
+        // apply moves on work
+        for (const m of chain.moves) {
+          const pr = work.pairings.find(p => p.id === m.pairingId); if (!pr) continue;
+          if (m.kind === 'pull' && m.via) {
+            const Q = work.pairings.find(p => p.id === m.via);
+            if (Q) ['C', 'F', 'T'].forEach(s => { if (Q.crew[s] === m.to) Q.crew[s] = null; });
+          }
+          if (m.from && !m.to) {
+            // hole placeholder — seat already cleared by pull
+          }
+          if (m.to) pr.crew[m.slot] = m.to;
+          touched.add(m.pairingId);
+          if (m.to) touched.add(m.to);
+          if (m.from) touched.add(m.from);
+          if (m.via) touched.add(m.via);
+          planMoves.push(Object.assign({}, m));
+        }
+        progressed = true;
+        break; // re-evaluate holes
+      }
+      if (!progressed) {
+        // try fixing hard violations by clearing offending seat and re-filling — skip for lite demo
+        break;
+      }
+      if (problemScore(work) >= startScore && guard > 8) break;
+    }
+    const idx1 = buildIndex(work);
+    const ds1 = dayStatus(work, idx1);
+    const people = {};
+    const ids = new Set();
+    planMoves.forEach(m => { if (m.to) ids.add(m.to); if (m.from) ids.add(m.from); });
+    // also anyone whose hours changed
+    work.pilots.forEach(p => {
+      const h1 = idx1.hours[p.id] || 0;
+      if (Math.abs(h1 - (beforeHours[p.id] || 0)) > 0.05) ids.add(p.id);
+    });
+    ids.forEach(id => {
+      const p = work.pilots.find(x => x.id === id); if (!p) return;
+      let duty = 0; for (let d = 1; d <= DAYS; d++) if (ds1[p.id][d] === 'D') duty++;
+      people[id] = {
+        id, name: p.name, rank: p.rank,
+        hoursBefore: +(beforeHours[id] || 0).toFixed(1),
+        hoursAfter: +(idx1.hours[id] || 0).toFixed(1),
+        dutyBefore: beforeDuty[id] || 0,
+        dutyAfter: duty
+      };
+    });
+    const affectedPairings = [...new Set(planMoves.map(m => m.pairingId))];
+    const endHoles = countHoles(work);
+    const endHard = hardBeyondUnfilled(work);
+    const solvable = endHoles < countHoles(st) || endHard < hardBeyondUnfilled(st);
+    // restore original st crew (we mutated work which is a deep clone — st untouched)
+    // But findSwapChain mutated `work` through chainOpts which uses work.pairings — good, st is original.
+
+    return {
+      moves: planMoves,
+      people,
+      affectedPairings,
+      before: { holes: countHoles(st), hard: hardBeyondUnfilled(st), score: startScore },
+      after: { holes: endHoles, hard: endHard, score: problemScore(work) },
+      solvable: endHoles === 0 && endHard === 0,
+      unsolvableReason: (endHoles === 0 && endHard === 0) ? null
+        : (planMoves.length ? '仍有 ' + endHoles + ' 个空洞 / ' + endHard + ' 项硬违规，候选不足或链深不够' : '无可用直接候选或换人链'),
+      workCrew: work.pairings.map(p => ({ id: p.id, crew: Object.assign({}, p.crew) })),
+      snapBefore: snap0
+    };
+  }
+
+  function applyAutoCorrect(st, plan) {
+    if (!plan || !plan.workCrew) return false;
+    const by = {}; st.pairings.forEach(p => by[p.id] = p);
+    plan.workCrew.forEach(p => { if (by[p.id]) by[p.id].crew = Object.assign({}, p.crew); });
+    st.fills = st.fills || [];
+    st.fills.push({ id: 'AF' + Date.now().toString(36), time: new Date().toISOString(), source: 'autoCorrect',
+      label: '一键自动纠错 ' + plan.moves.length + ' 步 · 空洞 ' + plan.before.holes + '→' + plan.after.holes,
+      snap: plan.snapBefore, moves: plan.moves });
+    return true;
+  }
+  function undoAutoCorrect(st, fillId) {
+    const f = (st.fills || []).find(x => x.id === fillId && x.snap);
+    if (!f) return false;
+    applyCrewState(st, f.snap);
+    st.fills = st.fills.filter(x => x.id !== fillId);
+    return true;
+  }
+
   function leaveDemoHoles(st, opt) {
     opt = opt || {};
     if (!st || !st.sample) return [];
@@ -3438,5 +3623,5 @@
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
+    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });

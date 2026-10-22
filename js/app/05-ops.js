@@ -35,10 +35,38 @@
       ${fdpReportPanel()}
       <div class="panel"><h3>问题明细 <small>${s.violations.length} 条（含软性与提醒）</small></h3><div class="scroll" style="max-height:300px"><table><tr><th>级别</th><th>类型</th><th>说明</th><th></th></tr>
       ${s.violations.slice().sort((a, b) => ['hard', 'soft', 'info'].indexOf(a.level) - ['hard', 'soft', 'info'].indexOf(b.level)).map(v => `<tr class="${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><td class="${v.level === 'hard' ? 'red' : 'warnc'}">${{ hard: '硬性', soft: '软性', info: '提醒' }[v.level]}</td><td>${v.type}</td><td>${esc(v.msg)}</td><td>${v.pairing ? '<span class="mut">定位 →</span>' : ''}</td></tr>`).join('') || '<tr><td colspan=4 class="okc">无</td></tr>'}</table></div></div>`;
+    const needFix = (s.hard > 0) || st.pairings.some(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
+    h = `<div class="panel" id="autoFixBox"><h3>一键自动纠错 <small>空洞/硬违规 · 直接补位 + 换人链（深度≤4）· 可撤销</small></h3>
+      <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center">
+        <button class="btn primary" id="btnAutoFix" ${needFix ? '' : 'disabled'}>🔧 生成纠错方案</button>
+        <span class="mut" id="autoFixStatus">${needFix ? '检测到未满员或硬违规，可尝试自动纠错' : '当前无未满员/硬违规'}</span>
+      </div><div id="autoFixPlan"></div></div>` + h;
     $('#main').innerHTML = h;
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
     document.querySelectorAll('tr.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
     bindExportButtons();
+    const btnAf = $('#btnAutoFix');
+    if (btnAf) btnAf.onclick = () => {
+      const plan = C.autoCorrectPlan(st, { maxDepth: 4 });
+      window._autoFixPlan = plan;
+      const box = $('#autoFixPlan');
+      if (!plan.moves.length) { box.innerHTML = `<div class="note red">无法纠错：${esc(plan.unsolvableReason || '无方案')}</div>`; return; }
+      const peeps = Object.values(plan.people || {});
+      box.innerHTML = `<div class="note ${plan.solvable ? 'okc' : 'warnc'}">方案 ${plan.moves.length} 步 · 空洞 ${plan.before.holes}→${plan.after.holes} · 硬违规 ${plan.before.hard}→${plan.after.hard}${plan.solvable ? ' · 可清零' : ' · ' + esc(plan.unsolvableReason || '')}</div>
+        <div class="scroll" style="max-height:220px;margin-top:8px"><table><tr><th>要改的航班/任务</th><th>座位</th><th>动作</th><th>人员</th><th>受影响航班</th></tr>
+        ${plan.moves.map(m => { const to = m.to && st.pilots.find(p => p.id === m.to); const fr = m.from && st.pilots.find(p => p.id === m.from);
+          return `<tr><td>${m.pairingId}</td><td>${C.SLOT_NAME[m.slot] || m.slot}</td><td>${esc(m.kind)}</td><td>${fr ? esc(fr.name) + ' → ' : ''}${to ? esc(to.name) + ' · ' + to.rank : (m.to || '—')}</td><td class="mut">${m.via ? m.via : m.pairingId}</td></tr>`; }).join('')}</table></div>
+        <div class="scroll" style="max-height:180px;margin-top:8px"><table><tr><th>受影响人员</th><th>级别</th><th>工时 前→后</th><th>值勤日 前→后</th></tr>
+        ${peeps.map(x => `<tr><td>${esc(x.name)}</td><td>${x.rank}</td><td>${x.hoursBefore}h → <b>${x.hoursAfter}h</b></td><td>${x.dutyBefore} → <b>${x.dutyAfter}</b></td></tr>`).join('') || '<tr><td colspan=4 class="mut">—</td></tr>'}</table></div>
+        <div class="flex" style="margin-top:10px;gap:8px"><button class="btn primary" id="btnAutoFixApply">应用</button><button class="btn" id="btnAutoFixDiscard">丢弃方案</button></div>`;
+      $('#btnAutoFixApply').onclick = () => {
+        const snap = JSON.stringify(st);
+        C.applyAutoCorrect(st, plan);
+        leaveHist.push({ snap, label: '一键自动纠错', time: new Date().toTimeString().slice(0, 8) });
+        toast('已应用自动纠错'); save(); render();
+      };
+      $('#btnAutoFixDiscard').onclick = () => { window._autoFixPlan = null; box.innerHTML = ''; };
+    };
   }
 
   function fdpReportPanel() {
