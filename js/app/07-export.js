@@ -118,7 +118,8 @@
       <button class="btn" id="exRoster">排班表（按航段，含机组）</button><button class="btn" id="exHours">人员工时统计</button><button class="btn" id="exViol">校验问题清单</button><br>
       <button class="btn" id="exPil">人员数据</button><button class="btn" id="exPr">任务数据</button><button class="btn" id="exJson">完整备份(JSON)</button></div></div>
       <div class="panel"><h3>导入</h3><div class="note">导入将替换对应数据并清空现有排班。可先下载模板。</div><div style="margin-top:10px;line-height:3">
-      <button class="btn" id="tpPil">下载人员模板</button><button class="btn" id="tpPr">下载任务模板</button><br>
+      <button class="btn primary" id="tpXlsx">下载导入模板</button><label class="btn primary">导入航段 Excel<input type="file" id="imXlsx" accept=".xlsx,.xls,.csv" hidden></label><br>
+      <button class="btn" id="tpPil">下载人员模板</button><button class="btn" id="tpPr">下载任务模板(CSV)</button><br>
       <label class="btn">导入人员 CSV<input type="file" id="imPil" accept=".csv" hidden></label><label class="btn">导入任务 CSV<input type="file" id="imPr" accept=".csv" hidden></label><label class="btn">恢复备份 JSON<input type="file" id="imJson" accept=".json" hidden></label></div><div id="imMsg" class="note"></div></div></div>
       <div class="panel"><h3>格式说明</h3><div class="note" style="line-height:1.9">人员 CSV 列：${PIL_H.join('，')}；级别取值：${C.RANKS.join(' / ')}<br>任务 CSV 列：${PR_H.join('，')}；同一任务号的多行即该任务的各航段（按日序、时间排列），任务须从 ZUUU 出发并回到 ZUUU。机场使用 ICAO 四字码，须在“设置”机场表内。</div></div>`;
     const m = pm();
@@ -147,6 +148,57 @@
         .map(p => (p.ndays = Math.max(p.ndays, ...p.legs.map(l => l.d)), p)).sort((a, b) => a.legs[0].dep - b.legs[0].dep);
       st.sample = false; refresh(); toast(`已导入 ${st.pairings.length} 个任务`); });
     read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings)); refresh(); toast('备份已恢复'); });
+    $('#tpXlsx').onclick = () => downloadLegTemplate();
+    $('#imXlsx').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importLegFile(f); };
     bindExportButtons();
+  }
+  // ---------------- 航段 Excel 导入（标准模板，离线） ----------------
+  async function downloadLegTemplate() {
+    if (!window.ExcelJS || !window.LegImport) { toast('Excel 组件未加载'); return; }
+    const wb = LegImport.buildTemplate(ExcelJS, C, st, {}); const buf = await wb.xlsx.writeBuffer();
+    const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = '航段导入模板.xlsx'; a.click();
+  }
+  function importLegFile(f) {
+    const name = f.name || ''; const msg = h => { const m = $('#imMsg'); if (m) m.innerHTML = h; };
+    if (/\.xls$/i.test(name)) { msg('<span class="red">暂不支持旧版 .xls：请在 Excel / WPS 中“另存为 .xlsx”后再导入（或点“下载导入模板”按模板填写）。</span>'); return; }
+    const r = new FileReader();
+    r.onload = async () => { try {
+        const rows = /\.csv$/i.test(name) ? LegImport.parseCSV(new TextDecoder('utf-8').decode(r.result)) : (await LegImport.readXlsx(ExcelJS, r.result)).rows;
+        showLegImport(name, rows);
+      } catch (e) { msg('<span class="red">导入失败：' + esc(e.message) + '</span>'); } };
+    r.readAsArrayBuffer(f);
+  }
+  function showLegImport(name, rows) {
+    let allow = false, res;
+    const list = (arr, fmt, n) => arr.length ? `<ul class="imlist">${arr.slice(0, n || 8).map(x => '<li>' + esc(fmt(x)) + '</li>').join('')}${arr.length > (n || 8) ? `<li class="mut">… 另 ${arr.length - (n || 8)} 条</li>` : ''}</ul>` : '';
+    const sec = (title, arr, fmt, cls) => `<div class="imsec"><b class="${arr.length ? cls : 'okc'}">${title}：${arr.length}</b>${list(arr, fmt)}</div>`;
+    const draw = () => {
+      res = LegImport.parseRows(rows, C, st, { allowUnknown: allow }); const R = res.report; const ua = Object.entries(R.unknownAirports);
+      const ok = res.pairings.length > 0;
+      $('#modalBox').innerHTML = `<h3>导入航段 · ${esc(name)}</h3>
+        <div class="note">读取 ${R.rows} 行 → <b>可导入任务 ${res.pairings.length} 个</b>，航段 ${R.legs || 0}（置位 ${R.dhLegs || 0}）${R.month ? `；排班月 ${R.month.year}-${String(R.month.month).padStart(2, '0')}（第 1–${R.month.days} 日）` : ''}。导入前请核对以下校验结果。</div>
+        <div class="grid g2" style="margin-top:8px">
+          ${sec('错误行（整任务跳过）', R.badRows, x => `第${x.row}行 ${x.id || ''}：${x.msg}`, 'red')}
+          <div class="imsec"><b class="${ua.length ? 'red' : 'okc'}">未知机场：${ua.length}</b>${list(ua, ([k, v]) => `${k}（第 ${v.slice(0, 5).join('、')}${v.length > 5 ? '…' : ''} 行）`)}
+            ${ua.length ? `<label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="imAllow" ${allow ? 'checked' : ''}> 四字码未知机场按普通机场导入</label>` : ''}</div>
+          ${sec('时间重叠', R.overlaps, x => `${x.id} 第${x.row}行：${x.msg}`, 'red')}
+          ${sec('未自 蓉/府 出发或未回 蓉/府', R.notReturn, x => `${x.id}：${x.msg}`, 'warnc')}
+          ${sec('航段不衔接', R.broken, x => `${x.id} 第${x.row}行：${x.msg}`, 'warnc')}
+          ${sec('超出排班月（不导入）', R.outOfMonth, x => `${x.id}：第 ${x.from}–${x.to} 日`, 'warnc')}
+          ${R.crewUnknown.length ? sec('预填机组未匹配（留空）', R.crewUnknown, x => `${x.id} 第${x.row}行 ${x.slot}：${x.who}`, 'warnc') : ''}
+        </div>
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" id="imRep" ${ok ? '' : 'disabled'}>替换现有任务（${st.pairings.length}→${res.pairings.length}）</button>
+          <button class="btn" id="imMerge" ${ok ? '' : 'disabled'}>合并到现有任务（+${res.pairings.length}）</button>
+          <button class="btn" id="imCancel">取消</button></div>`;
+      $('#modal').classList.remove('hidden');
+      const cb = $('#imAllow'); if (cb) cb.onchange = () => { allow = cb.checked; draw(); };
+      $('#imCancel').onclick = () => $('#modal').classList.add('hidden');
+      const go = mode => { const n = LegImport.apply(st, res, mode, C); $('#modal').classList.add('hidden'); refresh();
+        toast(`已${mode === 'merge' ? '合并' : '导入'} ${n} 个任务 <button class="btn sm primary" id="imAuto">一键自动填人</button>`, 8000);
+        const b = $('#imAuto'); if (b) b.onclick = () => runAuto(); };
+      $('#imRep').onclick = () => go('replace'); $('#imMerge').onclick = () => go('merge');
+    };
+    draw();
   }
 
