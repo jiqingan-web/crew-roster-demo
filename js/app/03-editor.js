@@ -11,7 +11,7 @@
     const orig = { C: draft.C, F: draft.F, T: draft.T };
     let h = `<div class="flex"><a href="#" id="mClose" class="drw-back">← 返回详情</a><span class="mut" style="margin-left:auto">任务 ${pr.id}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h</span></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
-      <table style="margin:10px 0"><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr>${pr.legs.map(l => `<tr><td>D${l.d} (${dateOf(Math.floor(l.dep / C.DAY) + 1)})</td><td>${l.flt}</td><td>${l.from} ${apHtml(l.from)} → ${l.to} ${apHtml(l.to)}</td><td>${esc(l.reg || '—')}</td><td>${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td>${[l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${C.CAT_DESC[C.apCat(c, st)]}</span>`).join(' ')} ${(st.settings.bpTesterAirports || []).includes(l.from) ? '<span class="warnc">需血压测试仪</span>' : ''} ${C.isNightLeg(l) ? '<span class="warnc">夜航</span>' : ''} ${l.ac === 'A321' ? 'A321：左座须 J2+' : ''}</td></tr>`).join('')}</table>
+      <table class="legtbl"><thead><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr></thead><tbody>${pr.legs.map(l => { const dd = Math.floor(l.dep / C.DAY) + 1; const md = String(C.MONTH).padStart(2,'0') + '/' + String(dd).padStart(2,'0'); const notes = [l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${esc((C.CAT_DESC[C.apCat(c, st)] || '').split('：')[0].split('(')[0])}</span>`).join(' '); return `<tr><td class="nowrap">${md} D${l.d}</td><td>${l.flt}${l.pos ? '<sup class="mut">调</sup>' : ''}</td><td class="legair"><span class="${C.isSpecial(l.from,st)?'red':''}">${esc(C.apName(l.from,st))}</span><span class="mut">→</span><span class="${C.isSpecial(l.to,st)?'red':''}">${esc(C.apName(l.to,st))}</span></td><td class="nowrap reg">${esc(l.reg || '—')}</td><td class="nowrap">${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td class="legnote">${notes}${(st.settings.bpTesterAirports || []).includes(l.from) ? ' <span class="warnc">血压仪</span>' : ''}${C.isNightLeg(l) ? ' <span class="warnc">夜</span>' : ''}${l.ac === 'A321' ? ' A321' : ''}</td></tr>`; }).join('')}</tbody></table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
       ${bpt.length ? `<div class="note warnc">提醒：自 ${[...new Set(bpt.map(l => C.apName(l.from, st)))].join('、')} 出港，始发站须配备血压测试仪</div>` : ''}
       <h3 style="margin-top:14px">机组 <small class="mut">点选候选人后须点「确定」才写入；关闭不保存</small></h3><div id="slots"></div><div id="crewChk" class="note"></div>
@@ -30,7 +30,10 @@
       }).join('　·　');
     };
     const slotQ = drawSlots_q;
-    const optHtml = (ok, slot, cur, changed) => ok.map(c => `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''}>${esc(c.p.name)} ${c.p.rank} · ${c.p.id}${c.p.squad ? ' · ' + esc(c.p.squad) : ''} · 本月${c.hours.toFixed(1)}h${c.standby && c.standby.length ? ' · ★备份可调用' : ''}${c.warn ? ' · ⚠' + c.warn : ''}${c.crewWarn ? ' · ⚠机组:' + esc(c.crewWarn) : ''}${!c.ok && c.p.id !== orig[slot] ? ' · ✖' + c.reasons.join('；') : ''}${c.p.id === orig[slot] && changed ? ' · 原任' : ''}</option>`).join('');
+    const optHtml = (ok, slot, cur, changed) => ok.map(c => {
+      const tag = [esc(c.p.name), c.p.rank, c.hours.toFixed(1) + 'h', c.p.squad ? esc(c.p.squad) : '', c.standby && c.standby.length ? '★备份' : '', c.p.id === orig[slot] && changed ? '原任' : '', !c.ok && c.p.id !== orig[slot] ? '✖' : ''].filter(Boolean).join(' · ');
+      return `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''} title="${esc(c.p.name)} ${c.p.rank} ${c.p.id} ${c.hours.toFixed(1)}h">${tag}</option>`;
+    }).join('');
     const slotCache = {};
     const drawSlots = () => {
       let s = '';
@@ -41,8 +44,16 @@
         const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, slotQ[slot]));
         const bad = cs.filter(c => !c.ok && c.p.id !== cur && c.p.id !== orig[slot] && C.slotRankOK(slot, c.p.rank));
         const changed = (draft[slot] || null) !== (orig[slot] || null);
-        s += `<div class="slotbox ${changed ? 'pending' : ''}"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位')}</b><input class="candq" data-q="${slot}" placeholder="搜索姓名/工号/级别/中队" value="${esc(slotQ[slot] || '')}" style="width:170px"><span class="mut candn" data-n="${slot}">${ok.length}/${okAll.length}</span><select data-slot="${slot}"><option value="">— 空缺 —</option>${optHtml(ok, slot, cur, changed)}</select>${changed ? '<span class="pendtag">待确定</span>' : ''}</div>
-          <details style="margin:-4px 0 10px 68px"><summary>${ok.length} 名候选；${bad.length} 名不合规 — 查看原因</summary><div class="inel"><table>${bad.map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>`;
+        s += `<div class="slotbox ${changed ? 'pending' : ''}">
+            <div class="slot-h"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位')}</b>
+              <input class="candq" data-q="${slot}" placeholder="搜索姓名/工号/级别/中队/拼音" value="${esc(slotQ[slot] || '')}">
+              <span class="mut candn" data-n="${slot}">${ok.length}/${okAll.length}</span>
+              ${changed ? '<span class="pendtag">待确定</span>' : ''}
+            </div>
+            <select class="slot-sel" data-slot="${slot}" size="1"><option value="">— 空缺 —</option>${optHtml(ok, slot, cur, changed)}</select>
+            <div class="candlist">${ok.slice(0, 12).map(c => `<div class="candline ${c.p.id === cur ? 'on' : ''} ${!c.ok ? 'bad' : ''}" data-pick="${slot}:${c.p.id}"><span class="cn">${esc(c.p.name)}</span> ${pill(c.p.rank)} <span class="mut">${c.hours.toFixed(1)}h${c.p.squad ? ' · ' + esc(c.p.squad) : ''}${c.standby && c.standby.length ? ' · ★备份' : ''}</span></div>`).join('')}${ok.length > 12 ? `<div class="mut candmore">…另有 ${ok.length - 12} 人，可用搜索过滤</div>` : ''}</div>
+          </div>
+          <details class="slot-bad"><summary>${bad.length} 名不合规 — 查看原因</summary><div class="inel"><table>${bad.slice(0, 30).map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>`;
       }
       $('#slots').innerHTML = s;
       // 用草稿机组做合规预览（临时挂到对象上再还原）
@@ -69,6 +80,10 @@
           document.querySelector(`#slots .candn[data-n="${slot}"]`).textContent = ok.length + '/' + okAll.length;
         };
         bindSearchInput(inp, apply);
+      });
+      document.querySelectorAll('#slots .candline[data-pick]').forEach(row => row.onclick = () => {
+        const [slot, id] = row.dataset.pick.split(':');
+        draft[slot] = id; drawSlots();
       });
     };
     $('#mConfirm').onclick = () => {

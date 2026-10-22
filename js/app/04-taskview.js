@@ -23,7 +23,7 @@
     const riskN = st.pairings.filter(pr => ['over', 'high', 'med'].includes(C.pairingRisk(pr, st).risk)).length;
     const fly = sum.per.filter(x => x.hours > 0.5); const avg = fly.length ? fly.reduce((a, x) => a + x.hours, 0) / fly.length : 0;
     let h = `<div class="cw"><div class="cw-head"><div><h2>任务视图</h2><div class="mut">${st.pairings.length} 个任务 · 按日/时段查看 · 点击卡片查看详情</div></div>
-      <div class="cw-acts"><button class="btn" data-go="tasklist">☰ 列表模式</button><button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
+      <div class="cw-acts"><button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="okpis">${kpiCard('◎', '满员率', (sum.coverage * 100).toFixed(1) + '%', `${st.pairings.length} 个任务 · ${sum.full === sum.total ? '全部已覆盖' : '缺员 ' + (sum.total - sum.full)}`, sum.coverage >= 0.99 ? 'okc' : 'warnc')}
         ${kpiCard('⚠', '硬性违规', hardN, `软性 ${softN} · 提示 ${infoN}`, hardN ? 'red' : 'okc')}
         ${kpiCard('◷', '需关注风险', riskN || '—', riskN ? 'FDP 中/高风险任务' : 'FDP 余量均充足')}
@@ -82,7 +82,7 @@
     let dw = $('#drawer'); if (!dw) { dw = document.createElement('div'); dw.id = 'drawer'; document.body.appendChild(dw); }
     dw.innerHTML = `<div class="drw-mask"></div><aside class="drw">${head}${view}</aside>`; dw.classList.remove('hidden');
     $('#drwX').onclick = closeDrawer; $('#drwC').onclick = closeDrawer; dw.querySelector('.drw-mask').onclick = closeDrawer;
-    $('#drwE').onclick = () => { const b = dw.querySelector('.drw-b'); dw.querySelector('.drw-f').remove(); b.classList.add('edit'); editInto(id, b); };
+    $('#drwE').onclick = () => { const b = dw.querySelector('.drw-b'); const aside = dw.querySelector('.drw'); dw.querySelector('.drw-f').remove(); b.classList.add('edit'); if (aside) aside.classList.add('wide'); editInto(id, b); };
     if (mode === 'edit') $('#drwE').click();
   }
   // ---- SVG 小部件 ----
@@ -142,8 +142,7 @@
         ${kc('平均工时', avg.toFixed(1) + 'h', `${sum.all.min.toFixed(0)}–${sum.all.max.toFixed(0)}h · 基尼 ${sum.all.gini.toFixed(3)}`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, satD.map(v => 100 - v), '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
       <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比</h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), N, '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
-        <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div>
-        <div class="bpanel"><h4>机场类别（航段落地）</h4>${donut(clsOrder.filter(k => cls[k]).map(k => [k, cls[k], clsCol[clsOrder.indexOf(k)]]), Object.values(cls).reduce((a, b) => a + b, 0), '航段')}</div></div>
+        <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>
       <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8</small></h4><div class="rks">${top.map((x, i) => bar(x, i, 'linear-gradient(90deg,#f5a524,#ef5d6c)')).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => bar(x, ranked.length - 1 - i, 'linear-gradient(90deg,#2b6fd6,#4f8cff)')).join('')}</div></div>
         <div class="bpanel"><h4>实时事件 <span class="live">● LIVE</span></h4><div class="feed">${ev.length ? ev.slice(0, 16).map(e => `<div class="ev ${e[3]}"><span class="ev-t">${e[1] || '—'}</span><span class="ev-k">${e[0]}</span><span>${e[2]}</span></div>`).join('') : '<div class="tempty">暂无事件</div>'}</div></div>
         <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => String(d).padStart(2, '0')))}
@@ -157,7 +156,7 @@
   // 侧边栏
   const SIDE = [['计划', [['overview', '▦', '总览'], ['gantt', '♙', '人员视图'], ['tasks', '☰', '任务视图'], ['leave', '▤', '请假调配']]],
     ['监控', [['report', '⚠', '校验与异常'], ['duty', '◷', '执勤监控'], ['ops', '◔', '运营看板']]],
-    ['管理', [['settings', '⚙', '设置'], ['data', '⇅', '导入导出'], ['rules', '§', '规则库'], ['roster', '☷', '人员总览'], ['tasklist', '≡', '任务列表'], ['welfare', '♡', '员工福利'], ['fills', '↺', '补位历史']]]];
+    ['管理', [['settings', '⚙', '设置'], ['data', '⇅', '导入导出'], ['rules', '§', '规则库'], ['roster', '☷', '人员总览'], ['welfare', '♡', '员工福利'], ['fills', '↺', '补位历史']]]];
   function renderSide() {
     let s = $('#side'); if (!s) { s = document.createElement('aside'); s.id = 'side'; document.body.prepend(s); document.body.classList.add('side-layout'); }
     const hardN = sum ? sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length + (sum.total - sum.full) : 0;

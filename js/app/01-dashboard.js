@@ -24,7 +24,7 @@
   function render() {
     document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
     renderStory(); renderSide(); applyCompact();
-    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, tasklist: rTaskList, overview: rOverview, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, overview: rOverview, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
 
 

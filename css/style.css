@@ -445,3 +445,36 @@ html[data-theme=black]{--bg:#000;--panel:#0a0a0a;--panel2:#141414;--line:#3a3a3a
 html[data-theme=green]{--bg:#0a1a15;--panel:#10261f;--panel2:#153229;--line:#24473b;--txt:#d6ebe2;--mut:#8db3a4;--s1:#0f2a22;--s2:#0b1f19;--s3:#0c211b;--s4:#112c24;--s5:#0e241d;--s6:#0c211b}
 html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a443a;--txt:#ece5da;--mut:#b3a998;--s1:#2c2822;--s2:#221f1b;--s3:#24211d;--s4:#2a2621;--s5:#262320;--s6:#24211d}
 #themeSel{max-width:130px}
+
+/* ---- 调整机组抽屉 / 请假补位面板 ---- */
+.drw.wide,.drw:has(.drw-b.edit){width:min(720px,98vw)}
+.legtbl{width:100%;border-collapse:collapse;font-size:12px;margin:10px 0;table-layout:fixed}
+.legtbl th{color:#7f93b5;font-weight:500;text-align:left;border-bottom:1px solid #22355a;padding:5px 6px;white-space:nowrap}
+.legtbl td{border-bottom:1px solid #182740;padding:5px 6px;color:#dbe6f8;vertical-align:top}
+.legtbl .nowrap,.legtbl .reg{white-space:nowrap}
+.legtbl .reg{font-family:ui-monospace,Menlo,monospace;font-size:11px}
+.legtbl .legair{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.legtbl .legnote{font-size:11px;color:#9fb2d3}
+.legtbl col.d{width:72px}.legtbl th:nth-child(1),.legtbl td:nth-child(1){width:72px}
+.legtbl th:nth-child(2),.legtbl td:nth-child(2){width:64px}
+.legtbl th:nth-child(4),.legtbl td:nth-child(4){width:72px}
+.legtbl th:nth-child(5),.legtbl td:nth-child(5){width:90px}
+.drw-b.edit .slotbox{display:flex;flex-direction:column;gap:6px;align-items:stretch;margin-bottom:12px;padding:10px 12px;background:var(--s4);border:1px solid #20335a;border-radius:10px;grid-template-columns:unset}
+.drw-b.edit .slot-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.drw-b.edit .slot-h b{min-width:52px;color:var(--hi)}
+.drw-b.edit .candq{flex:1;min-width:140px;max-width:280px}
+.drw-b.edit .slot-sel, .drw-b.edit select[data-slot]{width:100%;min-width:0;font-size:13px;padding:8px 10px;height:auto}
+.drw-b.edit .candlist{display:flex;flex-direction:column;gap:4px;max-height:160px;overflow:auto;margin-top:2px}
+.drw-b.edit .candline{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:7px;border:1px solid transparent;cursor:pointer;font-size:12px;background:#0d1728}
+.drw-b.edit .candline:hover{border-color:#3a5a8a}
+.drw-b.edit .candline.on{border-color:var(--acc);background:#132a4a}
+.drw-b.edit .candline .cn{font-weight:600;color:var(--hi);min-width:3.5em}
+.drw-b.edit .slot-bad{margin:0 0 10px 0}
+.drw-b.edit .slot-bad summary{color:#9fb2d3;font-size:12px}
+/* 请假补位：候选人行可读 */
+.candrow{align-items:flex-start}
+.candrow .cand{display:flex;align-items:center;gap:8px;min-width:180px;max-width:240px;padding:8px 10px;border-radius:9px;border:1px solid #20335a;background:var(--s4);text-align:left}
+.candrow .cand .cn{flex:1;line-height:1.35}
+.candrow .cand .av{flex:none;width:28px;height:28px;border-radius:50%;background:#1a3358;display:flex;align-items:center;justify-content:center;font-size:11px;color:#9fd4ff}
+.candrow .cand.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(77,184,255,.35)}
+#lvP{min-width:280px;max-width:420px;flex:1}
