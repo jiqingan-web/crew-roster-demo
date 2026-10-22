@@ -42,9 +42,9 @@
         // 在 migratePilots 改写中队名之前检测旧示例（一大队等）
         const LEGACY = new Set(['一大队', '二大队', '三大队', '教学中队']);
         const isSampleish = s.sample === true;
-        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 11 || s.pilots.length !== 101) : (s.pilots.length < 500 || s.lite))
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 12 || s.pilots.length !== 101) : (s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 11;
+          || !s.sampleSchema || s.sampleSchema < 12;
         if (isSampleish && stale) {
           reset(false);
           toast('示例数据已升级（整月演示补全 + 导出），已自动重置');
@@ -265,7 +265,7 @@
 
   function apHtml(c) { const n = C.apName(c, st); const k = C.apClass && C.apClass(c, st); const tag = k ? `<sup class="apcls" title="机场分类：${k.label}（${k.fleet}）">${k.label[0]}</sup>` : ''; return C.isSpecial(c, st) ? `<span class="red" title="${esc(C.CAT_DESC[C.apCat(c, st)] || '')}${k ? ' · ' + k.label : ''}">${esc(n)}</span>${tag}` : esc(n) + tag; }
   function dayChains(pr) { const out = []; for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
-    out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
+    out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')}${ls.some(l => l.dh) ? '<span class="dh">(随)</span>' : ''} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
   // 机场单字简称：按出现频次分配，优先首字，冲突时依次取名称中下一个未占用字；成都双流=蓉、成都天府=府
   let AB = null, ABKEY = null;
   function apAbbr(c) { const key = st.pairings.length + ':' + (st.pairings[0] && st.pairings[0].id);
@@ -277,7 +277,7 @@
     return AB[c] || String(C.apName(c, st) || c)[0]; }
   function abHtml(c) { const a = esc(apAbbr(c)); return C.isSpecial(c, st) ? `<span class="red">${a}</span>` : a; }
   function crewShort(pr, m) { return ['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">缺</span>').join('/'); }
-  function blkDay(c) { return `${[c.ls[0].from, ...c.ls.map(l => l.to)].map(abHtml).join('-')}<br><span class="mut" style="color:#b9cbe8">${C.fmtT(c.ls[0].dep)}-${C.fmtT(c.ls[c.ls.length - 1].arr)}</span>`; }
+  function blkDay(c) { return `${[c.ls[0].from, ...c.ls.map(l => l.to)].map(abHtml).join('-')}${c.ls.some(l => l.dh) ? '<span class="dh">(随)</span>' : ''}<br><span class="mut" style="color:#b9cbe8">${C.fmtT(c.ls[0].dep)}-${C.fmtT(c.ls[c.ls.length - 1].arr)}</span>`; }
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">空缺</span>'}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 

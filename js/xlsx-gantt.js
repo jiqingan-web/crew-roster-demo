@@ -20,7 +20,7 @@
     const nm = id => id && pm[id] ? pm[id].name : '空缺';
     const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
     const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} FDP ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
-    const noteOf = pr => `${pr.id} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${l.flt} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
+    const noteOf = pr => `${pr.id} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
     const rich = (head, codes, tail) => { const r = [{ text: head + ' ', font: { color: { argb: 'FFFFFFFF' }, bold: true, size: 9 } }];
       codes.forEach((c, i) => { if (i) r.push({ text: '-', font: { color: { argb: 'FFFFFFFF' }, size: 9 } }); const sp = C.isSpecial(c, st); r.push({ text: AB[c] + (sp ? '★' : ''), font: { color: { argb: sp ? 'FFFFC2C2' : 'FFFFFFFF' }, bold: sp, size: 9 } }); });
       if (tail) r.push({ text: ' ' + tail, font: { color: { argb: 'FFE0E8F5' }, size: 8 } }); return { richText: r }; };
@@ -50,7 +50,7 @@
       const taken = []; const sch = (idx.sched[p.id] || []).slice().sort((a, b) => a.start - b.start);
       sch.forEach(pr => { const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id); const nt = noteOf(pr);
         segs(pr).forEach((g, j) => { const codes = [g.ls[0].from, ...g.ls.map(l => l.to)];
-          put(ws, r, L, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(j ? pr.id.replace(/^PR/, '') : pr.id + (slot === 'T' ? '[观]' : ''), codes, `${C.fmtT(g.ls[0].dep)}-${C.fmtT(g.ls[g.ls.length - 1].arr)}`), COL[slot] || COL.C, nt); }); });
+          put(ws, r, L, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(j ? pr.id.replace(/^PR/, '') : pr.id + (slot === 'T' ? '[观]' : ''), codes, `${g.ls.some(l => l.dh) ? '(随)' : ''}${C.fmtT(g.ls[0].dep)}-${C.fmtT(g.ls[g.ls.length - 1].arr)}`), COL[slot] || COL.C, nt); }); });
       const sb = (st.standby || {})[p.id] || [], tr = (st.training || {})[p.id] || [];
       for (let d = 1; d <= D; d++) { const s0 = (d - 1) * SLOTS, s1 = s0 + SLOTS - 1;
         if ((p.leave || []).includes(d)) put(ws, r, L, taken, s0, s1, '请假', COL.lv, '请假/休假', '7A2E3B');

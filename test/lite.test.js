@@ -21,7 +21,8 @@ for (const seed of [20261101, 7, 42]) {
   for (const [rk, ps] of Object.entries(byRank)) {
     const dm = med(ps.map(p => duty[p.id])), hm = med(ps.map(p => hrs[p.id]));
     if (ps.length < 5) { chk(seed + ' ' + rk + ' duty 8-18 / h>=30', dm >= 8 && dm <= 18 && hm >= 30, dm + 'd ' + hm.toFixed(1) + 'h n=' + ps.length); continue; }
-    chk(seed + ' ' + rk + ' duty 10-16 / h 45-78', dm >= 10 && dm <= 16 && hm >= 45 && hm <= 78, dm + 'd ' + hm.toFixed(1) + 'h');
+    // 阈值按真实七中队 10 月班表校准（在岗者 35–64h、中位 ~50h；原 45–78 编码旧生成器偏高中位数；值勤日下限 10→9：外站驻点休息日/置位不计值勤日，个别小职级中位数落在 9 日）
+    chk(seed + ' ' + rk + ' duty 9-16 / h 35-70', dm >= 9 && dm <= 16 && hm >= 35 && hm <= 70, dm + 'd ' + hm.toFixed(1) + 'h');
   }
   chk(seed + ' duty median 12-14', (m => m >= 12 && m <= 14)(med(Object.values(duty))), med(Object.values(duty)));
   // 节奏
@@ -62,7 +63,7 @@ for (const seed of [20261101, 7, 42]) {
   }
   chk(seed + ' pairing continuity', contOk, contInfo);
 
-  chk(seed + ' schema11', st.sampleSchema === 11);
+  chk(seed + ' schema12', st.sampleSchema === 12);
   chk(seed + ' training 1-2', Math.min(...tr) >= 1 && Math.max(...tr) <= 2);
   const sb = st.pilots.map(p => ((st.standby || {})[p.id] || []).length);
   chk(seed + ' standby rare', Math.max(...sb) <= 1);

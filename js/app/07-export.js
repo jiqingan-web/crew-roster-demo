@@ -110,7 +110,7 @@
   const PR_H = ['任务号', '日序(D)', '航班号', '起飞机场', '落地机场', '日期(11月几日)', '起飞时间', '落地时间(次日加+1)', '机型'];
   const pilotRows = () => [PIL_H, ...st.pilots.map(p => [p.id, p.name, p.rank, (p.auth || []).join(';'), (p.prefs || []).join(';'), (p.leave || []).join(';')])];
   const tm = (m, base) => { const dd = Math.floor(m / C.DAY) - base; return C.fmtT(m) + (dd > 0 ? '+' + dd : ''); };
-  const pairRows = () => [PR_H, ...st.pairings.flatMap(pr => pr.legs.map(l => { const day = Math.floor(l.dep / C.DAY); return [pr.id, l.d, l.flt, l.from, l.to, day + 1, C.fmtT(l.dep), tm(l.arr, day), l.ac]; }))];
+  const pairRows = () => [PR_H, ...st.pairings.flatMap(pr => pr.legs.map(l => { const day = Math.floor(l.dep / C.DAY); return [pr.id, l.d, C.fltLabel(l), l.from, l.to, day + 1, C.fmtT(l.dep), tm(l.arr, day), l.ac]; }))];
   function rData() {
     $('#main').innerHTML = `${demoFillBanner()}<div class="grid g2"><div class="panel"><h3>导出</h3><div class="note">CSV 为 UTF-8 BOM 格式，可直接用 Excel 打开。全月班表与个人月历包可离线导出。</div>
       ${exportBarHtml()}
@@ -124,7 +124,7 @@
     const m = pm();
     $('#exRoster').onclick = () => dl('排班表_2026-11.csv', csv([['任务号', '日序', '日期', '航班号', '起飞', '落地', '起飞时间', '落地时间', '机型', '特殊机场', '需血压测试仪', '机长(机)', '级别', '副驾驶(副)', '级别', '观察员', '级别'],
       ...st.pairings.flatMap(pr => pr.legs.map(l => { const day = Math.floor(l.dep / C.DAY); const c = s => pr.crew[s] && m[pr.crew[s]];
-        return [pr.id, 'D' + l.d, '2026-11-' + String(day + 1).padStart(2, '0'), l.flt, `${l.from} ${C.apName(l.from, st)}`, `${l.to} ${C.apName(l.to, st)}`, C.fmtT(l.dep), tm(l.arr, day), l.ac,
+        return [pr.id, 'D' + l.d, '2026-11-' + String(day + 1).padStart(2, '0'), C.fltLabel(l), `${l.from} ${C.apName(l.from, st)}`, `${l.to} ${C.apName(l.to, st)}`, C.fmtT(l.dep), tm(l.arr, day), l.ac,
           [l.from, l.to].filter(x => C.isSpecial(x, st)).map(x => C.apName(x, st)).join(';'), (st.settings.bpTesterAirports || []).includes(l.from) ? '是' : '',
           ...['C', 'F', 'T'].flatMap(s => c(s) ? [c(s).name + '(' + c(s).id + ')', c(s).rank] : ['空缺', ''])]; }))]));
     $('#exHours').onclick = () => dl('人员工时_2026-11.csv', csv([['员工号', '姓名', '级别', '组别', '本月飞行小时', '任务数', '执勤天数', '过夜次数', '特殊机场任务', '夜航段', '意向休息日满足', '备份天数', '备份日期', '任务间休息天数'], ...sum.per.map(x => [x.id, x.name, x.rank, x.group, x.hours.toFixed(2), x.pairings, x.dutyDays, x.overnights, x.special, x.night, x.prefOK + '/' + x.prefTotal, x.standby, ((st.standby || {})[x.id] || []).join(';'), x.gaps.join(';')])]));
