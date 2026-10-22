@@ -137,7 +137,7 @@
     const read = (inp, fn) => inp.onchange = () => { const f = inp.files[0]; if (!f) return; const r = new FileReader(); r.onload = () => { try { fn(r.result); } catch (e) { $('#imMsg').innerHTML = '<span class="red">导入失败：' + esc(e.message) + '</span>'; } }; r.readAsText(f, 'utf-8'); };
     read($('#imPil'), t => { const rows = parseCSV(t).slice(1); const ps = rows.map((r, i) => { if (!C.RANK_VAL[r[2] && r[2].trim()]) throw new Error(`第${i + 2}行级别无效：${r[2]}`);
       const ls = x => (x || '').split(/[;；\s]+/).filter(Boolean); return { id: r[0].trim(), name: r[1].trim(), rank: r[2].trim(), auth: ls(r[3]), prefs: ls(r[4]).map(Number), leave: ls(r[5]).map(Number) }; });
-      st.pilots = ps; st.sample = false; st.standby = null; st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); refresh(); toast(`已导入 ${ps.length} 名人员`); });
+      st.pilots = ps; st.sample = false; st.standby = null; st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); pilotsChanged("import"); toast(`已导入 ${ps.length} 名人员`); });
     read($('#imPr'), t => { const rows = parseCSV(t).slice(1); const g = {};
       rows.forEach((r, i) => { const [id, d, flt, from, to, day, dep, arr, ac] = r.map(x => x.trim());
         if (!C.AIRPORTS[from] && !(st.airports || {})[from]) throw new Error(`第${i + 2}行机场未知：${from}`);

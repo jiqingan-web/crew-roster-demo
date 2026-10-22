@@ -2926,6 +2926,7 @@
   }
 
   // ---------- 候选人（手工编辑） ----------
+  function needAuthAirports(pr, st) { const s = new Set(); pr.legs.forEach(l => { if (l.dh) return; [l.from, l.to].forEach(c => { const cat = apCat(c, st); if (cat === 'NONE') return; const ru = sarOf(cat); if (ru ? ru.crew_qualification_required !== false : AUTH_CATS.includes(cat)) s.add(c); }); }); return [...s]; }
   function candidates(st, pr, slot, pre) {
     const idx = buildIndex(st); const res = [];
     for (const p of st.pilots) {
@@ -2934,6 +2935,8 @@
       if (!slotRankOK(slot, p.rank, slot === 'F' && pr.crew.C && idx.pm[pr.crew.C] ? idx.pm[pr.crew.C].rank : null)) rs.push('级别不适合' + SLOT_NAME[slot] + '位');
       const other = ['C', 'F', 'T'].filter(s => s !== slot).map(s => pr.crew[s]);
       if (other.includes(p.id)) rs.push('已在本任务');
+      // 执飞位个人授权：需授权机场（拉萨等）未授权直接排除（此前只在机组凑齐后由 crewIssue 判，空任务时候选表看不出差别）
+      if (!rs.length && slot !== 'T') { const miss = needAuthAirports(pr, st).filter(c => !(p.auth || []).includes(c)); if (miss.length) rs.push('未授权 ' + miss.map(c => apName(c, st)).join('/')); }
       if (!rs.length) {
         const [, r2] = personCheck(p, pr, st, idx, { ignorePrefs: true, slot }); rs.push(...r2);
         const crew = ['C', 'F', 'T'].map(s => s === slot ? p : (pr.crew[s] && idx.pm[pr.crew[s]]));

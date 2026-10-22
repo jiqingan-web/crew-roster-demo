@@ -29,7 +29,8 @@
         <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
         <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 授权机场 ${nAuth} 个</span>
-        <button class="btn sm" id="roExp" style="margin-left:auto">导出人员 CSV</button>
+        <button class="btn sm primary" id="roAdd" style="margin-left:auto">＋ 新增人员</button>
+        <button class="btn sm" id="roExp">导出人员 CSV</button>
         <button class="btn sm primary" id="exMonthRoster">全月班表</button>
         <button class="btn sm primary" id="exPersonalZip">个人月历包</button>
         ${onePersonPicker()}
@@ -68,6 +69,7 @@
     $('#rs').onchange = e => { ui.rs = e.target.value; redraw(); };
     $('#ra').onchange = e => { ui.ra = e.target.value; redraw(); };
     $('#rh').onchange = e => { ui.rh = e.target.value; redraw(); };
+    $('#roAdd').onclick = () => openRosterEdit(null);
     document.querySelectorAll('.roEdit').forEach(b => b.onclick = e => { e.stopPropagation(); openRosterEdit(b.dataset.pid); });
     document.querySelectorAll('.roLeave').forEach(b => b.onclick = e => {
       e.stopPropagation(); const id = b.dataset.pid; const ix = C.buildIndex(st); const nx = (ix.sched[id] || []).find(pr => pr.start + pr.ndays - 1 >= 1) || (ix.sched[id] || [])[0];
@@ -86,14 +88,19 @@
     };
     bindExportButtons();
   }
+  function newPilotId() { let n = 80001; const ids = new Set(st.pilots.map(p => p.id)); while (ids.has('N' + n)) n++; return 'N' + n; }
   function openRosterEdit(pid) {
     C.migratePilots(st);
-    const p = st.pilots.find(x => x.id === pid); if (!p) return;
+    const isNew = !pid; const p = isNew ? { id: newPilotId(), name: '', rank: 'C1', squad: (st.pilots[0] && st.pilots[0].squad) || '', auth: [], prefs: [], leave: [], health: C.defaultHealth() } : st.pilots.find(x => x.id === pid); if (!p) return;
     const authList = C.authAirports(st);
     const h = Object.assign(C.defaultHealth(), p.health || {});
-    const squads = C.ALL_SQUADS || ['空客一中队','空客二中队','空客三中队','空客四中队','空客五中队','空客六中队','空客七中队','空客八中队','C909一中队','C909二中队','C909三中队'];
-    let box = `<div class="flex"><h3 style="margin:0">人员档案 · ${esc(p.name)} ${pill(p.rank)} <span class="mut">${p.id}</span></h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
+    // 中队选项 = 现有人员中队 ∪ 标准中队（保留当前值，避免保存时被改成列表第一项）
+    const squads = [...new Set([p.squad, ...st.pilots.map(x => x.squad), ...(C.ALL_SQUADS || [])].filter(Boolean))];
+    let box = `<div class="flex"><h3 style="margin:0">${isNew ? '新增人员' : '人员档案 · ' + esc(p.name) + ' ' + pill(p.rank)} <span class="mut">${p.id}</span></h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
       <div class="grid g2" style="margin-top:12px">
+        <div><label class="lab">员工号</label><input id="edId" value="${esc(p.id)}" ${isNew ? '' : 'disabled'}></div>
+        <div><label class="lab">姓名（化名）</label><input id="edName" value="${esc(p.name)}" placeholder="化名"></div>
+        <div><label class="lab">级别</label><select id="edRank">${C.RANKS.map(r => `<option ${r === p.rank ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
         <div><label class="lab">中队</label><select id="edSquad">${squads.map(x => `<option ${x === p.squad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
         <div><label class="lab">体检到期日</label><input type="date" id="edMed" value="${esc(h.medExamExpiry || '')}"></div>
       </div>
@@ -112,11 +119,17 @@
       <div style="margin-top:8px"><label class="lab">其他备注</label><input id="edNote" style="width:100%" value="${esc(h.note || '')}"></div>
       <h3 style="margin-top:14px">特殊机场授权 <small>点击切换</small></h3>
       <div class="authgrid" id="edAuth">${authList.map(c => `<button type="button" class="authtag ${(p.auth || []).includes(c) ? 'on' : ''} edA" data-c="${c}">${esc(C.apName(c, st))}<span class="mut"> ${c}</span></button>`).join('')}</div>
-      <div class="flex" style="margin-top:14px"><button class="btn primary" id="edSave">保存</button><button class="btn" id="edCancel">取消</button></div>`;
+      <div class="flex" style="margin-top:14px"><button class="btn primary" id="edSave">保存</button><button class="btn" id="edCancel">取消</button>${isNew ? '' : '<button class="btn" id="edDel" style="margin-left:auto;color:var(--red)">删除此人</button>'}<span id="edErr" class="red" style="margin-left:10px"></span></div>`;
     $('#modalBox').innerHTML = box; $('#modal').classList.remove('hidden');
     $('#mClose').onclick = $('#edCancel').onclick = closeModal;
     document.querySelectorAll('.edA').forEach(b => b.onclick = () => b.classList.toggle('on'));
+    if ($('#edDel')) $('#edDel').onclick = () => { if (!confirm(`删除 ${p.name}（${p.id}）？其已排任务座位将置空。`)) return;
+      st.pilots = st.pilots.filter(x => x.id !== p.id); $('#modal').classList.add('hidden'); pilotsChanged('delete'); toast('✔ 已删除 ' + esc(p.name)); };
     $('#edSave').onclick = () => {
+      const name = $('#edName').value.trim(), id = $('#edId').value.trim();
+      if (!name) { $('#edErr').textContent = '请填写姓名'; return; }
+      if (isNew && (!id || st.pilots.some(x => x.id === id))) { $('#edErr').textContent = '员工号为空或已存在'; return; }
+      if (isNew) p.id = id; p.name = name; p.rank = $('#edRank').value;
       p.squad = $('#edSquad').value;
       const mhRaw = $('#edMaxMH').value.trim();
       const mh = mhRaw === '' ? null : Math.max(1, Math.min(100, parseInt(mhRaw, 10) || 0));
@@ -129,7 +142,8 @@
       // keep non-auth-list entries if any, replace auth-list ones
       const keep = (p.auth || []).filter(c => !authList.includes(c));
       p.auth = keep.concat(authList.filter(c => on.has(c)));
-      closeModal(); refresh(); toast('✔ 已保存 ' + esc(p.name) + ' 的档案');
+      if (isNew) st.pilots.push(p);
+      $('#modal').classList.add('hidden'); pilotsChanged(isNew ? 'add' : 'edit'); toast('✔ 已' + (isNew ? '新增 ' : '保存 ') + esc(p.name) + (isNew ? '' : ' 的档案'));
     };
   }
 

@@ -42,7 +42,9 @@
         // 在 migratePilots 改写中队名之前检测旧示例（一大队等）
         const LEGACY = new Set(['一大队', '二大队', '三大队', '教学中队']);
         const isSampleish = s.sample === true;
-        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 14 || s.pilots.filter(p => !p.reserve).length !== 101) : (s.pilots.length < 500 || s.lite))
+        // 用户改过人员（新增/删除/编辑）后不再按人数判旧，只在 sampleSchema 真正升级时重置
+        const edited = !!s.pilotsEdited;
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 14 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
           || !s.sampleSchema || s.sampleSchema < 14;
         if (isSampleish && stale) {
@@ -61,6 +63,22 @@
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = LITE ? C.generateLiteSample() : C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
+  // ---------------- 人员变更：统一失效 + 全局重算（增/删/改 级别·授权·中队·健康） ----------------
+  // 所有视图都在渲染时从 st.pilots 现算；这里清掉各页按旧人员算好的候选/方案缓存，重建派生数据并持久化
+  function pilotsChanged(reason) {
+    C.migratePilots(st); st.pilotsEdited = true; st.pilotsVer = (st.pilotsVer || 0) + 1;
+    const ids = new Set(st.pilots.map(p => p.id));
+    st.pairings.forEach(pr => ['C', 'F', 'T'].forEach(s => { if (pr.crew[s] && !ids.has(pr.crew[s])) pr.crew[s] = null; }));
+    ['standby', 'training'].forEach(k => { if (st[k]) Object.keys(st[k]).forEach(id => { if (!ids.has(id)) delete st[k][id]; }); });
+    if (st.standby) st.pilots.forEach(p => { if (!st.standby[p.id]) st.standby[p.id] = []; });
+    try { dutyOpts = null; dutySel = null; } catch (e) {}
+    try { leaveOpts = null; leaveHoles = null; holePrev = null; leaveHover = null; if (leaveSel && leaveSel.pid && !ids.has(leaveSel.pid)) leaveSel = { pid: null, from: null, to: null }; } catch (e) {}
+    try { AB = null; } catch (e) {}
+    if (typeof ui === 'object') { const sq = new Set(st.pilots.map(p => p.squad)); ['gsq', 'rs'].forEach(k => { if (ui[k] && ui[k] !== '全部' && !sq.has(ui[k])) ui[k] = '全部'; }); }
+    try { if (typeof closeDrawer === 'function' && $('#drawer') && !$('#drawer').classList.contains('hidden')) closeDrawer(); } catch (e) {}
+    refresh();
+    try { window.dispatchEvent(new CustomEvent('roster:pilots', { detail: { reason, ver: st.pilotsVer } })); } catch (e) {}
+  }
   function refresh() { sum = C.summarize(st); renderKpis(); updateIssueBadge(); render(); save(); }
   function toast(m, ms) { const t = $('#toast'); t.innerHTML = m; t.classList.remove('hidden'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), ms || 2600); }
 
