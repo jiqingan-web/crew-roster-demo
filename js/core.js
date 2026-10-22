@@ -1335,12 +1335,14 @@
     // 2) 任一飞行日：若前 4 个日历日均为飞行值勤或主备份，则违规
     const flags = dutyDayFlags(p, st, idx, ex, extra);
     const flew = Array(DAYS + 2).fill(false);
-    allPr.forEach(o => daysTouched(o, st).forEach(d => { if (d >= 1 && d <= DAYS) flew[d] = true; }));
+    // CCAR-121.495(b) / EU.COM 3.6.10 2)：值勤+主备份达 4 个连续日历日后，第 5 个日历日不得「执行任何飞行任务」。
+    // 第 5 日只看执飞航段（置位(随)回基地不是飞行任务；前日航班落地/放行跨入当日也不算当日执行飞行任务）
+    allPr.forEach(o => o.legs.forEach(l => { if (l.dh) return; const a = Math.floor(l.dep / DAY) + 1, b = Math.floor((l.arr - 1) / DAY) + 1; for (let d = a; d <= b; d++) if (d >= 1 && d <= DAYS) flew[d] = true; }));
     for (let d = 1; d <= DAYS; d++) {
       if (!flew[d]) continue;
       let prior4 = true;
       for (let k = 1; k <= 4; k++) { const dd = d - k; if (dd < 1 || !flags[dd]) { prior4 = false; break; } }
-      if (prior4) rs.push('连续4值勤日后第5日不得飞(D' + d + ')');
+      if (prior4) rs.push('连续4值勤日后第5日不得执飞(121.495(b),D' + d + ')');
     }
     // 3) 任意连续 7 日历日飞行值勤期 ≤60h；4) 月飞行值勤期 ≤210h
     const fdp = pilotFdpByDay(p, st, idx, ex, extra);
@@ -2943,12 +2945,12 @@
   // 任务固有问题：用“空白档案、全授权、最高级别”的虚拟人单独执行此任务，仍不合规的原因即任务自身问题
   function pairingIntrinsic(pr, st) {
     const out = [];
-    for (let i = 1; i < pr.legs.length; i++) if (pr.legs[i].from !== pr.legs[i - 1].to) out.push({ code: 'broken', msg: `航段不衔接：${pr.legs[i - 1].to} → ${pr.legs[i].from}` });
+    for (let i = 1; i < pr.legs.length; i++) if (pr.legs[i].from !== pr.legs[i - 1].to) out.push({ code: 'broken', soft: true, msg: `航段不衔接：${pr.legs[i - 1].to} → ${pr.legs[i].from}` });
     const BASE = ['ZUUU', 'ZUTF']; if (pr.legs.length && (!BASE.includes(pr.legs[0].from) || !BASE.includes(pr.legs[pr.legs.length - 1].to))) out.push({ code: 'base', msg: '未自 蓉/府 出发或未回到 蓉/府', soft: true });
     const unk = [...new Set(pr.legs.flatMap(l => [l.from, l.to]).filter(c => !AIRPORTS[c] && !(st.airports && st.airports[c] && !/\(导入\)$/.test(st.airports[c][0]))))]; if (unk.length) out.push({ code: 'airport', msg: '未知机场：' + unk.join('、'), soft: true });
     const ds = [...new Set(pr.legs.filter(l => !l.dh).map(l => Math.floor(l.dep / DAY)))].sort((a, b) => a - b); let run = ds.length ? 1 : 0, mx = run;
     for (let i = 1; i < ds.length; i++) { run = ds[i] === ds[i - 1] + 1 ? run + 1 : 1; mx = Math.max(mx, run); }
-    if (mx >= 5) out.push({ code: 'consec', msg: `任务内连续 ${mx} 个值勤日（连续4值勤日后第5日不得飞），任何人都无法合规` });
+    if (mx >= 5) out.push({ code: 'consec', msg: `任务内连续 ${mx} 个执飞日（121.495(b) 4 个连续值勤日后第 5 日不得执飞），任何人都无法合规` });
     for (const slot of ['C', 'F']) {
       const ghost = { id: '__ghost' + slot, name: '虚拟', rank: slot === 'C' ? 'TC' : 'F5', squad: '', fleet: pr.ac === 'C909' ? 'C909' : 'A320', auth: [...new Set(pr.legs.flatMap(l => [l.from, l.to]))], prefs: [], leave: [], health: defaultHealth() };
       const gs = Object.assign({}, st, { pilots: [ghost], pairings: [Object.assign({}, pr, { crew: { C: null, F: null, T: null } })], standby: null, training: null, fills: [] });

@@ -53,4 +53,14 @@ chk('catalog senior disabled', /停用/.test(cat.rules.find(r => r.id === 'CR-12
 for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.autoFill(s); const v = C.validate(s);
   chk('lite ' + seed + ' no rule hard', !v.some(x => x.level === 'hard' && /搭配|机组|FO|高高原|特殊/.test(x.type)));
   const kmgAuth = s.pilots.filter(p => (p.authDemo || []).includes('ZPPP')).length; chk('lite ' + seed + ' KMG demo quals labelled', kmgAuth > 0, kmgAuth); }
+// 121.495(b) 第 5 日：执飞违规；置位(随)回基地不违规（EU.COM 3.6.10 2）「执行任何飞行任务」）
+{ const s = C.generateLiteSample(20261101); const capt = s.pilots.find(x => C.isCaptClass(x.rank)); const D = C.DAY;
+  const leg = (d, f, t, h, dh) => ({ d: 1, flt: 'EU' + d + f, from: f, to: t, dep: (d - 1) * D + h * 60, arr: (d - 1) * D + h * 60 + 120, ac: 'A320', dh });
+  s.pairings = []; s.standby = null; s.training = null;
+  for (let d = 1; d <= 4; d++) s.pairings.push({ id: 'Q' + d, start: d, ndays: 1, ac: 'A320', legs: [leg(d, 'ZUUU', 'ZGGG', 9), leg(d, 'ZGGG', 'ZUUU', 13)], crew: { C: capt.id, F: null, T: null } });
+  const mk5 = dh => ({ id: 'Q5', start: 5, ndays: 1, ac: 'A320', legs: [leg(5, 'ZUUU', 'ZBHH', 9, dh), leg(5, 'ZBHH', 'ZUUU', 13, dh)], crew: { C: null, F: null, T: null } });
+  const ix = C.buildIndex(s);
+  const op = C.ftlCheckPerson(capt, mk5(false), s, ix, {}), dh = C.ftlCheckPerson(capt, mk5(true), s, ix, {});
+  chk('121.495b day5 operating flagged', op.some(x => x.includes('第5日')), op.join('|'));
+  chk('121.495b day5 deadhead allowed', !dh.some(x => x.includes('第5日')), dh.join('|')); }
 console.log(fail ? 'RULES FAIL ' + fail : 'RULES ALL OK'); process.exitCode = fail ? 1 : 0;

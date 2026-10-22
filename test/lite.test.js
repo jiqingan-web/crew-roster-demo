@@ -35,7 +35,10 @@ for (const seed of [20261101, 7, 42]) {
   const b5 = Object.entries(bl).filter(([k]) => +k >= 5).reduce((a, [, v]) => a + v, 0) / bt;
   chk(seed + ' block mode 3', mode === 3, JSON.stringify(bl));
   chk(seed + ' rest3-4 >=40% & > rest2', g34 >= 0.4 && g34 > g2, (100 * g34).toFixed(0) + '% vs ' + (100 * g2).toFixed(0) + '%');
-  chk(seed + ' rest0-1 <=10%, no 5+ blocks', g01 <= 0.1 && b5 === 0, (100 * g01).toFixed(0) + '%');
+  // 121.495(b)：4 个连续值勤日后第 5 日不得执飞 → 只要求无「第5日执飞」；第 5 日置位(随)回基地允许
+  const ix5 = C.buildIndex(st); let op5 = 0; const D5 = []; st.pilots.forEach(p => { const fl = {}; (ix5.sched[p.id] || []).forEach(o => o.legs.forEach(l => { if (!l.dh) fl[Math.floor(l.dep / C.DAY) + 1] = 1; }));
+    for (let d = 5; d <= C.DAYS; d++) if (fl[d] && [1, 2, 3, 4].every(k => ds[p.id][d - k] === 'D' || ds[p.id][d - k] === 'S')) { op5++; D5.push(p.id + '@' + d); } });
+  chk(seed + ' rest0-1 <=10%, no day-5 operating', g01 <= 0.1 && op5 === 0, (100 * g01).toFixed(0) + '% 5+blocks ' + (100 * b5).toFixed(1) + '% op5 ' + op5 + ' ' + D5.slice(0, 3));
   const tr = st.pilots.map(p => ((st.training || {})[p.id] || []).length);
 
   // 值勤连续性：日内衔接；任务起讫成都；日间要么同站过夜要么两端均在成都

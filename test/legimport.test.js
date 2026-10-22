@@ -27,11 +27,12 @@ let fail = 0; const chk = (n, ok, info) => { console.log('LEGIMP ' + n, ok ? 'OK
     chk('backtest fill runs', sm.full >= 248, `满员 ${sm.full}/${sm.total} hard ${sm.hard} ${Date.now() - t0}ms`);
     // 固有问题 + 空洞诊断 + 强制指派
     const ir = LI.intrinsicReport(r, C, st); const ib = ir.filter(x => x.blocking.length), iF = ir.filter(x => x.ftl.length);
-    chk('intrinsic blocking/ftl', ib.length >= 5 && iF.length >= 20, `blocking ${ib.length} ftl ${iF.length}`);
+    chk('intrinsic blocking/ftl (no day5-deadhead false positives)', ib.length === 0 && iF.length >= 20, `blocking ${ib.length} ftl ${iF.length}`);
     const cls = {}; const holes = []; s.pairings.forEach(pr => ['C', 'F', 'T'].forEach(k => { if (!pr.crew[k]) { const d = C.holeDiagnosis(s, pr, k); cls[d.cls] = (cls[d.cls] || 0) + 1; holes.push([pr, k, d]); } }));
     chk('every hole classified', holes.every(([, , d]) => ['数据问题', '真实运力不足', '可填'].includes(d.cls) && d.why), JSON.stringify(cls));
-    const dataHoles = holes.filter(([, , d]) => d.cls === '数据问题'); chk('data holes have intrinsic reason', dataHoles.length > 0 && dataHoles.every(([, , d]) => d.intrinsic.length || /无人具备|无此座位/.test(d.why)));
-    const [hp, hk] = dataHoles[0]; const any = C.candidates(s, hp, hk).find(c => C.slotRankOK(hk, c.p.rank) && !c.ok);
+    chk('6 long outstation pairings filled', ['T336', 'T249', 'T008', 'T007', 'T248', 'T246'].every(id => { const q = s.pairings.find(x => x.id === id); return q && q.crew.C && q.crew.F; }));
+    const dataHoles = holes.filter(([, , d]) => d.cls === '数据问题'); chk('data holes have intrinsic reason', dataHoles.every(([, , d]) => d.intrinsic.length || /无人具备|无此座位/.test(d.why)));
+    const anyHole = holes[0] || (() => { const q = s.pairings[5]; q.crew.T = null; return [q, 'T']; })(); const [hp, hk] = anyHole; const any = C.candidates(s, hp, hk).find(c => C.slotRankOK(hk, c.p.rank) && !c.ok && c.reasons.length);
     C.forceAssign(s, hp.id, hk, any.p.id, 'test'); chk('force assign records flag', hp.crew[hk] === any.p.id && hp.forced[hk].reasons.length > 0 && C.validate(s).some(v => v.type === '强制指派' && v.pairing === hp.id));
     const s4 = C.generateLiteSample(20261101); const skip = new Set(ib.map(x => x.id)); LI.apply(s4, r, 'replace', C, { skip }); chk('apply skip', s4.pairings.length === 256 - skip.size, s4.pairings.length); }
   console.log(fail ? 'LEGIMP FAIL ' + fail : 'LEGIMP ALL OK'); process.exit(fail ? 1 : 0);
