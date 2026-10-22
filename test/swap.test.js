@@ -27,4 +27,15 @@ const s2 = C.generateLiteSample(7); C.autoFill(s2, { noSwap: true }); const hole
 const log = C.swapFillHoles(s2, { ms: 4000 }); const holes1 = s2.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length;
 const hard = C.validate(s2).filter(v => v.level === 'hard' && !['未满员', '日飞行时间超限', '执勤期超限'].includes(v.type));
 chk('swapFillHoles reduces/keeps holes, no seat hard', holes1 <= holes0 && hard.length === 0, `${holes0}→${holes1} moves ${log.length}`);
+// 同级转让（任务优先）：空闲且合规的同级人员，工时升序；请假不可用；意向休息日可用但软提示
+{ const s = C.generateLiteSample(20261101); C.autoFill(s); const pr = s.pairings.find(p => C.transferCandidates(s, p.id, p.crew.F).filter(c => c.ok).length >= 3); const from = pr.crew.F;
+  let tc = C.transferCandidates(s, pr.id, from); const ok = tc.filter(c => c.ok);
+  chk('transfer: same rank only', tc.every(c => c.p.rank === s.pilots.find(x => x.id === from).rank));
+  chk('transfer: ok sorted by hours asc', ok.every((c, i) => !i || ok[i - 1].hoursBefore <= c.hoursBefore + 1e-9), ok.length);
+  chk('transfer: hours/rest fields', ok.every(c => c.hoursAfter > c.hoursBefore && ('restBefore' in c) && ('restAfter' in c)));
+  const d = C.daysTouched(pr, s); const L = ok[0].p, Q = ok[1].p; L.leave = (L.leave || []).concat(d); Q.prefs = (Q.prefs || []).concat(d);
+  tc = C.transferCandidates(s, pr.id, from); const cl = tc.find(c => c.p.id === L.id), cq = tc.find(c => c.p.id === Q.id);
+  chk('transfer: approved leave excluded', cl && !cl.ok, cl && cl.reasons.join('|'));
+  chk('transfer: pref rest day usable + soft note', cq && cq.ok && cq.soft.some(x => x.includes('意向休息日')), cq && cq.soft.join('|'));
+  const pv = C.applyTransfer(s, pr.id, from, cq.p.id); chk('transfer applied', pv.ok && pr.crew[pv.moves[0].slot] === cq.p.id && C.validate(s).filter(v => v.level === 'hard' && v.pilot === cq.p.id).length === 0); }
 console.log(fail ? 'SWAP FAIL ' + fail : 'SWAP ALL OK'); process.exit(fail ? 1 : 0);

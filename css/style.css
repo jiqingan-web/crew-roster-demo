@@ -498,3 +498,4 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 .swrow{display:block;font-size:12px;line-height:1.9;cursor:pointer}
 .swpv{margin-top:10px;padding:8px 10px;border-radius:8px;border:1px solid var(--line);font-size:12px;line-height:1.7}
 .swpv.ok{border-color:var(--ok)}.swpv.bad{border-color:var(--red)}
+.tftab tr.on td{background:rgba(62,166,255,.10)}

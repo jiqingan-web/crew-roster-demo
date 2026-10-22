@@ -70,7 +70,7 @@
     $('#ra').onchange = e => { ui.ra = e.target.value; redraw(); };
     $('#rh').onchange = e => { ui.rh = e.target.value; redraw(); };
     $('#roAdd').onclick = () => openRosterEdit(null);
-    document.querySelectorAll('.roSwap').forEach(b => b.onclick = e => { e.stopPropagation(); openSwap(b.dataset.pid); });
+    document.querySelectorAll('.roSwap').forEach(b => b.onclick = e => { e.stopPropagation(); openTransfer(b.dataset.pid); });
     document.querySelectorAll('.roEdit').forEach(b => b.onclick = e => { e.stopPropagation(); openRosterEdit(b.dataset.pid); });
     document.querySelectorAll('.roLeave').forEach(b => b.onclick = e => {
       e.stopPropagation(); const id = b.dataset.pid; const ix = C.buildIndex(st); const nx = (ix.sched[id] || []).find(pr => pr.start + pr.ndays - 1 >= 1) || (ix.sched[id] || [])[0];
@@ -157,14 +157,14 @@
     st.pilots.forEach(p => { const k = C.isFO(p.rank) ? 'F' : 'C'; new Set([...(p.prefs || []), ...(p.leave || [])]).forEach(d => off[k][d]++); });
     const per = {}; sum.per.forEach(x => per[x.id] = x);
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
-    let h = `<div class="panel"><h3>同级别换班 <small>员工福利：同一级别人员之间单向转出或互换任务，系统自动校验休息/121.495(b)/工时/资质/搭配</small></h3><button class="btn primary" id="wfSwap">发起同级换班</button></div><div class="grid g2"><div class="panel"><h3>每日休息/请假人数 · 机长类 <small>不设每日上限（任意请假模式）</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.C[d], color: '#3ea6ff' })), { w: 620, h: 200 })}</div>
+    let h = `<div class="panel"><h3>同级别换班 <small>员工福利：同一级别人员之间单向转出或互换任务，系统自动校验休息/121.495(b)/工时/资质/搭配</small></h3><button class="btn primary" id="wfSwap">发起同级换班（转让任务）</button></div><div class="grid g2"><div class="panel"><h3>每日休息/请假人数 · 机长类 <small>不设每日上限（任意请假模式）</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.C[d], color: '#3ea6ff' })), { w: 620, h: 200 })}</div>
       <div class="panel"><h3>每日休息/请假人数 · 副驾驶 <small>上限 ${S.maxOffFO} 人/天</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.F[d], color: off.F[d] > S.maxOffFO ? '#ff5a6a' : '#2ecc8f' })), { w: 620, h: 200, lines: [{ v: S.maxOffFO, label: '上限', color: '#ff5a6a' }] })}</div></div>
       <div class="panel"><h3>意向休息日申报 <small>每人可申报 2 个意向休息日（排班前提交）；满足率 <b class="okc">${(sum.prefRate * 100).toFixed(1)}%</b>（${sum.prefOK}/${sum.prefT}）</small></h3>
       <div class="scroll"><table><tr><th>员工号</th><th>姓名</th><th>级别</th><th>意向休息日 1</th><th>意向休息日 2</th><th>请假日</th><th>满足情况</th></tr>
       ${st.pilots.map(p => { const opts = v => `<option value="">—</option>` + days.map(d => `<option ${v === d ? 'selected' : ''} value="${d}">${dateOf(d)} 周${WK[dow(d)]}</option>`).join('');
         const x = per[p.id]; return `<tr><td>${p.id}</td><td>${esc(p.name)}</td><td>${pill(p.rank)}</td>${[0, 1].map(i => `<td><select data-pref="${p.id}" data-i="${i}">${opts((p.prefs || [])[i])}</select></td>`).join('')}
         <td class="mut">${(p.leave || []).join(',') || '—'}</td><td>${x.prefTotal ? (x.prefOK === x.prefTotal ? '<span class="okc">✔ 全部满足</span>' : `<span class="warnc">${x.prefOK}/${x.prefTotal}</span>`) : '—'}</td></tr>`; }).join('')}</table></div></div>`;
-    $('#main').innerHTML = h; if ($('#wfSwap')) $('#wfSwap').onclick = () => { const top = st.pilots.slice().sort((a, b) => (sum.per.find(x => x.id === b.id) || {}).hours - (sum.per.find(x => x.id === a.id) || {}).hours)[0]; openSwap(top.id); };
+    $('#main').innerHTML = h; if ($('#wfSwap')) $('#wfSwap').onclick = () => { const top = st.pilots.slice().sort((a, b) => (sum.per.find(x => x.id === b.id) || {}).hours - (sum.per.find(x => x.id === a.id) || {}).hours)[0]; openTransfer(top.id); };
     document.querySelectorAll('[data-pref]').forEach(sel => sel.onchange = () => {
       const p = st.pilots.find(x => x.id === sel.dataset.pref); const i = +sel.dataset.i; const v = sel.value ? +sel.value : null;
       const prefs = (p.prefs || []).slice(); if (v) { const k = C.isFO(p.rank) ? 'F' : 'C'; const lim = k === 'F' ? S.maxOffFO : S.maxOffCapt;
@@ -210,6 +210,46 @@
       $('#swPrev').onclick = () => { plan = C.swapPreview(st, A.id, bId, [...selA], [...selB]); draw(); };
       $('#swApply').onclick = () => { if (!plan || !plan.ok) return; C.applySwap(st, plan, '同级换班'); $('#modal').classList.add('hidden');
         try { leaveOpts = null; leaveHoles = null; dutyOpts = null; } catch (e) {} refresh(); toast(`✔ 已换班：${esc(pmap[plan.a].name)} ⇄ ${esc(pmap[plan.b].name)}（${plan.moves.length} 个任务）`); };
+    };
+    draw();
+  }
+
+  // ---------------- 同级转让（主流程：任务优先） ----------------
+  // 选某人的一个任务 → 列出同级、该时段空闲且全部合规的人（工时升序）→ 预览 → 一键转给他；互换为次要选项
+  function openTransfer(fromId, prId) {
+    const pmap = pm(); let A = pmap[fromId] || st.pilots[0]; let P = prId || null; let pick = null, plan = null;
+    const idx = C.buildIndex(st);
+    const fh = x => x == null ? '—' : x.toFixed(1) + 'h';
+    const draw = () => {
+      const mine = st.pairings.filter(p => Object.values(p.crew).includes(A.id)).sort((x, y) => x.start - y.start);
+      if (P && !mine.some(p => p.id === P)) P = null;
+      const cands = P ? C.transferCandidates(st, P, A.id) : []; const okc = cands.filter(c => c.ok), bad = cands.filter(c => !c.ok);
+      const pr = P && st.pairings.find(x => x.id === P);
+      const rows = okc.map(c => `<tr class="${pick === c.p.id ? 'on' : ''}"><td><b>${esc(c.p.name)}</b> <span class="mut">${c.p.id}</span>${c.p.squad ? `<div class="mut">${esc(c.p.squad)}</div>` : ''}</td>
+          <td>${fh(c.hoursBefore)} → <b>${fh(c.hoursAfter)}</b></td><td>${fh(c.restBefore)}</td><td>${fh(c.restAfter)}</td>
+          <td>${c.soft.length ? c.soft.map(s => `<div class="warnc">· ${esc(s)}</div>`).join('') : '<span class="okc">—</span>'}</td>
+          <td><button class="btn sm ${pick === c.p.id ? 'primary' : ''} tfPick" data-to="${c.p.id}">${pick === c.p.id ? '已选' : '预览'}</button></td></tr>`).join('');
+      const pv = plan ? `<div class="swpv ${plan.ok ? 'ok' : 'bad'}"><b>${plan.ok ? '✔ 可转让' : '✖ 不可转让'}</b> ${esc(pr.id)}：${esc(A.name)}（${fh(plan.hours[A.id][0])}→${fh(plan.hours[A.id][1])}）→ ${esc(pmap[pick].name)}（${fh(plan.hours[pick][0])}→${fh(plan.hours[pick][1])}）
+          ${plan.issues.concat(plan.newHard.map(v => '新增硬违规：' + v.msg)).map(x => `<div class="red">· ${esc(x)}</div>`).join('')}${plan.newSoft.map(v => `<div class="warnc">· ${esc(v.msg)}</div>`).join('')}
+          ${plan.resolved.length ? `<div class="okc">· 同时消除：${plan.resolved.map(v => esc(v.type)).join('、')}</div>` : ''}</div>` : '';
+      $('#modalBox').innerHTML = `<div class="flex"><h3 style="margin:0">同级换班 · 转让任务 <small>员工福利：把任务转给同级别、该时段休息/空闲且全部合规的人</small></h3><button class="btn" style="margin-left:auto" id="tfClose">关闭</button></div>
+        <div class="grid g2" style="margin-top:10px">
+          <div><label class="lab">转出人</label><select id="tfA">${st.pilots.slice().sort((x, y) => x.rank.localeCompare(y.rank) || x.id.localeCompare(y.id)).map(p => `<option value="${p.id}" ${p.id === A.id ? 'selected' : ''}>${esc(p.name)} · ${p.rank} · ${idx.hours[p.id].toFixed(1)}h</option>`).join('')}</select></div>
+          <div><label class="lab">要转出的任务</label><select id="tfP"><option value="">— 选择任务 —</option>${mine.map(p => { const s = ['C', 'F', 'T'].find(k => p.crew[k] === A.id); return `<option value="${p.id}" ${p.id === P ? 'selected' : ''}>${p.id} · ${dateOf(p.start)}${p.ndays > 1 ? '–' + dateOf(p.start + p.ndays - 1) : ''} · ${C.SLOT_NAME[s] || s} · ${C.pairingHours(p).toFixed(1)}h</option>`; }).join('')}</select></div>
+        </div>
+        ${P ? `<div class="note" style="margin-top:8px">同级 ${A.rank} 共 ${cands.length} 人：<b class="okc">${okc.length} 人空闲且合规</b>（按工时升序）· ${bad.length} 人不可（请假/疗养/备份/培训/时间冲突/休息/121.495(b)/工时上限/资质/搭配）。申请的意向休息日属普通休息，可用但会提示；已批准请假/疗养不可用。</div>
+          <div class="scroll" style="max-height:300px;margin-top:6px"><table class="tftab"><tr><th>同级人员</th><th>本月工时 前→后</th><th>任务前休息</th><th>任务后休息</th><th>软提示</th><th></th></tr>${rows || '<tr><td colspan="6" class="mut">无空闲合规的同级人员，可尝试「改为互换」</td></tr>'}</table></div>
+          <details class="slot-bad"><summary>${bad.length} 名同级不可 — 查看原因</summary><div class="inel"><table>${bad.slice(0, 40).map(c => `<tr><td>${esc(c.p.name)}</td><td>${fh(c.hoursBefore)}</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>` : '<div class="mut" style="margin-top:8px">先选择要转出的任务</div>'}
+        ${pv}
+        <div class="flex" style="margin-top:12px;gap:8px"><button class="btn primary" id="tfApply" ${plan && plan.ok ? '' : 'disabled'}>确认转让</button><button class="btn" id="tfMutual">改为互换（两人交换任务）</button></div>`;
+      $('#modal').classList.remove('hidden');
+      $('#tfClose').onclick = () => $('#modal').classList.add('hidden');
+      $('#tfA').onchange = e => { A = pmap[e.target.value]; P = null; pick = null; plan = null; draw(); };
+      $('#tfP').onchange = e => { P = e.target.value || null; pick = null; plan = null; draw(); };
+      document.querySelectorAll('.tfPick').forEach(b => b.onclick = () => { pick = b.dataset.to; plan = C.swapPreview(st, A.id, pick, [P], []); draw(); });
+      $('#tfMutual').onclick = () => openSwap(A.id, P);
+      $('#tfApply').onclick = () => { if (!plan || !plan.ok) return; C.applySwap(st, plan, '同级转让'); $('#modal').classList.add('hidden');
+        try { leaveOpts = null; leaveHoles = null; dutyOpts = null; } catch (e) {} refresh(); toast(`✔ 已转让 ${esc(P)}：${esc(A.name)} → ${esc(pmap[pick].name)}`); };
     };
     draw();
   }

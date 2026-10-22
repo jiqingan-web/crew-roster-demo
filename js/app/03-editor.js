@@ -83,7 +83,7 @@
         };
         bindSearchInput(inp, apply);
       });
-      document.querySelectorAll('#slots .swSlot').forEach(b => b.onclick = e => { e.preventDefault(); closeDrawer(); openSwap(b.dataset.sw, pr.id); });
+      document.querySelectorAll('#slots .swSlot').forEach(b => b.onclick = e => { e.preventDefault(); closeDrawer(); openTransfer(b.dataset.sw, pr.id); });
       document.querySelectorAll('#slots .forceBtn').forEach(b => b.onclick = e => { e.preventDefault(); const [slot, id] = b.dataset.force.split(':'); const c = (C.candidates(st, pr, slot).find(x => x.p.id === id) || { reasons: [] });
         if (!confirm(`强制指派 ${nameOf(id)} 到 ${C.SLOT_NAME[slot] || slot}位？\n将越过：${c.reasons.join('；') || '—'}\n确定后该指派会在校验中标记为「强制指派」，相关违规仍会报出。`)) return;
         draft[slot] = id; forcedDraft[slot] = true; drawSlots(); });

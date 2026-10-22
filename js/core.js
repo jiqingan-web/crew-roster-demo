@@ -1525,6 +1525,23 @@
     plan.moves.forEach(m => { const pr = st.pairings.find(x => x.id === m.pairing); if (pr) { pr.crew[m.slot] = m.to; if (pr.forced) delete pr.forced[m.slot]; } });
     (st.swaps = st.swaps || []).push({ at: Date.now(), a: plan.a, b: plan.b, moves: plan.moves, note: note || '同级换班' }); return true; }
   // 换班作为排班移动：① 空座：候选 x 只因另一任务 Q 冲突 → Q 换给同级 y，x 补空座；② 高工时/第5日置位 → 单向转给同级低工时者
+  // 同级转让：把 fromId 在任务 prId 上的座位直接给同级空闲人员（休息/未排班），按工时升序
+  // 返回每人：ok(全部硬规则通过)、reasons、soft(意向休息日/第5日置位)、工时前后、任务前后休息
+  function transferCandidates(st, prId, fromId, opt) {
+    opt = opt || {}; const pr = st.pairings.find(x => x.id === prId); if (!pr) return []; const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === fromId); if (!slot) return [];
+    const from = st.pilots.find(x => x.id === fromId); const idx = buildIndex(st); const h = pairingHours(pr); const a = report(pr, st), b = release(pr, st);
+    const out = candidates(st, pr, slot).filter(c => c.p.id !== fromId && c.p.rank === from.rank).map(c => {
+      const sc = (idx.sched[c.p.id] || []).filter(o => o !== pr); const prev = sc.filter(o => release(o, st) <= a).map(o => release(o, st)), next = sc.filter(o => report(o, st) >= b).map(o => report(o, st));
+      const soft = []; if (c.warn) soft.push(c.warn.replace('意向休息日', '占用申请的意向休息日 ') + '（普通休息，可用）');
+      if (c.crewWarn) soft.push(c.crewWarn);
+      if (c.ok) { const keep = pr.crew[slot]; pr.crew[slot] = c.p.id; const i2 = buildIndex(st); if (day5Deadheads(c.p, st, i2).some(x => x.pr === pr)) soft.push('第5日置位（合规，尽量避免）'); pr.crew[slot] = keep; }
+      return { p: c.p, ok: c.ok && (slot === 'T' || !c.crewWarn), reasons: c.reasons, soft, slot,
+        hoursBefore: idx.hours[c.p.id], hoursAfter: idx.hours[c.p.id] + h,
+        restBefore: prev.length ? (a - Math.max(...prev)) / 60 : null, restAfter: next.length ? (Math.min(...next) - b) / 60 : null };
+    });
+    return out.sort((x, y) => (y.ok - x.ok) || (x.soft.length - y.soft.length) * (opt.softFirst ? 1 : 0) || x.hoursBefore - y.hoursBefore);
+  }
+  function applyTransfer(st, prId, fromId, toId, note) { const pv = swapPreview(st, fromId, toId, [prId], []); if (!pv.ok) return pv; applySwap(st, pv, note || '同级转让'); return pv; }
   function swapFillHoles(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 4000; const log = [];
     for (const P of st.pairings) { for (const s of ['C', 'F', 'T']) { if (P.crew[s] || Date.now() - t0 > budget) continue;
       const cs = candidates(st, P, s).filter(c => !c.ok && slotRankOK(s, c.p.rank) && c.reasons.length <= 3).sort((a, b) => a.reasons.length - b.reasons.length).slice(0, 30);
@@ -1532,7 +1549,7 @@
       for (const cx of cs) { if (done || Date.now() - t0 > budget) break; const x = cx.p; const idx = buildIndex(st);
         const near = (idx.sched[x.id] || []).filter(Q => Q !== P && cx.reasons.some(r => r.includes(Q.id)) || (Q.start <= P.start + P.ndays + 1 && Q.start + Q.ndays >= P.start - 1));
         for (const Q of near.slice(0, 3)) { const qs = ['C', 'F', 'T'].find(k => Q.crew[k] === x.id); if (!qs) continue;
-          const ys = candidates(st, Q, qs).filter(c => c.ok && !c.crewWarn && c.p.rank === x.rank && c.p.id !== x.id).slice(0, 6);
+          const ys = transferCandidates(st, Q.id, x.id).filter(c => c.ok && !c.soft.length).slice(0, 6);
           for (const cy of ys) { Q.crew[qs] = cy.p.id; const cx2 = candidates(st, P, s).find(c => c.p.id === x.id);
             if (cx2 && cx2.ok && (s === 'T' || !cx2.crewWarn)) { P.crew[s] = x.id; log.push({ kind: 'swapFill', pairing: P.id, slot: s, pilot: x.id, via: Q.id, to: cy.p.id }); done = true; break; }
             Q.crew[qs] = x.id; }
@@ -1546,7 +1563,7 @@
       const d5 = []; st.pilots.forEach(p => day5Deadheads(p, st, idx).forEach(x => d5.push({ p, pr: x.pr, why: 'day5' })));
       const hi = st.pilots.filter(p => idx.hours[p.id] > cap).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]).slice(0, 3).flatMap(p => idx.sched[p.id].slice().sort((a, b) => pairingHours(a) - pairingHours(b)).map(pr => ({ p, pr, why: 'hours' })));
       for (const { p, pr, why } of d5.concat(hi)) { const s = ['C', 'F', 'T'].find(k => pr.crew[k] === p.id); if (!s || (pr.forced && pr.forced[s])) continue;
-        const ys = candidates(st, pr, s).filter(c => c.ok && !c.crewWarn && c.p.rank === p.rank && c.p.id !== p.id && (why === 'day5' || idx.hours[c.p.id] + pairingHours(pr) < idx.hours[p.id] - 1e-6)).sort((a, b) => a.hours - b.hours).slice(0, 5);
+        const ys = transferCandidates(st, pr.id, p.id).filter(c => c.ok && !c.soft.length && (why === 'day5' || c.hoursAfter < idx.hours[p.id] - 1e-6)).slice(0, 5).map(c => ({ p: c.p }));
         for (const cy of ys) { pr.crew[s] = cy.p.id; const i2 = buildIndex(st); const d5after = day5Deadheads(cy.p, st, i2).length, d5before = day5Deadheads(cy.p, st, idx).length;
           if (d5after > d5before) { pr.crew[s] = p.id; continue; } log.push({ kind: 'swap-' + why, pairing: pr.id, slot: s, from: p.id, to: cy.p.id }); moved = true; break; }
         if (moved) break; }
@@ -3355,7 +3372,7 @@
       const noWarn = cands.filter(c => !c.warn); if (noWarn.length) cands = noWarn;
       // 首选：任务首日在备份的人员
       const d0 = daysTouched(pr, st)[0];
-      cands.sort((a, b) => (b.standby.includes(d0) - a.standby.includes(d0)) || (b.standby.length > 0) - (a.standby.length > 0) || a.hours - b.hours);
+      cands.sort((a, b) => (b.standby.includes(d0) - a.standby.includes(d0)) || (b.standby.length > 0) - (a.standby.length > 0) || ((b.p.rank === p.rank) - (a.p.rank === p.rank)) || a.hours - b.hours); // 同级空闲优先（同级转让）
       if (cands.length) { const c0 = cands[0], q = c0.p; pr.crew[slot] = q.id;
         if (c0.standby.length && st.standby) st.standby[q.id] = st.standby[q.id].filter(d => !c0.standby.includes(d));
         changes.push({ pairing: pr.id, slot, from: p, to: q, fromStandby: c0.standby.length > 0, note: c0.standby.length ? `调用备份（${c0.standby.join(',')}日备份）` : c0.warn ? '（占用其意向休息日）' : '' }); }
@@ -4041,7 +4058,7 @@
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
-    swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
+    transferCandidates, applyTransfer, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
