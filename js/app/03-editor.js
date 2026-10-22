@@ -42,10 +42,10 @@
         const okAll = cs.filter(c => c.ok || c.p.id === cur || c.p.id === orig[slot]);
         slotCache[slot] = okAll;
         const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, slotQ[slot]));
-        const bad = cs.filter(c => !c.ok && c.p.id !== cur && c.p.id !== orig[slot] && C.slotRankOK(slot, c.p.rank));
+        const bad = cs.filter(c => !c.ok && c.p.id !== cur && c.p.id !== orig[slot] && C.slotRankOK(slot, c.p.rank, draft.C && pm()[draft.C] ? pm()[draft.C].rank : null));
         const changed = (draft[slot] || null) !== (orig[slot] || null);
         s += `<div class="slotbox ${changed ? 'pending' : ''}">
-            <div class="slot-h"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位')}</b>
+            <div class="slot-h"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位' + (slot === 'F' && draft.F && pm()[draft.F] && C.INSTR.includes(pm()[draft.F].rank) ? '（教员带飞）' : ''))}</b>
               <input class="candq" data-q="${slot}" placeholder="搜索姓名/工号/级别/中队/拼音" value="${esc(slotQ[slot] || '')}">
               <span class="mut candn" data-n="${slot}">${ok.length}/${okAll.length}</span>
               ${changed ? '<span class="pendtag">待确定</span>' : ''}

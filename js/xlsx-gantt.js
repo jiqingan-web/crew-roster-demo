@@ -18,7 +18,7 @@
     const pilots = opt.pilotIds ? opt.pilotIds.map(id => pm[id]).filter(Boolean) : st.pilots;
     const wb = new ExcelJS.Workbook(); wb.creator = '机组智能排班助手'; wb.created = new Date();
     const nm = id => id && pm[id] ? pm[id].name : '空缺';
-    const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.SLOT_NAME[s]} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
+    const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, pm)} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
     const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} FDP ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
     const noteOf = pr => `${pr.id} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
     const rich = (head, codes, tail) => { const r = [{ text: head + ' ', font: { color: { argb: 'FFFFFFFF' }, bold: true, size: 9 } }];

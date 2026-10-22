@@ -35,7 +35,13 @@ const ix = C.buildIndex(lite), ds = C.dayStatus(lite, ix);
 for (const p of lp) { const off = C.offAwayDays(p, lite); if (off.length < 3) { bad++; console.log('offAway days', off); }
   for (const id of Object.values(p.crew).filter(Boolean)) for (const d of off) if (ds[id][d] !== 'O') { bad++; console.log('offAway day not O', p.id, id, d, ds[id][d]); }
   if (C.daysTouched(p, lite).some(d => off.includes(d))) { bad++; console.log('off day counted as duty'); } }
+// 带飞：长块 TL 坐副驾驶位、新机长执飞，且不判岗位级别不符
+const pmL = {}; lite.pilots.forEach(p => pmL[p.id] = p);
+for (const p of lp) { const cr = pmL[p.crew.C], fr = pmL[p.crew.F];
+  if (!cr || !fr || !C.NEW_CAPT.includes(cr.rank) || !C.INSTR.includes(fr.rank)) { bad++; console.log('long block not new-capt + TL in FO seat', cr && cr.rank, fr && fr.rank); } }
+const rv = C.validate(lite).filter(v => v.type === '岗位级别不符'); if (rv.length) { bad++; console.log('slot rank violations', rv.length); }
+if (!C.slotRankOK('F', 'TL', '机长A') || C.slotRankOK('F', 'TL', 'J3')) { bad++; console.log('slotRankOK TL-in-FO rule wrong'); }
 console.log('lite deadhead legs', lite.pairings.reduce((s, p) => s + p.legs.filter(l => l.dh).length, 0), 'long blocks', lp.length);
 const full = C.generateSample(20261101); check('full', full);
-if (lite.sampleSchema < 12 || full.sampleSchema < 12) { bad++; console.log('schema not bumped'); }
+if (lite.sampleSchema < 13 || full.sampleSchema < 13) { bad++; console.log('schema not bumped'); }
 console.log(bad ? 'FAIL ' + bad : 'chain OK'); process.exit(bad ? 1 : 0);
