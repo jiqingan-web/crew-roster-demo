@@ -1,13 +1,14 @@
 /* 机组排班助手 - 核心模块（数据生成 / 规则 / 求解器 / 校验 / 指标）
  * 浏览器中挂载到 window.RosterCore，在 Node 中可 require()。 */
 (function (root, factory) {
-  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'), require('./lite-roster.js'), require('./rules-config.js'));
-  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null, root.RosterLiteRoster || null, root.RosterRulesConfig || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
-})(typeof self !== 'undefined' ? self : this, function (SampleData, LiteRoster, RulesConfig) {
+  if (typeof module === 'object' && module.exports) module.exports = factory(require('./sample-data.js'), require('./lite-roster.js'), require('./rules-config.js'), require('./pinyin-initials.js'));
+  else { root.RosterCoreFactory = factory; root.RosterCore = factory(root.RosterSampleData || null, root.RosterLiteRoster || null, root.RosterRulesConfig || null, root.RosterPinyin || null); } // 工厂供 Blob Worker 复用（file:// 亦可）
+})(typeof self !== 'undefined' ? self : this, function (SampleData, LiteRoster, RulesConfig, Pinyin) {
   'use strict';
   const YEAR = 2026, MONTH = 11, DAYS = 30, DAY = 1440;
   const SD = SampleData || {};
   const LR = (LiteRoster && LiteRoster.LITE_ROSTER) || (LiteRoster && LiteRoster.default && LiteRoster.default.LITE_ROSTER) || null;
+  const PY = Pinyin || {};
   const SAMPLE_WEEK_PATHS = SD.SAMPLE_WEEK_PATHS || [];
   const SAMPLE_META = SD.SAMPLE_META || {};
   const SQUADS_AIRBUS = ['空客一中队', '空客二中队', '空客三中队', '空客四中队', '空客五中队', '空客六中队', '空客七中队', '空客八中队'];
@@ -3354,7 +3355,8 @@
   function pilotMatches(p, q) {
     q = String(q || '').trim().toLowerCase(); if (!q) return true;
     const hay = [p.name, p.id, p.rank, p.squad, rankGroup(p.rank), p.fleet].filter(Boolean).join(' ').toLowerCase();
-    return q.split(/\s+/).every(t => hay.includes(t));
+    const py = (PY.pinyinInitialsOf ? PY.pinyinInitialsOf(p.name) : '');
+    return q.split(/\s+/).every(t => hay.includes(t) || (py && py.includes(t.replace(/[^a-z0-9]/g, ''))));
   }
   function filterByPilot(list, q, get) { get = get || (x => x.p || x); return q ? list.filter(x => pilotMatches(get(x), q)) : list; }
 
@@ -3434,7 +3436,7 @@
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
-    isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial,
+    isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, report, release, daysTouched, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });

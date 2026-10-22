@@ -8,7 +8,30 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => new Date(C.YEAR, C.MONTH - 1, d).getDay();
   let st, sum, tab = 'overview', lastSolveMs = null, leaveResult = null;
-  const ui = { gq: '', gg: '全部', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '全部', ra: '全部', rh: '全部' };
+  const ui = { gq: '', gg: '全部', gsq: '全部', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '全部', ra: '全部', rh: '全部', lvq: '' };
+  // IME 友好搜索：composition 期间不重渲染；支持拼音首字母
+  function bindSearchInput(el, onCommit, opt) {
+    if (!el) return;
+    opt = opt || {};
+    let composing = false;
+    const commit = () => { onCommit(el.value); };
+    el.addEventListener('compositionstart', () => { composing = true; });
+    el.addEventListener('compositionend', () => { composing = false; commit(); });
+    el.addEventListener('input', () => { if (!composing) commit(); });
+    if (opt.extra) opt.extra(el);
+  }
+  function pilotSearchMatch(p, q) {
+    if (!q) return true;
+    if (C.pilotMatches(p, q)) return true;
+    if (C.nameMatchesQuery && C.nameMatchesQuery(p.name, q)) return true;
+    return false;
+  }
+  function squadOptions(selected) {
+    const set = new Set(st.pilots.map(p => p.squad).filter(Boolean));
+    const list = ['全部', ...[...set].sort((a, b) => a.localeCompare(b, 'zh'))];
+    return list.map(s => `<option value="${esc(s)}" ${s === (selected || '全部') ? 'selected' : ''}>${esc(s)}</option>`).join('');
+  }
+
   const CW_MIN = 6, CW_MAX = 240, BASE_CW = 150;
   const ZSTEPS = [4, 5, 6, 8, 10, 12, 15, 20, 25, 30, 40, 50, 67, 80, 90, 100, 110, 125, 150, 160];
 

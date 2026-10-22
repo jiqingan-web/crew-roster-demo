@@ -13,4 +13,9 @@ chk('nameBlock hook rejects', C.generateSample(5, { nameBlock: blk }).pilots.eve
 const root = path.join(__dirname, '..'); const files = cp.execSync('git ls-files', { cwd: root }).toString().trim().split('\n');
 let leak = 0; for (const f of files) { let t; try { t = fs.readFileSync(path.join(root, f), 'utf8'); } catch (e) { continue; } if (R.some(r => t.includes(r))) leak++; }
 chk('tracked files contain 0 real names', leak === 0, leak + ' files');
+const C2 = require('../js/core.js');
+const st2 = C2.generateLiteSample(20261101);
+const wx = st2.pilots.find(p => p.name === '魏旭');
+chk('pinyin wx matches 魏旭', !!(wx && C2.pilotMatches(wx, 'wx')));
+chk('pinyin exact name', !!(wx && C2.pilotMatches(wx, '魏旭')));
 console.log(fail ? 'NAMES FAIL ' + fail : 'NAMES ALL OK'); process.exitCode = fail ? 1 : 0;

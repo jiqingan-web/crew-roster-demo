@@ -391,7 +391,7 @@
         const empty = `<div class="hole-seat empty"><span class="clight red"></span><b>${hh.slotName}位 · 空缺</b><div class="mut">${esc(p.name)} 请假腾出</div></div>`;
         const left = hh.crewLeft.map(c => c.id ? `<div class="hole-seat"><b>${C.SLOT_NAME[c.slot]} ${esc(c.name)}</b> ${pill(c.rank)}</div>` : `<div class="hole-seat mut">${C.SLOT_NAME[c.slot]} 空</div>`).join('');
         const chips = (hh.legChips || []).map(l => `<span class="legchip">D${l.d} ${esc(l.flt)} <span class="${l.spFrom ? 'sp' : ''}">${esc(l.fromName)}</span>-<span class="${l.spTo ? 'sp' : ''}">${esc(l.toName)}</span></span>`).join('');
-        const cands = hh.candidates.map((c, ci) => `<button type="button" data-s="${esc([c.name, c.id, c.rank, (st.pilots.find(x => x.id === c.id) || {}).squad].join(' '))}" class="cand ${c.light === 'red' ? 'redish' : ''} ${holePrev && holePrev.hi === hi && holePrev.ci === ci ? 'on' : ''}" data-hi="${hi}" data-ci="${ci}">
+        const cands = hh.candidates.map((c, ci) => `<button type="button" data-s="${esc([c.name, c.id, c.rank, (st.pilots.find(x => x.id === c.id) || {}).squad].join(' '))}" data-py="${esc((C.pinyinInitialsOf && C.pinyinInitialsOf(c.name)) || '')}" class="cand ${c.light === 'red' ? 'redish' : ''} ${holePrev && holePrev.hi === hi && holePrev.ci === ci ? 'on' : ''}" data-hi="${hi}" data-ci="${ci}">
           <span class="clight ${c.light}"></span><span class="av">${esc((c.name || '??').slice(-2))}</span>
           <span class="cn"><b>${esc(c.name)}</b> ${pill(c.rank)}<br><span class="mut">${c.hoursBefore}h${c.fromStandby ? ' · ★备份' : ''}${c.warn ? ' · ⚠休息' : ''}${c.light === 'red' && c.reasons[0] ? ' · ' + esc(c.reasons[0].slice(0, 18)) : ''}</span></span></button>`).join('') || '<span class="mut">无候选</span>';
         const psteps = (hh.planSteps || []).map(x => x.type === 'chain' ? `链式：${x.to ? '←新机长位' : ''} ${esc(x.type)}` : `${esc(x.type)}${x.to ? '→…' : ''}`).join('；');
@@ -463,12 +463,16 @@
         sel.innerHTML = list.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${ix.hours[c.id].toFixed(1)}h</option>`).join('');
         n.textContent = '匹配 ' + list.length + '/' + caps.length; };
       if (q) { n.textContent = '匹配 ' + sel.options.length + '/' + caps.length;
-        q.oninput = () => { ui.lvq = q.value; draw(); };
+        bindSearchInput(q, v => { ui.lvq = v; draw(); });
         q.onkeydown = e => { if (e.key === 'Enter') { const m = caps.find(c => c.id !== leaveSel.pid && C.pilotMatches(c, ui.lvq)); if (m) { leaveSel.pid = m.id; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); } } }; } }
-    document.querySelectorAll('.holeq').forEach(inp => inp.oninput = () => {
+    document.querySelectorAll('.holeq').forEach(inp => bindSearchInput(inp, () => {
       const row = inp.closest('.candrow'); const t = inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean); let n = 0, all = 0;
-      row.querySelectorAll('.cand').forEach(b => { all++; const ok = t.every(x => (b.dataset.s || '').toLowerCase().includes(x)); b.style.display = ok ? '' : 'none'; if (ok) n++; });
-      row.querySelector('.holen').textContent = n + '/' + all; });
+      row.querySelectorAll('.cand').forEach(b => { all++;
+        const hay = (b.dataset.s || '').toLowerCase();
+        const py = (C.pinyinInitialsOf && b.dataset.py) ? b.dataset.py : '';
+        const ok = !t.length || t.every(x => hay.includes(x) || (py && py.includes(x)));
+        b.style.display = ok ? '' : 'none'; if (ok) n++; });
+      row.querySelector('.holen').textContent = n + '/' + all; }));
     $('#lvF').onchange = e => { leaveSel.from = +e.target.value; if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; leaveOpts = null; leaveHoles = null; rLeave(); };
     $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; leaveHoles = null; rLeave(); };
     document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });

@@ -17,13 +17,13 @@
     if (ui.rh === '限制夜间') ps = ps.filter(p => p.health && p.health.noNight);
     if (ui.rh === '月≤60h') ps = ps.filter(p => p.health && p.health.maxMonthH === 60);
     if (ui.rh === '非唯一机长') ps = ps.filter(p => p.health && p.health.noSoleCaptain);
-    if (ui.rq) { const q = ui.rq.trim(); ps = ps.filter(p => (p.name + p.id + p.rank + (p.squad || '') + (p.health && p.health.note || '')).includes(q)); }
+    if (ui.rq) ps = ps.filter(p => pilotSearchMatch(p, ui.rq) || ((p.health && p.health.note || '').includes(ui.rq.trim())));
     const squads = ['全部', ...new Set(st.pilots.map(p => p.squad).filter(Boolean))];
     const nAuth = authList.length;
     const nRest = st.pilots.filter(p => C.hasHealthRestriction(p.health)).length;
     let h = `<div class="panel"><h3>人员总览 · 特殊机场授权与健康限制 <small>授权机场与规章校验一致（RE12 需授权类）；健康限制参与候选人过滤与校验（不适飞/体检过期/个人月上限/非唯一机长为硬性，高原/夜航限制为软性提示）</small></h3>
       <div class="flex" style="flex-wrap:wrap;gap:8px">
-        <input id="rq" placeholder="搜索姓名/员工号/备注" value="${esc(ui.rq)}" style="width:180px">
+        <input id="rq" placeholder="搜索姓名/工号/拼音首字母/备注" value="${esc(ui.rq)}" style="width:200px">
         <select id="rg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.rg ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="rs">${squads.map(g => `<option ${g === ui.rs ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
@@ -63,7 +63,7 @@
     h += `<div class="panel"><h3>级别运行机场（参考）</h3><div class="note">${levelList.map(c => `${esc(C.apName(c, st))}（${esc(C.CAT_DESC[C.apCat(c, st)] || C.apCat(c, st))}）`).join('　·　') || '—'}</div></div>`;
     $('#main').innerHTML = h;
     const redraw = () => rRoster();
-    $('#rq').oninput = e => { ui.rq = e.target.value; const pos = e.target.selectionStart; redraw(); const el = $('#rq'); if (el) { el.focus(); el.setSelectionRange(pos, pos); } };
+    bindSearchInput($('#rq'), v => { ui.rq = v; const pos = $('#rq') && $('#rq').selectionStart; redraw(); const el = $('#rq'); if (el) { el.focus(); try { el.setSelectionRange(pos, pos); } catch (e) {} } });
     $('#rg').onchange = e => { ui.rg = e.target.value; redraw(); };
     $('#rs').onchange = e => { ui.rs = e.target.value; redraw(); };
     $('#ra').onchange = e => { ui.ra = e.target.value; redraw(); };

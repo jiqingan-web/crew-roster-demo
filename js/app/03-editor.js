@@ -57,14 +57,18 @@
         draft[sel.dataset.slot] = sel.value || null;
         drawSlots();
       });
-      document.querySelectorAll('#slots .candq').forEach(inp => inp.oninput = () => {
-        const slot = inp.dataset.q; slotQ[slot] = inp.value; const cur = draft[slot];
-        const okAll = slotCache[slot] || []; const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, inp.value));
-        const changed = (draft[slot] || null) !== (orig[slot] || null);
-        const sel = document.querySelector(`#slots select[data-slot="${slot}"]`);
-        sel.innerHTML = '<option value="">— 空缺 —</option>' + optHtml(ok, slot, cur, changed);
-        if (!cur && ok.length && inp.value) sel.selectedIndex = 0;
-        document.querySelector(`#slots .candn[data-n="${slot}"]`).textContent = ok.length + '/' + okAll.length;
+      document.querySelectorAll('#slots .candq').forEach(inp => {
+        const apply = () => {
+          const slot = inp.dataset.q; slotQ[slot] = inp.value; const cur = draft[slot];
+          const okAll = slotCache[slot] || []; const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, inp.value));
+          const changed = (draft[slot] || null) !== (orig[slot] || null);
+          const sel = document.querySelector(`#slots select[data-slot="${slot}"]`);
+          const keep = sel.value;
+          sel.innerHTML = '<option value="">— 空缺 —</option>' + optHtml(ok, slot, cur, changed);
+          if (keep) sel.value = keep;
+          document.querySelector(`#slots .candn[data-n="${slot}"]`).textContent = ok.length + '/' + okAll.length;
+        };
+        bindSearchInput(inp, apply);
       });
     };
     $('#mConfirm').onclick = () => {

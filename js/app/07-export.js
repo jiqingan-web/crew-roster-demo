@@ -78,7 +78,7 @@
   }
   function ganttFilteredIds() { const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
     let ps = st.pilots.slice().sort((a, b) => order[C.rankGroup(a.rank)] - order[C.rankGroup(b.rank)] || C.RANK_VAL[b.rank] - C.RANK_VAL[a.rank] || a.id.localeCompare(b.id));
-    if (ui.gg && ui.gg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.gg); if (ui.gq) ps = ps.filter(p => (p.name + p.id + p.rank).includes(ui.gq)); return ps.map(p => p.id); }
+    if (ui.gg && ui.gg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.gg); if (ui.gsq && ui.gsq !== '全部') ps = ps.filter(p => p.squad === ui.gsq); if (ui.gq) ps = ps.filter(p => pilotSearchMatch(p, ui.gq)); return ps.map(p => p.id); }
   async function exportXlsxGantt(ids, label) {
     if (!window.ExcelJS || !window.XlsxGantt) { toast('Excel 组件未加载（js/vendor/exceljs.min.js）'); return; }
     const H = st.solHist || []; const h = H[st.solIdx != null ? st.solIdx : H.length - 1]; const plan = h ? `方案 #${h.n} · seed ${h.seed}` : '当前方案';
