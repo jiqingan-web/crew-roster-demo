@@ -79,6 +79,13 @@
     refresh();
     try { window.dispatchEvent(new CustomEvent('roster:pilots', { detail: { reason, ver: st.pilotsVer } })); } catch (e) {}
   }
+  function diagHtml(d) {
+    const cls = d.cls === '数据问题' ? 'red' : d.cls === '真实运力不足' ? 'warnc' : 'okc';
+    const chips = Object.entries(d.dist || {}).sort((a, b) => b[1] - a[1]).map(([k, n]) => `<span class="dchip">${esc(k)} ${n}人</span>`).join('');
+    return `<div class="holediag"><b class="${cls}">${d.cls === '数据问题' ? '⛔ 数据问题' : d.cls === '真实运力不足' ? '⚠ 真实运力不足' : '✔ 可填'}</b> ${esc(d.why)}
+      ${(d.intrinsic || []).filter(x => x.nonBlocking || x.soft).map(x => `<div class="mut">· ${esc(x.msg)}</div>`).join('')}
+      <div class="mut" style="margin-top:3px">该座位级别合格 ${d.rankOK} 人的阻断原因（一人可多项；全员 ${d.total}）：</div><div>${chips || '—'}</div></div>`;
+  }
   function refresh() { sum = C.summarize(st); renderKpis(); updateIssueBadge(); render(); save(); }
   function toast(m, ms) { const t = $('#toast'); t.innerHTML = m; t.classList.remove('hidden'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), ms || 2600); }
 

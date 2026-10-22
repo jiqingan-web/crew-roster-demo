@@ -169,11 +169,13 @@
     r.readAsArrayBuffer(f);
   }
   function showLegImport(name, rows) {
-    let allow = false, res;
+    let allow = false, skipBlock = true, skipFtl = false, res, intr;
     const list = (arr, fmt, n) => arr.length ? `<ul class="imlist">${arr.slice(0, n || 8).map(x => '<li>' + esc(fmt(x)) + '</li>').join('')}${arr.length > (n || 8) ? `<li class="mut">… 另 ${arr.length - (n || 8)} 条</li>` : ''}</ul>` : '';
     const sec = (title, arr, fmt, cls) => `<div class="imsec"><b class="${arr.length ? cls : 'okc'}">${title}：${arr.length}</b>${list(arr, fmt)}</div>`;
     const draw = () => {
       res = LegImport.parseRows(rows, C, st, { allowUnknown: allow }); const R = res.report; const ua = Object.entries(R.unknownAirports);
+      intr = LegImport.intrinsicReport(res, C, st); const iBlock = intr.filter(x => x.blocking.length), iFtl = intr.filter(x => x.ftl.length && !x.blocking.length);
+      const skip = new Set([...(skipBlock ? iBlock : []), ...(skipFtl ? iFtl : [])].map(x => x.id)); const nImp = res.pairings.length - skip.size;
       const ok = res.pairings.length > 0;
       $('#modalBox').innerHTML = `<h3>导入航段 · ${esc(name)}</h3>
         <div class="note">读取 ${R.rows} 行 → <b>可导入任务 ${res.pairings.length} 个</b>，航段 ${R.legs || 0}（置位 ${R.dhLegs || 0}）${R.month ? `；排班月 ${R.month.year}-${String(R.month.month).padStart(2, '0')}（第 1–${R.month.days} 日）` : ''}。导入前请核对以下校验结果。</div>
@@ -185,16 +187,22 @@
           ${sec('未自 蓉/府 出发或未回 蓉/府', R.notReturn, x => `${x.id}：${x.msg}`, 'warnc')}
           ${sec('航段不衔接', R.broken, x => `${x.id} 第${x.row}行：${x.msg}`, 'warnc')}
           ${sec('超出排班月（不导入）', R.outOfMonth, x => `${x.id}：第 ${x.from}–${x.to} 日`, 'warnc')}
+          <div class="imsec"><b class="${iBlock.length ? 'red' : 'okc'}">任务本身无法合规排人：${iBlock.length}</b>${list(iBlock, x => `${x.id}：${x.blocking.join('；')}`)}
+            ${iBlock.length ? `<label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="imSkipB" ${skipBlock ? 'checked' : ''}> 导入时跳过这些任务</label>` : ''}</div>
+          <div class="imsec"><b class="${iFtl.length ? 'warnc' : 'okc'}">任何人执飞都超限（日飞行/执勤期，估算时刻）：${iFtl.length}</b>${list(iFtl, x => `${x.id}：${x.ftl.join('；')}`)}
+            ${iFtl.length ? `<label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="imSkipF" ${skipFtl ? 'checked' : ''}> 导入时也跳过这些任务</label>` : ''}</div>
           ${R.crewUnknown.length ? sec('预填机组未匹配（留空）', R.crewUnknown, x => `${x.id} 第${x.row}行 ${x.slot}：${x.who}`, 'warnc') : ''}
         </div>
         <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn primary" id="imRep" ${ok ? '' : 'disabled'}>替换现有任务（${st.pairings.length}→${res.pairings.length}）</button>
-          <button class="btn" id="imMerge" ${ok ? '' : 'disabled'}>合并到现有任务（+${res.pairings.length}）</button>
+          <button class="btn primary" id="imRep" ${ok && nImp ? '' : 'disabled'}>替换现有任务（${st.pairings.length}→${nImp}）</button>
+          <button class="btn" id="imMerge" ${ok && nImp ? '' : 'disabled'}>合并到现有任务（+${nImp}）</button>${skip.size ? `<span class="mut" style="align-self:center">跳过 ${skip.size} 个</span>` : ''}
           <button class="btn" id="imCancel">取消</button></div>`;
       $('#modal').classList.remove('hidden');
       const cb = $('#imAllow'); if (cb) cb.onchange = () => { allow = cb.checked; draw(); };
+      const sb = $('#imSkipB'); if (sb) sb.onchange = () => { skipBlock = sb.checked; draw(); };
+      const sf = $('#imSkipF'); if (sf) sf.onchange = () => { skipFtl = sf.checked; draw(); };
       $('#imCancel').onclick = () => $('#modal').classList.add('hidden');
-      const go = mode => { const n = LegImport.apply(st, res, mode, C); $('#modal').classList.add('hidden'); refresh();
+      const go = mode => { const n = LegImport.apply(st, res, mode, C, { skip }); $('#modal').classList.add('hidden'); refresh();
         toast(`已${mode === 'merge' ? '合并' : '导入'} ${n} 个任务 <button class="btn sm primary" id="imAuto">一键自动填人</button>`, 8000);
         const b = $('#imAuto'); if (b) b.onclick = () => runAuto(); };
       $('#imRep').onclick = () => go('replace'); $('#imMerge').onclick = () => go('merge');

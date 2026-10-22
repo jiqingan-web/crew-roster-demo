@@ -34,7 +34,7 @@
       const tag = [esc(c.p.name), c.p.rank, c.hours.toFixed(1) + 'h', c.p.squad ? esc(c.p.squad) : '', c.standby && c.standby.length ? '★备份' : '', c.p.id === orig[slot] && changed ? '原任' : '', !c.ok && c.p.id !== orig[slot] ? '✖' : ''].filter(Boolean).join(' · ');
       return `<option value="${c.p.id}" ${c.p.id === cur ? 'selected' : ''} title="${esc(c.p.name)} ${c.p.rank} ${c.p.id} ${c.hours.toFixed(1)}h">${tag}</option>`;
     }).join('');
-    const slotCache = {};
+    const slotCache = {}; const forcedDraft = {};
     const drawSlots = () => {
       let s = '';
       for (const slot of ['C', 'F', 'T']) {
@@ -53,7 +53,8 @@
             <select class="slot-sel" data-slot="${slot}" size="1"><option value="">— 空缺 —</option>${optHtml(ok, slot, cur, changed)}</select>
             <div class="candlist">${ok.slice(0, 12).map(c => `<div class="candline ${c.p.id === cur ? 'on' : ''} ${!c.ok ? 'bad' : ''}" data-pick="${slot}:${c.p.id}"><span class="cn">${esc(c.p.name)}</span> ${pill(c.p.rank)} <span class="mut">${c.hours.toFixed(1)}h${c.p.squad ? ' · ' + esc(c.p.squad) : ''}${c.standby && c.standby.length ? ' · ★备份' : ''}</span></div>`).join('')}${ok.length > 12 ? `<div class="mut candmore">…另有 ${ok.length - 12} 人，可用搜索过滤</div>` : ''}</div>
           </div>
-          <details class="slot-bad"><summary>${bad.length} 名不合规 — 查看原因</summary><div class="inel"><table>${bad.slice(0, 30).map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td></tr>`).join('')}</table></div></details>`;
+          ${!cur && !cs.some(c => c.ok && !c.crewWarn) ? diagHtml(C.holeDiagnosis(st, pr, slot)) : ''}${forcedDraft[slot] && draft[slot] ? `<div class="forcetag">⚠ 强制指派（越过合规检查，确定后记入校验）</div>` : ''}
+          <details class="slot-bad" ${!cur && !cs.some(c => c.ok) ? 'open' : ''}><summary>${bad.length} 名不合规 — 查看原因 / 强制指派</summary><div class="inel"><table>${bad.slice(0, 40).map(c => `<tr><td>${esc(c.p.name)}</td><td>${pill(c.p.rank)}</td><td>${c.hours.toFixed(1)}h</td><td class="mut">${c.reasons.map(esc).join('；')}</td><td><button class="btn sm forceBtn" data-force="${slot}:${c.p.id}">强制指派</button></td></tr>`).join('')}</table></div></details>`;
       }
       $('#slots').innerHTML = s;
       // 用草稿机组做合规预览（临时挂到对象上再还原）
@@ -65,7 +66,7 @@
       $('#editDiff').innerHTML = diffHtml();
       const btn = $('#mConfirm'); btn.disabled = !dirty();
       document.querySelectorAll('#slots select').forEach(sel => sel.onchange = () => {
-        draft[sel.dataset.slot] = sel.value || null;
+        draft[sel.dataset.slot] = sel.value || null; forcedDraft[sel.dataset.slot] = false;
         drawSlots();
       });
       document.querySelectorAll('#slots .candq').forEach(inp => {
@@ -81,9 +82,12 @@
         };
         bindSearchInput(inp, apply);
       });
+      document.querySelectorAll('#slots .forceBtn').forEach(b => b.onclick = e => { e.preventDefault(); const [slot, id] = b.dataset.force.split(':'); const c = (C.candidates(st, pr, slot).find(x => x.p.id === id) || { reasons: [] });
+        if (!confirm(`强制指派 ${nameOf(id)} 到 ${C.SLOT_NAME[slot] || slot}位？\n将越过：${c.reasons.join('；') || '—'}\n确定后该指派会在校验中标记为「强制指派」，相关违规仍会报出。`)) return;
+        draft[slot] = id; forcedDraft[slot] = true; drawSlots(); });
       document.querySelectorAll('#slots .candline[data-pick]').forEach(row => row.onclick = () => {
         const [slot, id] = row.dataset.pick.split(':');
-        draft[slot] = id; drawSlots();
+        draft[slot] = id; forcedDraft[slot] = false; drawSlots();
       });
     };
     $('#mConfirm').onclick = () => {
@@ -92,6 +96,7 @@
       const snap = JSON.stringify(st);
       changes.forEach(slot => {
         const fromId = orig[slot], toId = draft[slot];
+        if (toId && forcedDraft[slot]) { pr.crew[slot] = fromId; C.forceAssign(st, pr.id, slot, toId, '手工强制指派'); } else if (pr.forced) delete pr.forced[slot];
         pr.crew[slot] = toId;
         if (toId && st.standby && st.standby[toId]) {
           const td = C.daysTouched(pr, st);

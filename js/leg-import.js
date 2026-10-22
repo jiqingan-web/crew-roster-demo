@@ -108,7 +108,13 @@
   }
   function parseRows(rows, C, st, opt) { const { records } = rowsToRecords(rows); return buildPairings(records, C, st, opt); }
   // 应用：mode 'replace' | 'merge'；返回新增数
-  function apply(st, res, mode, C) {
+  // 任务固有问题（与人员无关）：blocking=任何人都排不进；ftl=任何人执飞都超限（估算时刻）
+  function intrinsicReport(res, C, st) { if (!C.pairingIntrinsic) return [];
+    const tmp = Object.assign({}, st, { airports: Object.assign({}, st.airports || {}) }); (res.unknownCodes || []).forEach(c => { if (!tmp.airports[c]) tmp.airports[c] = [c + '(导入)', 30.6, 104.0]; });
+    return res.pairings.map(pr => { const xs = C.pairingIntrinsic(pr, tmp); const blocking = xs.filter(x => !x.soft && !x.nonBlocking), ftl = xs.filter(x => x.nonBlocking);
+      return (blocking.length || ftl.length) ? { id: pr.id, blocking: blocking.map(x => x.msg), ftl: ftl.map(x => x.msg) } : null; }).filter(Boolean); }
+  function apply(st, res, mode, C, opt) {
+    opt = opt || {}; if (opt.skip && opt.skip.size) res = Object.assign({}, res, { pairings: res.pairings.filter(p => !opt.skip.has(p.id)) });
     (res.unknownCodes || []).forEach(c => { st.airports = st.airports || {}; if (!st.airports[c] && !C.AIRPORTS[c]) st.airports[c] = [c + '(导入)', 30.6, 104.0]; });
     let add = res.pairings.map(p => JSON.parse(JSON.stringify(p)));
     if (mode === 'merge') { const ids = new Set(st.pairings.map(p => p.id)); add.forEach(p => { let id = p.id, k = 2; while (ids.has(id)) id = p.id + '-' + k++; ids.add(id); p.id = id; }); st.pairings = st.pairings.concat(add).sort((a, b) => a.legs[0].dep - b.legs[0].dep); }
@@ -166,5 +172,5 @@
     T.list.forEach(a => ap.addRow([a.code, a.name, a.abbr, BASES.includes(a.code) ? '基地' : '', C.isSpecial && C.isSpecial(a.code, st || {}) ? '是' : '']));
     return wb;
   }
-  return { HEAD, KEY, BASES, ABBR_FIXED, airportTable, resolveAirport, parseDate, parseTime, rowsToRecords, sheetRows, readXlsx, parseCSV, buildPairings, parseRows, apply, reportText, buildTemplate, SAMPLE };
+  return { intrinsicReport, HEAD, KEY, BASES, ABBR_FIXED, airportTable, resolveAirport, parseDate, parseTime, rowsToRecords, sheetRows, readXlsx, parseCSV, buildPairings, parseRows, apply, reportText, buildTemplate, SAMPLE };
 });

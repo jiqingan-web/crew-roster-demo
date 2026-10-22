@@ -1,5 +1,16 @@
 /* 机组排班助手 - 界面 · ops.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 校验报告 ----------------
+  // 空洞诊断：每个空位 → 数据问题 / 真实运力不足（+ 全员阻断原因分布）
+  function holeDiagPanel() {
+    const rows = []; const cnt = {}; const ftl = [];
+    st.pairings.forEach(pr => { ['C', 'F', 'T'].forEach(s => { if (pr.crew[s]) return; const d = C.holeDiagnosis(st, pr, s); cnt[d.cls] = (cnt[d.cls] || 0) + 1; rows.push([pr, s, d]); }); });
+    if (!rows.length) return '';
+    const big = rows.length > 60;
+    return `<div style="margin-top:10px"><b>空洞诊断</b> <span class="mut">${rows.length} 个空位：</span>${Object.entries(cnt).map(([k, n]) => `<span class="dchip ${k === '数据问题' ? 'red' : k === '真实运力不足' ? 'warnc' : 'okc'}">${k} ${n}</span>`).join('')}
+      <div class="scroll" style="max-height:260px;margin-top:6px"><table><tr><th>任务</th><th>座位</th><th>分类</th><th>原因</th><th>全员阻断分布</th></tr>
+      ${rows.slice(0, big ? 60 : rows.length).map(([pr, s, d]) => `<tr class="issueJump" data-pr="${pr.id}"><td>${pr.id}</td><td>${C.SLOT_NAME[s] || s}</td><td class="${d.cls === '数据问题' ? 'red' : d.cls === '真实运力不足' ? 'warnc' : 'okc'}">${d.cls}</td><td>${esc(d.why)}</td><td class="mut">${Object.entries(d.dist).sort((a, b) => b[1] - a[1]).map(([k, n]) => k + ' ' + n).join('、')}</td></tr>`).join('')}
+      </table></div>${big ? '<div class="mut">仅显示前 60 个</div>' : ''}</div>`;
+  }
   function rReport() {
     const s = sum, S = st.settings;
     const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突', '搭配限制表', 'FO搭配矩阵', '高高原机组', '58岁带队'];
@@ -40,7 +51,7 @@
       <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn primary" id="btnAutoFix" ${needFix ? '' : 'disabled'}>🔧 生成纠错方案</button>
         <span class="mut" id="autoFixStatus">${needFix ? '检测到未满员或硬违规，可尝试自动纠错' : '当前无未满员/硬违规'}</span>
-      </div><div id="autoFixPlan"></div></div>` + h;
+      </div><div id="autoFixPlan"></div>${holeDiagPanel()}</div>` + h;
     $('#main').innerHTML = h;
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
     document.querySelectorAll('tr.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));

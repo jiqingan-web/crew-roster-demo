@@ -24,6 +24,15 @@ let fail = 0; const chk = (n, ok, info) => { console.log('LEGIMP ' + n, ok ? 'OK
   if (fs.existsSync(f)) { const t0 = Date.now(); const x = await LI.readXlsx(ExcelJS, fs.readFileSync(f)); const r = LI.parseRows(x.rows, C, st, { allowUnknown: true });
     chk('backtest file 256 pairings', r.pairings.length === 256, LI.reportText(r.report).replace(/\n/g, ' | '));
     const s = C.generateLiteSample(20261101); LI.apply(s, r, 'replace', C); C.autoFill(s); const sm = C.summarize(s);
-    chk('backtest fill runs', sm.full >= 248, `满员 ${sm.full}/${sm.total} hard ${sm.hard} ${Date.now() - t0}ms`); }
+    chk('backtest fill runs', sm.full >= 248, `满员 ${sm.full}/${sm.total} hard ${sm.hard} ${Date.now() - t0}ms`);
+    // 固有问题 + 空洞诊断 + 强制指派
+    const ir = LI.intrinsicReport(r, C, st); const ib = ir.filter(x => x.blocking.length), iF = ir.filter(x => x.ftl.length);
+    chk('intrinsic blocking/ftl', ib.length >= 5 && iF.length >= 20, `blocking ${ib.length} ftl ${iF.length}`);
+    const cls = {}; const holes = []; s.pairings.forEach(pr => ['C', 'F', 'T'].forEach(k => { if (!pr.crew[k]) { const d = C.holeDiagnosis(s, pr, k); cls[d.cls] = (cls[d.cls] || 0) + 1; holes.push([pr, k, d]); } }));
+    chk('every hole classified', holes.every(([, , d]) => ['数据问题', '真实运力不足', '可填'].includes(d.cls) && d.why), JSON.stringify(cls));
+    const dataHoles = holes.filter(([, , d]) => d.cls === '数据问题'); chk('data holes have intrinsic reason', dataHoles.length > 0 && dataHoles.every(([, , d]) => d.intrinsic.length || /无人具备|无此座位/.test(d.why)));
+    const [hp, hk] = dataHoles[0]; const any = C.candidates(s, hp, hk).find(c => C.slotRankOK(hk, c.p.rank) && !c.ok);
+    C.forceAssign(s, hp.id, hk, any.p.id, 'test'); chk('force assign records flag', hp.crew[hk] === any.p.id && hp.forced[hk].reasons.length > 0 && C.validate(s).some(v => v.type === '强制指派' && v.pairing === hp.id));
+    const s4 = C.generateLiteSample(20261101); const skip = new Set(ib.map(x => x.id)); LI.apply(s4, r, 'replace', C, { skip }); chk('apply skip', s4.pairings.length === 256 - skip.size, s4.pairings.length); }
   console.log(fail ? 'LEGIMP FAIL ' + fail : 'LEGIMP ALL OK'); process.exit(fail ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
