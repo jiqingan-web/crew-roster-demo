@@ -478,3 +478,4 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 .candrow .cand .av{flex:none;width:28px;height:28px;border-radius:50%;background:#1a3358;display:flex;align-items:center;justify-content:center;font-size:11px;color:#9fd4ff}
 .candrow .cand.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(77,184,255,.35)}
 #lvP{min-width:280px;max-width:420px;flex:1}
+.ops-spark{display:block;margin-top:4px;background:#0d1728;border-radius:6px;padding:2px}

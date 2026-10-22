@@ -94,7 +94,28 @@
       <div class="flex" style="flex-wrap:wrap">${tog}<span>日期</span><select id="dtD">${Array.from({ length: C.DAYS }, (_, i) => `<option value="${i + 1}" ${i + 1 === dutyDate ? 'selected' : ''}>11/${String(i + 1).padStart(2, '0')} 周${WK[dow(i + 1)]}</option>`).join('')}</select>
       <span class="mut">当日执行任务 ${mon.length} 个 · 预计超限 <b class="${nEx ? 'red' : 'okc'}">${nEx}</b> · 下游休息受影响 <b class="${nDn ? 'warnc' : 'okc'}">${nDn}</b> · 已录入延误 ${dl} 段</span>
       <button class="btn sm" id="dtSim">模拟故障：延误致执勤余量告急（预检≥2套合规换人方案）</button><button class="btn sm" id="dtClr">清除当日延误</button>${leaveHist.length ? `<button class="btn sm" id="dtUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
-      <div class="note">FDP = 报到（首段计划起飞前 ${S.reportMin} 分钟）→ 当日最晚的实际/预计落地；未录入的航段按计划时刻计算，前段延误<b>不会</b>自动顺延到后续航段（可能在后续过站追回）。若前段延误不追回、按最短过站 ${S.minTurnMin} 分钟顺延会超限，仅给出「若不追回将超限」提示，不计入超限。限制表为默认值（参考 CCAR-121，可在设置中修改）。飞机甘特按机号分行，色块表示延误/FDP 风险（绿=正常 · 琥珀=延误或中风险 · 红=高风险/超限）。</div></div>`;
+      <div class="note">FDP = 报到（首段计划起飞前 ${S.reportMin} 分钟）→ 当日最晚的实际/预计落地；未录入的航段按计划时刻计算。飞机甘特色块：绿=正常 · 琥珀=延误/中风险 · 红=高风险/超限。</div>
+      <div class="opskpi" style="margin-top:10px">
+        <div class="okpi"><div class="olab">执行任务</div><div class="oval">${mon.length}</div></div>
+        <div class="okpi"><div class="olab">预计超限</div><div class="oval ${nEx ? 'bad' : 'ok'}">${nEx}</div></div>
+        <div class="okpi"><div class="olab">下游休息风险</div><div class="oval ${nDn ? 'bad' : 'ok'}">${nDn}</div></div>
+        <div class="okpi"><div class="olab">已录入延误段</div><div class="oval">${dl}</div></div>
+        <div class="okpi"><div class="olab">低余量任务</div><div class="oval">${mon.filter(x => x.day.buffer < (S.fdpRiskHigh || 60)).length}</div></div>
+      </div>
+      <div class="panel" style="margin:10px 0 0;padding:10px 12px"><h4 style="margin:0 0 6px">告警列表</h4>
+        ${(() => {
+          const alerts = [];
+          mon.forEach(x => {
+            if (x.exceed) alerts.push({ sev: 'critical', msg: `${x.pr.id} 预计超 FDP ${x.exceed.exceed || x.day.exceed} 分`, pr: x.pr.id });
+            else if (x.day.buffer < (S.fdpRiskHigh || 60)) alerts.push({ sev: 'high', msg: `${x.pr.id} 余量仅 ${x.day.buffer} 分`, pr: x.pr.id });
+            else if (x.day.buffer < (S.fdpRiskMed || 120)) alerts.push({ sev: 'med', msg: `${x.pr.id} 余量 ${x.day.buffer} 分（中）`, pr: x.pr.id });
+            x.downstream.forEach(d => alerts.push({ sev: 'med', msg: `${x.pr.id} 下游休息不足`, pr: x.pr.id }));
+          });
+          if (!alerts.length) return '<div class="okc">✔ 当日无告警</div>';
+          const col = { critical: 'red', high: 'red', med: 'warnc' };
+          return `<div class="scroll" style="max-height:120px">${alerts.slice(0, 12).map(a => `<div class="${col[a.sev] || ''}" style="display:flex;gap:8px;padding:3px 0;border-bottom:1px solid #1a2a45"><b style="width:64px">${a.sev}</b><span style="flex:1">${esc(a.msg)}</span><button class="btn sm dtGo" data-pr="${a.pr}">快换</button></div>`).join('')}</div>`;
+        })()}
+      </div></div>`;
     if (dutyView === 'ac') h += rDutyAcHtml(mon, m, A);
     else {
       h += `<div class="dutyg">${mon.map(x => { const dy = x.day; const pr = x.pr; const pct = Math.min(130, dy.fdp / dy.limit * 100);

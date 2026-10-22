@@ -132,6 +132,131 @@
         <div class="sqvals"><span>饱和 <b>${x.satPct}%</b></span><span>韧性 <b>${x.resiliPct}%</b></span></div>
         <div class="omut">${x.nPilots} 人 · ${esc(x.zoneLabel)} · 已排 ${x.assignedHours}h</div></div>`).join('')}</div></div>`;
 
+
+    // ---- 公平 / 资质 / 风险驱动（离线 SVG）----
+    const sum = C.summarize(st); const idx = C.buildIndex(st); const ds = C.dayStatus(st, idx);
+    const byRank = {};
+    st.pilots.forEach(p => { (byRank[p.rank] = byRank[p.rank] || []).push(idx.hours[p.id] || 0); });
+    const rankFair = Object.keys(byRank).sort((a, b) => (C.RANK_VAL[b] || 0) - (C.RANK_VAL[a] || 0)).map(rk => {
+      const xs = byRank[rk]; const stt = C.stats(xs);
+      return { label: rk, value: +(stt.std || 0).toFixed(1), gini: stt.gini, n: xs.length, mean: stt.mean };
+    });
+    const dutyDist = {}; st.pilots.forEach(p => { let n = 0; for (let d = 1; d <= C.DAYS; d++) if (ds[p.id][d] === 'D') n++; dutyDist[n] = (dutyDist[n] || 0) + 1; });
+    // weekend / night / early
+    let we = 0, night = 0, early = 0, lateEarly = 0, quickTurn = 0, totalDuty = 0;
+    const WE = new Set([0, 6]);
+    st.pairings.forEach(pr => {
+      for (let d = 1; d <= pr.ndays; d++) {
+        const legs = pr.legs.filter(l => l.d === d); if (!legs.length) continue;
+        totalDuty++;
+        const dayAbs = Math.floor(legs[0].dep / C.DAY) + 1;
+        if (WE.has(dow(dayAbs))) we++;
+        if (legs.some(l => C.isNightLeg(l))) night++;
+        const depH = ((legs[0].dep % C.DAY) + C.DAY) % C.DAY;
+        if (depH < 6 * 60) early++;
+        if (legs.length >= 2) {
+          for (let i = 0; i < legs.length - 1; i++) {
+            const turn = legs[i + 1].dep - legs[i].arr;
+            if (turn >= 0 && turn < 50) quickTurn++;
+          }
+        }
+      }
+    });
+    // consecutive early / back-to-back late-early rough
+    st.pilots.forEach(p => {
+      const days = []; for (let d = 1; d <= C.DAYS; d++) if (ds[p.id][d] === 'D') days.push(d);
+      for (let i = 0; i < days.length - 1; i++) {
+        if (days[i + 1] !== days[i] + 1) continue;
+        const a = (idx.sched[p.id] || []).find(pr => C.daysTouched(pr, st).includes(days[i]));
+        const b = (idx.sched[p.id] || []).find(pr => C.daysTouched(pr, st).includes(days[i + 1]));
+        if (!a || !b) continue;
+        const la = a.legs.filter(l => C.daysTouched({ legs: [l], start: a.start, ndays: a.ndays }, st) || true);
+        const lastA = a.legs[a.legs.length - 1], firstB = b.legs[0];
+        const late = ((lastA.arr % C.DAY) + C.DAY) % C.DAY >= 20 * 60;
+        const ear = ((firstB.dep % C.DAY) + C.DAY) % C.DAY < 7 * 60;
+        if (late && ear) lateEarly++;
+      }
+    });
+    const fdp = C.fdpRiskSummary(st);
+    const margins = fdp.rows.map(x => x.buffer).filter(x => x != null);
+    const margStats = C.stats(margins.length ? margins : [0]);
+    // SPOF: pairings with <=1 legal FO alternative if cleared
+    let spof = 0;
+    st.pairings.slice(0, 80).forEach(pr => {
+      if (!pr.crew.F) return;
+      const saved = pr.crew.F; pr.crew.F = null;
+      const n = C.candidates(st, pr, 'F').filter(c => c.ok).length;
+      pr.crew.F = saved;
+      if (n <= 1) spof++;
+    });
+    // quals expiring / special airport coverage
+    const now = new Date(2026, 10, 1);
+    let expiring = 0;
+    st.pilots.forEach(p => {
+      const exp = p.health && p.health.medExamExpiry;
+      if (exp) { const dt = new Date(exp); if ((dt - now) / 86400000 <= 45) expiring++; }
+    });
+    const specialDemand = {};
+    st.pairings.forEach(pr => C.specialAirportsOf(pr, st).forEach(c => { specialDemand[c] = (specialDemand[c] || 0) + 1; }));
+    const specialSupply = {};
+    Object.keys(specialDemand).forEach(c => { specialSupply[c] = st.pilots.filter(p => (p.auth || []).includes(c)).length; });
+    const instrOnNew = st.pairings.filter(pr => {
+      const c = idx.pm[pr.crew.C]; return c && C.isNew(c.rank) && ['C','F','T'].some(s => { const x = idx.pm[pr.crew[s]]; return x && C.isInstr(x.rank); });
+    }).length;
+    const newCaptPr = st.pairings.filter(pr => { const c = idx.pm[pr.crew.C]; return c && C.isNew(c.rank); }).length;
+
+    const spark = (arr, color) => {
+      if (!arr.length) return '';
+      const w = 280, h = 48, max = Math.max(...arr, 1), min = Math.min(...arr, 0);
+      const pts = arr.map((v, i) => `${(i / Math.max(1, arr.length - 1)) * w},${h - ((v - min) / Math.max(1e-6, max - min)) * (h - 4) - 2}`).join(' ');
+      return `<svg width="${w}" height="${h}" class="ops-spark"><polyline fill="none" stroke="${color}" stroke-width="2" points="${pts}"/></svg>`;
+    };
+    const dailyOff = Array.from({ length: C.DAYS }, (_, i) => st.pilots.filter(p => (p.leave || []).includes(i + 1) || (p.prefs || []).includes(i + 1)).length);
+    const dailySb = Array.from({ length: C.DAYS }, (_, i) => st.pilots.filter(p => ((st.standby || {})[p.id] || []).includes(i + 1)).length);
+    const dailyHoles = Array.from({ length: C.DAYS }, (_, i) => st.pairings.filter(pr => C.daysTouched(pr, st).includes(i + 1) && !(pr.crew.C && pr.crew.F && pr.crew.T)).length);
+
+    h += `<div class="panel"><h3>公平性日常监控 <small>工时基尼/标准差 · 值勤日分布 · 周末/夜航/早班占比</small></h3>
+      <div class="grid g2">
+        <div>${CH.bars(rankFair.slice(0, 14).map(x => ({ label: x.label, value: x.value, color: '#3ea6ff' })), { w: 560, h: 200, values: true })}
+          <div class="note">各组工时 σ；全员基尼 ${sum.all.gini.toFixed(3)} · 均值 ${sum.all.mean.toFixed(1)}h</div></div>
+        <div>${CH.bars(Object.keys(dutyDist).map(Number).sort((a,b)=>a-b).map(k => ({ label: k + '天', value: dutyDist[k], color: '#2ecc8f' })), { w: 560, h: 200, values: true })}
+          <div class="note">值勤天数分布 · 周末值勤日占比 ${totalDuty ? (100 * we / totalDuty).toFixed(0) : 0}% · 含夜航 ${totalDuty ? (100 * night / totalDuty).toFixed(0) : 0}% · 早班(&lt;06:00) ${totalDuty ? (100 * early / totalDuty).toFixed(0) : 0}%</div></div>
+      </div></div>`;
+
+    h += `<div class="panel"><h3>资质监控</h3>
+      <div class="opskpi">
+        <div class="okpi"><div class="olab">体检将到期(≤45天)</div><div class="oval">${expiring}</div></div>
+        <div class="okpi"><div class="olab">新机长任务</div><div class="oval">${newCaptPr}</div><div class="omut">含教员同组 ${instrOnNew}</div></div>
+        <div class="okpi"><div class="olab">特殊机场种类</div><div class="oval">${Object.keys(specialDemand).length}</div></div>
+      </div>
+      <table class="solt"><tr><th>机场</th><th>任务需求</th><th>持权人数</th><th>供需比</th></tr>
+      ${Object.keys(specialDemand).sort((a,b)=>specialDemand[b]-specialDemand[a]).slice(0,12).map(c => {
+        const dem = specialDemand[c], sup = specialSupply[c] || 0;
+        return `<tr><td>${esc(C.apName(c, st))} (${c})</td><td>${dem}</td><td>${sup}</td><td class="${sup < dem ? 'warnc' : 'okc'}">${sup && dem ? (sup / dem).toFixed(1) : '—'}</td></tr>`;
+      }).join('')}</table></div>`;
+
+    h += `<div class="panel"><h3>风险驱动 · 延误/不正常运行韧性</h3>
+      <div class="opskpi">
+        <div class="okpi"><div class="olab">FDP 余量均值</div><div class="oval">${margStats.mean.toFixed(0)}<small>分</small></div><div class="omut">σ ${margStats.std.toFixed(0)} · 最小 ${margStats.min}</div></div>
+        <div class="okpi"><div class="olab">低余量值勤日</div><div class="oval">${(fdp.cnt.high || 0) + (fdp.cnt.over || 0)}</div><div class="omut">高+超限</div></div>
+        <div class="okpi"><div class="olab">晚→早连飞</div><div class="oval">${lateEarly}</div><div class="omut">人·次</div></div>
+        <div class="okpi"><div class="olab">过站&lt;50分</div><div class="oval">${quickTurn}</div></div>
+        <div class="okpi"><div class="olab">单点脆弱任务</div><div class="oval">${spof}</div><div class="omut">FO 合法替补≤1（抽样）</div></div>
+      </div>
+      <div class="grid g2" style="margin-top:10px">
+        <div><div class="olab">每日请假/意向休息人数</div>${spark(dailyOff, '#a78bfa')}<div class="omut">max ${Math.max(...dailyOff)}</div></div>
+        <div><div class="olab">每日备份人数</div>${spark(dailySb, '#e6a23c')}<div class="omut">设定 ${st.settings.standbyPerDay}/天</div></div>
+        <div><div class="olab">每日未满员任务</div>${spark(dailyHoles, '#ff5a6a')}<div class="omut">max ${Math.max(...dailyHoles)}</div></div>
+        <div><div class="olab">FDP 风险结构</div>${CH.bars([
+          { label: '超限', value: fdp.cnt.over || 0, color: '#ff5a6a' },
+          { label: '高', value: fdp.cnt.high || 0, color: '#ff8a5a' },
+          { label: '中', value: fdp.cnt.med || 0, color: '#e6a23c' },
+          { label: '低', value: fdp.cnt.low || 0, color: '#2ecc8f' }
+        ], { w: 400, h: 140, values: true })}</div>
+      </div>
+      <div class="note">储备深度（按职级平均剩余小时）：${C.GROUPS.map(g => { const xs = sum.per.filter(x => x.group === g); const rem = xs.map(x => Math.max(0, (st.settings.hardMaxHours || 100) - x.hours)); const m = rem.length ? rem.reduce((a,b)=>a+b,0)/rem.length : 0; return g + ' ' + m.toFixed(0) + 'h'; }).join(' · ')}</div>
+    </div>`;
+
     const fname = { sat: '饱和度', resili: '韧性度', zone: '四象限', remain: '剩余运力', pilotsPerAc: '人机比', blockPerPilot: '人均轮挡', blockPerAc: '单机轮挡', util: '飞机利用率', legsPerAcDay: '机日航段' };
     h += `<div class="panel"><h3>指标公式</h3><table class="solt"><tr><th>指标</th><th>公式</th></tr>
       ${Object.entries(m.formulas).map(([k, v]) => `<tr><td>${esc(fname[k] || k)}</td><td>${esc(v)}</td></tr>`).join('')}

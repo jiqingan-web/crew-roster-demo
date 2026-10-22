@@ -24,3 +24,6 @@
     if (hp.includes('sim') && $('#dtSim')) $('#dtSim').click();
     if (hp.includes('drawer') && !hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length && p.crew.C) || st.pairings[0]; openEdit(pr.id); }
     if (hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length); openEdit(pr.id); $('#drwE').click(); document.querySelectorAll('#drawer details')[0].open = true; } document.title += ' ready'; });
+
+  // debug/screenshot hook
+  window.__roster = () => ({ st, sum, tab, C, openDrawer, closeDrawer, rReport, rOps, rDuty, rGantt });
