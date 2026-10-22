@@ -35,7 +35,9 @@ with sync_playwright() as p:
     goTab(pg, 'roster'); pg.wait_for_timeout(800)
     pg.click('#roAdd'); pg.wait_for_timeout(300)
     pg.fill('#edId', 'N99001'); pg.fill('#edName', '测试拉萨机长'); pg.select_option('#edRank', 'J2')
-    pg.click('.edA[data-c="ZULS"]'); pg.click('#edSave'); pg.wait_for_timeout(800)
+    pg.click('.edA[data-c="ZULS"]'); pg.click('#edSave'); pg.wait_for_timeout(500)
+    chk('Lhasa qual blocked below J3', '拉萨资质仅限 J3' in pg.inner_text('#edErr'))
+    pg.select_option('#edRank', 'J3'); pg.click('#edSave'); pg.wait_for_timeout(800)
     chk('roster list shows new', '测试拉萨机长' in pg.inner_text('#main'))
     # 人员视图甘特
     goTab(pg, 'gantt'); pg.wait_for_timeout(1200)
@@ -63,7 +65,7 @@ with sync_playwright() as p:
     # 刷新后仍在（不被示例重置）
     pg.reload(); pg.wait_for_timeout(4000)
     st = pg.evaluate("() => { const st = window.__roster().st; const p = st.pilots.find(x => x.id === 'N99001'); return { p: p && { name: p.name, rank: p.rank, auth: p.auth }, n: st.pilots.length, lxa: !!st.pairings.find(x => x.id === 'PRLXA') }; }")
-    chk('persists across reload', st['p'] and st['p']['rank'] == 'J2' and 'ZULS' in st['p']['auth'] and st['lxa'], st)
+    chk('persists across reload', st['p'] and st['p']['rank'] == 'J3' and 'ZULS' in st['p']['auth'] and st['lxa'], st)
     # 删除 → 座位与各页同步
     goTab(pg, 'roster'); pg.wait_for_timeout(600)
     pg.click('.roEdit[data-pid="N99001"]'); pg.wait_for_timeout(300); pg.click('#edDel'); pg.wait_for_timeout(800)

@@ -416,7 +416,8 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, sampleSchema: 15, settings: S, pilots, pairings, fills: [],
+    stripLhasaBelowJ3({ pilots });
+    return { version: 1, sample: true, sampleSchema: 16, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -437,6 +438,9 @@
   }
 
   // ---------- 外中队候补飞行员（化名，非真实人员）：按七中队职级比例补充机长/副驾驶 ----------
+  // 拉萨资质只能由 J3 及以上（含 TL/TB/TC 教员）持有
+  function lhasaRankOK(rank) { return INSTR.includes(rank) || CAPT_ORDER.indexOf(rank) >= CAPT_ORDER.indexOf('J3'); }
+  function stripLhasaBelowJ3(st) { let n = 0; st.pilots.forEach(p => { if (!lhasaRankOK(p.rank) && (p.auth || []).some(c => apCat(c, st) === 'LHASA')) { p.auth = p.auth.filter(c => apCat(c, st) !== 'LHASA'); n++; } }); return n; }
   function addReservePilots(st, nC, nF, seed) {
     const r = rng(seed || 909); const own = st.pilots.filter(p => !p.reserve);
     const SUR = '安柏常戴范方甘古韩郝贺洪华纪江金康柯孔雷黎廉梁林凌柳龙鲁陆罗吕马孟莫倪宁欧潘庞裴彭蒲齐秦邱任阮尚邵沈盛石舒宋苏谈汤唐陶田童万汪韦温文翁巫吴伍夏项萧谢辛熊徐许薛严颜晏燕阳姚叶易殷尹应于余俞虞袁岳云詹章甄钟周朱庄卓邹';
@@ -447,7 +451,7 @@
     const mk = (tpl) => { const p = JSON.parse(JSON.stringify(tpl)); p.id = 'R9' + String(seq++).padStart(4, '0'); p.name = nm(); p.squad = '外中队候补·演示'; p.reserve = true; p.prefs = []; p.leave = []; p.health = defaultHealth(); delete p.traineeCapt; delete p.requalCapt; delete p.qualNotes; out.push(p); return p; };
     const plat = Object.keys(AIRPORTS).filter(c => ['LHASA', 'HIGH', 'PLATEAU'].includes(apCat(c)));
     for (let i = 0; i < nC; i++) { const q = mk(capt[(i * 7 + 3) % capt.length]); // 外中队候补机长：全部具备拉萨/高原资质（拉萨须 J3+ 或教员）
-      q.auth = [...new Set([...(q.auth || []), ...plat])]; if (!INSTR.includes(q.rank) && CAPT_ORDER.indexOf(q.rank) < CAPT_ORDER.indexOf('J3')) q.rank = 'J3'; q.lhasaFull = true; }
+      if (lhasaRankOK(q.rank)) { q.auth = [...new Set([...(q.auth || []), ...plat])]; q.lhasaFull = true; } else q.auth = (q.auth || []).filter(c => apCat(c) !== 'LHASA'); }
     for (let i = 0; i < nF; i++) mk(fo[(i * 5 + 1) % fo.length]);
     st.pilots.push(...out); return out;
   }
@@ -504,10 +508,10 @@
     }
     chosen.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     chosen.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
-    const out = { version: 1, sample: true, lite: true, sampleSchema: 15, settings: S, pilots, pairings: chosen, fills: [],
+    const out = { version: 1, sample: true, lite: true, sampleSchema: 16, settings: S, pilots, pairings: chosen, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [], sampleMeta: SAMPLE_META };
     // 外中队候补（化名）：按 9 月真实航段回测，+20 机长类 +20 副驾驶 → 0 供给性空缺、余量约 28%
-    const RES = opt.reserves === false ? [0, 0] : (opt.reserves || LITE_RESERVES); if (RES[0] || RES[1]) addReservePilots(out, RES[0], RES[1], 909);
+    const RES = opt.reserves === false ? [0, 0] : (opt.reserves || LITE_RESERVES); if (RES[0] || RES[1]) addReservePilots(out, RES[0], RES[1], 909); stripLhasaBelowJ3(out);
     return out;
   }
 
@@ -1494,6 +1498,60 @@
     st.pairings.forEach((p, i) => p.crew = best.crews[i]); st.standby = JSON.parse(best.sb); st.training = JSON.parse(best.tr);
     return { seed: best.seed, diff: best.diff, tries };
   }
+
+  // ---------- 同级别换班（员工福利 + 排班移动类型） ----------
+  // 同级 = rank 完全相同。aPrs：A 的任务 → 给 B；bPrs：B 的任务 → 给 A（为空即单向）。
+  function swapMoves(st, aId, bId, aPrs, bPrs) { const mv = [];
+    (aPrs || []).forEach(id => { const pr = st.pairings.find(x => x.id === id); const s = pr && ['C', 'F', 'T'].find(k => pr.crew[k] === aId); if (s) mv.push({ pairing: id, slot: s, from: aId, to: bId }); });
+    (bPrs || []).forEach(id => { const pr = st.pairings.find(x => x.id === id); const s = pr && ['C', 'F', 'T'].find(k => pr.crew[k] === bId); if (s) mv.push({ pairing: id, slot: s, from: bId, to: aId }); });
+    return mv; }
+  function swapPreview(st, aId, bId, aPrs, bPrs) {
+    const pm = {}; st.pilots.forEach(p => pm[p.id] = p); const A = pm[aId], B = pm[bId]; const issues = [];
+    if (!A || !B) return { ok: false, issues: ['人员不存在'], moves: [] };
+    if (A.rank !== B.rank) issues.push(`级别不同：${A.rank} ≠ ${B.rank}（同级别换班要求级别一致）`);
+    const moves = swapMoves(st, aId, bId, aPrs, bPrs); if (!moves.length) issues.push('未选择要交换的任务');
+    moves.forEach(m => { const pr = st.pairings.find(x => x.id === m.pairing); if (Object.values(pr.crew).includes(m.to) && !moves.some(n => n.pairing === m.pairing && n.from === m.to)) issues.push(`${m.to === aId ? A.name : B.name} 已在 ${pr.id}`); });
+    const rel = (s, ids) => validate(s).filter(v => (v.level === 'hard' && !INTRINSIC_TYPES.has(v.type) || v.type === '第5日置位') && (v.pilot === aId || v.pilot === bId || (!v.pilot && ids.has(v.pairing))));
+    const ids = new Set(moves.map(m => m.pairing)); const before = rel(st, ids); const bset = new Set(before.map(v => v.msg));
+    const w = Object.assign({}, st, { pairings: st.pairings.map(x => Object.assign({}, x, { crew: Object.assign({}, x.crew) })) });
+    moves.forEach(m => { w.pairings.find(x => x.id === m.pairing).crew[m.slot] = m.to; });
+    const after = rel(w, ids); const newHard = after.filter(v => v.level === 'hard' && !bset.has(v.msg)), newSoft = after.filter(v => v.level !== 'hard' && !bset.has(v.msg));
+    const resolved = before.filter(v => !after.some(x => x.msg === v.msg));
+    const i0 = buildIndex(st), i1 = buildIndex(w);
+    const hours = { [aId]: [i0.hours[aId], i1.hours[aId]], [bId]: [i0.hours[bId], i1.hours[bId]] };
+    return { ok: !issues.length && !newHard.length, issues, newHard, newSoft, resolved, moves, hours, a: aId, b: bId };
+  }
+  function applySwap(st, plan, note) { if (!plan || !plan.ok) return false;
+    plan.moves.forEach(m => { const pr = st.pairings.find(x => x.id === m.pairing); if (pr) { pr.crew[m.slot] = m.to; if (pr.forced) delete pr.forced[m.slot]; } });
+    (st.swaps = st.swaps || []).push({ at: Date.now(), a: plan.a, b: plan.b, moves: plan.moves, note: note || '同级换班' }); return true; }
+  // 换班作为排班移动：① 空座：候选 x 只因另一任务 Q 冲突 → Q 换给同级 y，x 补空座；② 高工时/第5日置位 → 单向转给同级低工时者
+  function swapFillHoles(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 4000; const log = [];
+    for (const P of st.pairings) { for (const s of ['C', 'F', 'T']) { if (P.crew[s] || Date.now() - t0 > budget) continue;
+      const cs = candidates(st, P, s).filter(c => !c.ok && slotRankOK(s, c.p.rank) && c.reasons.length <= 3).sort((a, b) => a.reasons.length - b.reasons.length).slice(0, 30);
+      let done = false;
+      for (const cx of cs) { if (done || Date.now() - t0 > budget) break; const x = cx.p; const idx = buildIndex(st);
+        const near = (idx.sched[x.id] || []).filter(Q => Q !== P && cx.reasons.some(r => r.includes(Q.id)) || (Q.start <= P.start + P.ndays + 1 && Q.start + Q.ndays >= P.start - 1));
+        for (const Q of near.slice(0, 3)) { const qs = ['C', 'F', 'T'].find(k => Q.crew[k] === x.id); if (!qs) continue;
+          const ys = candidates(st, Q, qs).filter(c => c.ok && !c.crewWarn && c.p.rank === x.rank && c.p.id !== x.id).slice(0, 6);
+          for (const cy of ys) { Q.crew[qs] = cy.p.id; const cx2 = candidates(st, P, s).find(c => c.p.id === x.id);
+            if (cx2 && cx2.ok && (s === 'T' || !cx2.crewWarn)) { P.crew[s] = x.id; log.push({ kind: 'swapFill', pairing: P.id, slot: s, pilot: x.id, via: Q.id, to: cy.p.id }); done = true; break; }
+            Q.crew[qs] = x.id; }
+          if (done) break; } }
+    } }
+    return log; }
+  function swapBalance(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 3000; const log = []; const cap = opt.highH || 60;
+    for (let it = 0; it < (opt.maxIter || 40) && Date.now() - t0 < budget; it++) {
+      const idx = buildIndex(st); let moved = false;
+      // 第5日置位优先，其次最高工时
+      const d5 = []; st.pilots.forEach(p => day5Deadheads(p, st, idx).forEach(x => d5.push({ p, pr: x.pr, why: 'day5' })));
+      const hi = st.pilots.filter(p => idx.hours[p.id] > cap).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]).slice(0, 3).flatMap(p => idx.sched[p.id].slice().sort((a, b) => pairingHours(a) - pairingHours(b)).map(pr => ({ p, pr, why: 'hours' })));
+      for (const { p, pr, why } of d5.concat(hi)) { const s = ['C', 'F', 'T'].find(k => pr.crew[k] === p.id); if (!s || (pr.forced && pr.forced[s])) continue;
+        const ys = candidates(st, pr, s).filter(c => c.ok && !c.crewWarn && c.p.rank === p.rank && c.p.id !== p.id && (why === 'day5' || idx.hours[c.p.id] + pairingHours(pr) < idx.hours[p.id] - 1e-6)).sort((a, b) => a.hours - b.hours).slice(0, 5);
+        for (const cy of ys) { pr.crew[s] = cy.p.id; const i2 = buildIndex(st); const d5after = day5Deadheads(cy.p, st, i2).length, d5before = day5Deadheads(cy.p, st, idx).length;
+          if (d5after > d5before) { pr.crew[s] = p.id; continue; } log.push({ kind: 'swap-' + why, pairing: pr.id, slot: s, from: p.id, to: cy.p.id }); moved = true; break; }
+        if (moved) break; }
+      if (!moved) break; }
+    return log; }
   // 收尾：任何违反人员/机组硬规则的座位一律清空 → 残余只表现为「空座」。
   // 任务自身（估算时刻）的日飞行/执勤期超限与人员无关，保留为数据警告；强制指派的座位不动。
   const INTRINSIC_TYPES = new Set(['未满员', '日飞行时间超限', '执勤期超限', '强制指派']);
@@ -1524,7 +1582,9 @@
     }
     st.pairings.forEach((p, i) => p.crew = best.crew[i]); st.standby = JSON.parse(best.sb);
     assignTraining(st);
+    if (!opts.noSwap) { swapBalance(st, { ms: st.pairings.length > 800 ? 1500 : 3000 }); }
     clearHardSeats(st);
+    if (!opts.noSwap) { swapFillHoles(st, { ms: 4000 }); clearHardSeats(st); }
     const out = summarize(st); out.attempt = best.k + 1; return out;
     } finally { if (PROG) PROG.done(); PROG = null; FDP_PLAN_CACHE = null; SOFT_NEW = softNew0; }
   }
@@ -3303,6 +3363,7 @@
         const cnt = {}; all.forEach(c => c.reasons.forEach(r => { const k = r.replace(/\(.*\)/, '').replace(/：.*/, ''); cnt[k] = (cnt[k] || 0) + 1; }));
         unresolved.push({ pairing: pr.id, slot, reason: '无合规替补；候选人主要不满足：' + Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => k + '×' + n).join('，') }); }
     }
+    if (unresolved.length) { const sw = swapFillHoles(st, { ms: 2500 }); sw.forEach(m => { const i = unresolved.findIndex(u => u.pairing === m.pairing && u.slot === m.slot); if (i >= 0) { unresolved.splice(i, 1); const q = st.pilots.find(x => x.id === m.pilot); changes.push({ pairing: m.pairing, slot: m.slot, from: p, to: q, note: `同级换班：${m.via} 换给 ${(st.pilots.find(x => x.id === m.to) || {}).name || m.to}` }); } }); }
     return { pilot: p, days, affected: affected.map(x => x.id), changes, unresolved, before };
   }
 
@@ -3780,6 +3841,7 @@
     st.fills.push({ id: 'AF' + Date.now().toString(36), time: new Date().toISOString(), source: 'autoCorrect',
       label: '一键自动纠错 ' + plan.moves.length + ' 步 · 空洞 ' + plan.before.holes + '→' + plan.after.holes,
       snap: plan.snapBefore, moves: plan.moves });
+    const sw = swapFillHoles(st, { ms: 3000 }); if (sw.length) { clearHardSeats(st); st.fills[st.fills.length - 1].swaps = sw; }
     return true;
   }
   function undoAutoCorrect(st, fillId) {
@@ -3979,7 +4041,7 @@
 
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
-    day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
+    swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };

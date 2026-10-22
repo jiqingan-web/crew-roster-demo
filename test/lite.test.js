@@ -68,8 +68,8 @@ for (const seed of [20261101, 7, 42]) {
   }
   chk(seed + ' pairing continuity', contOk, contInfo);
 
-  chk(seed + ' schema15', st.sampleSchema === 15);
-  { const rc = st.pilots.filter(p => p.reserve && C.isCaptClass(p.rank)); chk(seed + ' reserve captains full Lhasa', rc.length === 20 && rc.every(p => p.auth.includes('ZULS') && (C.INSTR.includes(p.rank) || ['J3'].includes(p.rank))), rc.length); }
+  chk(seed + ' schema16', st.sampleSchema === 16);
+  { const rc = st.pilots.filter(p => p.reserve && C.isCaptClass(p.rank)); chk(seed + ' reserve captains Lhasa = J3+ only', rc.length === 20 && rc.every(p => p.auth.includes('ZULS') === C.lhasaRankOK(p.rank)), rc.filter(p => p.auth.includes('ZULS')).length + '/20'); }
   chk(seed + ' training 1-2', Math.min(...tr) >= 1 && Math.max(...tr) <= 2);
   const sb = st.pilots.map(p => ((st.standby || {})[p.id] || []).length);
   chk(seed + ' standby rare', Math.max(...sb) <= 1);

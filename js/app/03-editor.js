@@ -49,6 +49,7 @@
               <input class="candq" data-q="${slot}" placeholder="搜索姓名/工号/级别/中队/拼音" value="${esc(slotQ[slot] || '')}">
               <span class="mut candn" data-n="${slot}">${ok.length}/${okAll.length}</span>
               ${changed ? '<span class="pendtag">待确定</span>' : ''}
+              ${orig[slot] ? `<button class="btn sm swSlot" data-sw="${orig[slot]}" title="与同级别人员换班">同级换班</button>` : ''}
             </div>
             <select class="slot-sel" data-slot="${slot}" size="1"><option value="">— 空缺 —</option>${optHtml(ok, slot, cur, changed)}</select>
             <div class="candlist">${ok.slice(0, 12).map(c => `<div class="candline ${c.p.id === cur ? 'on' : ''} ${!c.ok ? 'bad' : ''}" data-pick="${slot}:${c.p.id}"><span class="cn">${esc(c.p.name)}</span> ${pill(c.p.rank)} <span class="mut">${c.hours.toFixed(1)}h${c.p.squad ? ' · ' + esc(c.p.squad) : ''}${c.standby && c.standby.length ? ' · ★备份' : ''}</span></div>`).join('')}${ok.length > 12 ? `<div class="mut candmore">…另有 ${ok.length - 12} 人，可用搜索过滤</div>` : ''}</div>
@@ -82,6 +83,7 @@
         };
         bindSearchInput(inp, apply);
       });
+      document.querySelectorAll('#slots .swSlot').forEach(b => b.onclick = e => { e.preventDefault(); closeDrawer(); openSwap(b.dataset.sw, pr.id); });
       document.querySelectorAll('#slots .forceBtn').forEach(b => b.onclick = e => { e.preventDefault(); const [slot, id] = b.dataset.force.split(':'); const c = (C.candidates(st, pr, slot).find(x => x.p.id === id) || { reasons: [] });
         if (!confirm(`强制指派 ${nameOf(id)} 到 ${C.SLOT_NAME[slot] || slot}位？\n将越过：${c.reasons.join('；') || '—'}\n确定后该指派会在校验中标记为「强制指派」，相关违规仍会报出。`)) return;
         draft[slot] = id; forcedDraft[slot] = true; drawSlots(); });

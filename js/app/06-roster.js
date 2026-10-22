@@ -56,7 +56,7 @@
         <td class="hcell">${badges}</td>
         ${authList.map(c => `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`).join('')}
         <td>${authN}/${nAuth}</td>
-        <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button> <button class="btn sm roLeave" data-pid="${p.id}">请假</button> <button class="btn sm roCal" data-pid="${p.id}" title="导出此人月历 CSV">月历</button></td></tr>`;
+        <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button> <button class="btn sm roLeave" data-pid="${p.id}">请假</button> <button class="btn sm roSwap" data-pid="${p.id}">换班</button> <button class="btn sm roCal" data-pid="${p.id}" title="导出此人月历 CSV">月历</button></td></tr>`;
     }
     if (!ps.length) h += '<tr><td colspan="20" class="note">无匹配人员</td></tr>';
     h += '</tbody></table></div>';
@@ -70,6 +70,7 @@
     $('#ra').onchange = e => { ui.ra = e.target.value; redraw(); };
     $('#rh').onchange = e => { ui.rh = e.target.value; redraw(); };
     $('#roAdd').onclick = () => openRosterEdit(null);
+    document.querySelectorAll('.roSwap').forEach(b => b.onclick = e => { e.stopPropagation(); openSwap(b.dataset.pid); });
     document.querySelectorAll('.roEdit').forEach(b => b.onclick = e => { e.stopPropagation(); openRosterEdit(b.dataset.pid); });
     document.querySelectorAll('.roLeave').forEach(b => b.onclick = e => {
       e.stopPropagation(); const id = b.dataset.pid; const ix = C.buildIndex(st); const nx = (ix.sched[id] || []).find(pr => pr.start + pr.ndays - 1 >= 1) || (ix.sched[id] || [])[0];
@@ -129,6 +130,9 @@
       const name = $('#edName').value.trim(), id = $('#edId').value.trim();
       if (!name) { $('#edErr').textContent = '请填写姓名'; return; }
       if (isNew && (!id || st.pilots.some(x => x.id === id))) { $('#edErr').textContent = '员工号为空或已存在'; return; }
+      const onSet = new Set([...document.querySelectorAll('.edA.on')].map(x => x.dataset.c)); const rk = $('#edRank').value;
+      const lxa = [...onSet].filter(c => C.apCat(c, st) === 'LHASA');
+      if (lxa.length && !C.lhasaRankOK(rk)) { $('#edErr').textContent = `拉萨资质仅限 J3 及以上（含教员）；当前级别 ${rk} 不可持有，请取消「${lxa.map(c => C.apName(c, st)).join('、')}」授权或调整级别`; return; }
       if (isNew) p.id = id; p.name = name; p.rank = $('#edRank').value;
       p.squad = $('#edSquad').value;
       const mhRaw = $('#edMaxMH').value.trim();
@@ -153,14 +157,14 @@
     st.pilots.forEach(p => { const k = C.isFO(p.rank) ? 'F' : 'C'; new Set([...(p.prefs || []), ...(p.leave || [])]).forEach(d => off[k][d]++); });
     const per = {}; sum.per.forEach(x => per[x.id] = x);
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
-    let h = `<div class="grid g2"><div class="panel"><h3>每日休息/请假人数 · 机长类 <small>不设每日上限（任意请假模式）</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.C[d], color: '#3ea6ff' })), { w: 620, h: 200 })}</div>
+    let h = `<div class="panel"><h3>同级别换班 <small>员工福利：同一级别人员之间单向转出或互换任务，系统自动校验休息/121.495(b)/工时/资质/搭配</small></h3><button class="btn primary" id="wfSwap">发起同级换班</button></div><div class="grid g2"><div class="panel"><h3>每日休息/请假人数 · 机长类 <small>不设每日上限（任意请假模式）</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.C[d], color: '#3ea6ff' })), { w: 620, h: 200 })}</div>
       <div class="panel"><h3>每日休息/请假人数 · 副驾驶 <small>上限 ${S.maxOffFO} 人/天</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.F[d], color: off.F[d] > S.maxOffFO ? '#ff5a6a' : '#2ecc8f' })), { w: 620, h: 200, lines: [{ v: S.maxOffFO, label: '上限', color: '#ff5a6a' }] })}</div></div>
       <div class="panel"><h3>意向休息日申报 <small>每人可申报 2 个意向休息日（排班前提交）；满足率 <b class="okc">${(sum.prefRate * 100).toFixed(1)}%</b>（${sum.prefOK}/${sum.prefT}）</small></h3>
       <div class="scroll"><table><tr><th>员工号</th><th>姓名</th><th>级别</th><th>意向休息日 1</th><th>意向休息日 2</th><th>请假日</th><th>满足情况</th></tr>
       ${st.pilots.map(p => { const opts = v => `<option value="">—</option>` + days.map(d => `<option ${v === d ? 'selected' : ''} value="${d}">${dateOf(d)} 周${WK[dow(d)]}</option>`).join('');
         const x = per[p.id]; return `<tr><td>${p.id}</td><td>${esc(p.name)}</td><td>${pill(p.rank)}</td>${[0, 1].map(i => `<td><select data-pref="${p.id}" data-i="${i}">${opts((p.prefs || [])[i])}</select></td>`).join('')}
         <td class="mut">${(p.leave || []).join(',') || '—'}</td><td>${x.prefTotal ? (x.prefOK === x.prefTotal ? '<span class="okc">✔ 全部满足</span>' : `<span class="warnc">${x.prefOK}/${x.prefTotal}</span>`) : '—'}</td></tr>`; }).join('')}</table></div></div>`;
-    $('#main').innerHTML = h;
+    $('#main').innerHTML = h; if ($('#wfSwap')) $('#wfSwap').onclick = () => { const top = st.pilots.slice().sort((a, b) => (sum.per.find(x => x.id === b.id) || {}).hours - (sum.per.find(x => x.id === a.id) || {}).hours)[0]; openSwap(top.id); };
     document.querySelectorAll('[data-pref]').forEach(sel => sel.onchange = () => {
       const p = st.pilots.find(x => x.id === sel.dataset.pref); const i = +sel.dataset.i; const v = sel.value ? +sel.value : null;
       const prefs = (p.prefs || []).slice(); if (v) { const k = C.isFO(p.rank) ? 'F' : 'C'; const lim = k === 'F' ? S.maxOffFO : S.maxOffCapt;
@@ -169,3 +173,43 @@
   }
 
 
+
+  // ---------------- 同级别换班（员工福利） ----------------
+  // openSwap(甲员工号, 预选任务号?)：选同级别乙 → 勾选双方要交换的任务（单向或互换）→ 预览校验（休息/121.495(b)/工时上限/资质/搭配）→ 确认写入并全局同步
+  function openSwap(aId, prId) {
+    const pmap = pm(); let A = pmap[aId] || st.pilots[0]; let bId = null; const selA = new Set(prId ? [prId] : []), selB = new Set(); let plan = null;
+    const schedOf = id => st.pairings.filter(p => Object.values(p.crew).includes(id)).sort((x, y) => x.start - y.start);
+    const prLine = (pr, id) => { const s = ['C', 'F', 'T'].find(k => pr.crew[k] === id); return `${pr.id} · ${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''} · ${C.SLOT_NAME[s] || s} · ${C.pairingHours(pr).toFixed(1)}h · ${esc([pr.legs[0].from, ...pr.legs.map(l => l.to)].map(c => C.apName(c, st)).filter((x, i, a) => a.indexOf(x) === i).slice(0, 4).join('-'))}`; };
+    const idx = C.buildIndex(st);
+    const draw = () => {
+      const peers = st.pilots.filter(p => p.rank === A.rank && p.id !== A.id).sort((x, y) => idx.hours[x.id] - idx.hours[y.id]);
+      if (bId && !peers.some(p => p.id === bId)) bId = null;
+      const B = bId && pmap[bId];
+      const list = (id, sel, cls) => schedOf(id).map(pr => `<label class="swrow"><input type="checkbox" class="${cls}" value="${pr.id}" ${sel.has(pr.id) ? 'checked' : ''}> ${prLine(pr, id)}</label>`).join('') || '<div class="mut">本月无任务</div>';
+      const pv = plan ? `<div class="swpv ${plan.ok ? 'ok' : 'bad'}"><b>${plan.ok ? '✔ 可换班' : '✖ 不可换班'}</b>
+          ${plan.issues.map(x => `<div class="red">· ${esc(x)}</div>`).join('')}
+          ${plan.newHard.map(v => `<div class="red">· 新增硬违规：${esc(v.msg)}</div>`).join('')}
+          ${plan.newSoft.map(v => `<div class="warnc">· 软提示：${esc(v.msg)}</div>`).join('')}
+          ${plan.resolved.length ? `<div class="okc">· 消除 ${plan.resolved.length} 项：${plan.resolved.map(v => esc(v.type)).join('、')}</div>` : ''}
+          ${plan.moves.length ? `<table style="margin-top:6px"><tr><th>人员</th><th>换班前</th><th>换班后</th></tr>${[plan.a, plan.b].map(id => `<tr><td>${esc(pmap[id].name)} ${pill(pmap[id].rank)}</td><td>${plan.hours[id][0].toFixed(1)}h</td><td><b>${plan.hours[id][1].toFixed(1)}h</b></td></tr>`).join('')}</table>
+          <div class="mut">${plan.moves.map(m => `${m.pairing} ${C.SLOT_NAME[m.slot] || m.slot}：${esc(pmap[m.from].name)} → ${esc(pmap[m.to].name)}`).join('；')}</div>` : ''}</div>` : '';
+      $('#modalBox').innerHTML = `<div class="flex"><h3 style="margin:0">同级别换班 <small>员工福利 · 仅限同一级别；可单向转出或互换</small></h3><button class="btn" style="margin-left:auto" id="swClose">关闭</button></div>
+        <div class="grid g2" style="margin-top:10px">
+          <div><label class="lab">甲方</label><select id="swA">${st.pilots.slice().sort((x, y) => x.rank.localeCompare(y.rank) || x.id.localeCompare(y.id)).map(p => `<option value="${p.id}" ${p.id === A.id ? 'selected' : ''}>${esc(p.name)} · ${p.rank} · ${idx.hours[p.id].toFixed(1)}h</option>`).join('')}</select>
+            <div class="mut" style="margin:6px 0 2px">勾选：甲 → 乙 的任务</div><div class="swlist">${list(A.id, selA, 'swa')}</div></div>
+          <div><label class="lab">乙方（同级别 ${A.rank}，按工时升序）</label><select id="swB"><option value="">— 选择 —</option>${peers.map(p => `<option value="${p.id}" ${p.id === bId ? 'selected' : ''}>${esc(p.name)} · ${idx.hours[p.id].toFixed(1)}h${p.squad ? ' · ' + esc(p.squad) : ''}</option>`).join('')}</select>
+            <div class="mut" style="margin:6px 0 2px">勾选：乙 → 甲 的任务（不勾即单向）</div><div class="swlist">${B ? list(B.id, selB, 'swb') : '<div class="mut">先选乙方</div>'}</div></div>
+        </div>${pv}
+        <div class="flex" style="margin-top:12px;gap:8px"><button class="btn" id="swPrev" ${bId ? '' : 'disabled'}>预览校验</button><button class="btn primary" id="swApply" ${plan && plan.ok ? '' : 'disabled'}>确认换班</button></div>`;
+      $('#modal').classList.remove('hidden');
+      $('#swClose').onclick = () => $('#modal').classList.add('hidden');
+      $('#swA').onchange = e => { A = pmap[e.target.value]; selA.clear(); selB.clear(); plan = null; draw(); };
+      $('#swB').onchange = e => { bId = e.target.value || null; selB.clear(); plan = null; draw(); };
+      document.querySelectorAll('.swa').forEach(c => c.onchange = () => { c.checked ? selA.add(c.value) : selA.delete(c.value); plan = null; draw(); });
+      document.querySelectorAll('.swb').forEach(c => c.onchange = () => { c.checked ? selB.add(c.value) : selB.delete(c.value); plan = null; draw(); });
+      $('#swPrev').onclick = () => { plan = C.swapPreview(st, A.id, bId, [...selA], [...selB]); draw(); };
+      $('#swApply').onclick = () => { if (!plan || !plan.ok) return; C.applySwap(st, plan, '同级换班'); $('#modal').classList.add('hidden');
+        try { leaveOpts = null; leaveHoles = null; dutyOpts = null; } catch (e) {} refresh(); toast(`✔ 已换班：${esc(pmap[plan.a].name)} ⇄ ${esc(pmap[plan.b].name)}（${plan.moves.length} 个任务）`); };
+    };
+    draw();
+  }

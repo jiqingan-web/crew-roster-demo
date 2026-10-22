@@ -44,9 +44,9 @@
         const isSampleish = s.sample === true;
         // 用户改过人员（新增/删除/编辑）后不再按人数判旧，只在 sampleSchema 真正升级时重置
         const edited = !!s.pilotsEdited;
-        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 15 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 16 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 15;
+          || !s.sampleSchema || s.sampleSchema < 16;
         if (isSampleish && stale) {
           reset(false);
           toast('示例数据已升级（整月演示补全 + 导出），已自动重置');
