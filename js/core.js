@@ -166,7 +166,7 @@
     const h = (((reportMin % DAY) + DAY) % DAY) / 60; const r = CCAR121.tableA.find(x => h >= x.from && h < x.to) || CCAR121.tableA[2]; return r.h * 60;
   }
   function defaultSettings() {
-    return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 4, maxOffFO: 7,
+    return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, releaseMin: 30, honorPrefs: true,
       standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.45, softTargetMin: 40, softTargetMax: 60,
       opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
@@ -190,6 +190,7 @@
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
       if (S.demoHoles == null) S.demoHoles = 4;
+      if (S.maxOffCapt != null && S.maxOffCapt <= 4) S.maxOffCapt = 999; // 取消机长类每日休息上限
     }
     return S;
   }
@@ -973,18 +974,18 @@
     const cs = crewPilots.filter(Boolean);
     if (cs.length < 3) return null; // 不完整机组不做组合判定
     // 新机长执飞须组内有教员（教员可任执飞座之一）；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
-    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '[RE12-新机长] 新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
-    if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '[RE12-机组] 机组无机长';
+    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '[CR-20] 新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
+    if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '[CR-05] 机组无机长';
     const xr = extraCrewIssue(p, cs, st); if (xr) return xr;
     for (const leg of p.legs) {
       let ok = false;
       for (let i = 0; i < 3 && !ok; i++) for (let j = 0; j < 3 && !ok; j++) if (i !== j && legSeatedOK(cs[i], cs[j], leg, st)) ok = true;
       if (!ok) { const c = [leg.from, leg.to].find(x => isSpecial(x, st));
         const ru = c && sarOf(apCat(c, st));
-        return `[${ru ? 'RE12-6/17章 special_airport_rules.' + ru.key : c ? 'RE12-6 特殊机场' : 'RE12-3 cruise_pairing_matrix'}] D${leg.d} ${leg.flt} ${apName(leg.from, st)}-${apName(leg.to, st)}：无满足${c ? '特殊机场(' + apName(c, st) + ')授权/' : ''}座位搭配规则的左右座组合`; }
+        return `[${ru ? 'CR-06/07/08·' + ru.key : c ? 'CR-特殊机场' : 'CR-01'}] D${leg.d} ${leg.flt} ${apName(leg.from, st)}-${apName(leg.to, st)}：无满足${c ? '特殊机场(' + apName(c, st) + ')授权/' : ''}座位搭配规则的左右座组合`; }
     }
     // F1 只能与教员在右座；F2 须有教员
-    if (cs.some(x => x.rank === 'F1' || x.rank === 'F2') && !cs.some(x => isInstr(x.rank))) return '[RE12-操作 F1/F2] F1/F2 须与教员同组';
+    if (cs.some(x => x.rank === 'F1' || x.rank === 'F2') && !cs.some(x => isInstr(x.rank))) return '[CR-19] F1/F2 须与教员同组';
     return null;
   }
   // 配置驱动的组级硬规则：搭配限制表 / FO-FO 矩阵 / 高高原双机长 / 体检特许 / 年龄（有数据才生效）
@@ -1014,7 +1015,7 @@
     const sr = RC && RC.senior_pilot_rule;
     if (sr && sr.enabled && EO.senior_pilot_rule_active) { const sen = cs.find(q => isCaptClass(q.rank) && ageOf(q) != null && ageOf(q) >= sr.age_threshold);
       if (sen) { const mn = fNum(isInstr(sen.rank) ? sr.instructor_min_fo_level : sr.captain_min_fo_level); const lo = fos.find(f => RANK_VAL[f.rank] < mn);
-        if (lo) return `[RE12-5.10 senior_pilot_rule] ${sen.name}(${ageOf(sen)}岁) 带队须搭配 F${mn}+，${lo.name} 为 ${lo.rank}`; } }
+        if (lo) return `[CR-12] ${sen.name}(${ageOf(sen)}岁) 带队须搭配 F${mn}+，${lo.name} 为 ${lo.rank}`; } }
     return null;
   }
   // 搭配限制表导入：rows = [[人员A, 人员B, 限制类型], ...] 或 CSV 文本；按员工号或姓名匹配
@@ -1035,29 +1036,93 @@
     const anySQ = !!(st && st.pilots && st.pilots.some(p => p.health && p.health.specialQualified));
     const nR = ((st && st.restrictions) || []).length; const PR = (RC && RC.plateau_airport_rules) || {};
     const ageSt = anyAge ? '生效' : '待年龄数据';
+    // 自有规则编号 CR-xx；legacyId 仅供引擎内部/旧文案映射，界面不展示 YAML 键名
     const R = [
-      { id: 'cruise_pairing_matrix', src: 'RE12 第三节', kind: '硬', status: '生效', desc: 'US/J0/J1→右座≥F4；J2/J3→≥F3；TL/TB/TC→F1起（右座为机长类恒可）', impl: 'seatOK / legSeatedOK' },
-      { id: 'captain_levels.excluded_from_roster', src: 'RE12', kind: '硬', status: '生效', desc: 'SPIC 不作为责任机长（左座）', impl: 'seatOK' },
-      { id: 'fo_combination_matrix.allow', src: 'RE12', kind: '硬', status: '生效', desc: '两名副驾驶 low_low(F1–F3 + F1–F3) 禁止', impl: 'extraCrewIssue' },
-      { id: 'fo_combination_matrix.preference_score', src: 'RE12', kind: '软', status: '生效', desc: Object.entries((RC && RC.fo_combination_matrix.preference_score) || {}).map(([k, v]) => k + ' ' + v).join(' · '), impl: '自动排班评分' },
-      { id: 'three_person_crew', src: 'RE12', kind: '硬', status: '生效', desc: '第三成员不上座、免座位矩阵，最低 F1；观察员任意级别（含机长）；仍须资质/体检/限制表', impl: 'crewIssue（任两人可成上座对）' },
-      { id: 'special_airport_rules.LXA', src: 'RE12 第六节 + 手册17.1.3', kind: '硬', status: EO.lxa_double_captain !== false ? '生效（双机长）' : '生效（F6 近似）', desc: '拉萨：左座 J3/TL/TB/TC，右座机长 ≥J3（双机长）+ 第三人副驾驶；两上座均需拉萨资质', impl: 'catOK + extraCrewIssue' },
-      { id: 'special_airport_rules.LJG', src: 'RE12 第六节', kind: '硬', status: '生效', desc: '丽江/西双版纳/西昌/西宁/大连：机长 J2+；J2/J3→F6+，TL+→F5+；两上座均需资质', impl: 'catOK' },
-      { id: 'special_airport_rules.KMG', src: 'RE12 第六节 / 手册17章', kind: '硬', status: '生效', desc: '昆明（一般高原）：机长 J2+；J2/J3→F5+，TL+→F4+；两上座均需资质', impl: 'catOK' },
-      { id: 'airport_category_list', src: '资质规定 / 飞行技术管理手册', kind: '展示', status: '生效', desc: '一类(高高原)/二类/三类/四类/复杂 标签；不可跳级（示例资质按此补全）', impl: 'apClass / 界面标签' },
-      { id: 'plateau_airport_rules.crew_requirements', src: '手册 17.1.3(2)(5)', kind: '硬', status: '生效', desc: '高高原至少 2 名机长 + 1 名副驾驶；机长起降', impl: 'extraCrewIssue' },
-      { id: 'plateau_airport_rules.age_limits', src: '手册 17.1.3(2)(3)(4)', kind: '硬', status: ageSt, desc: `≥${PR.age_limits && PR.age_limits.high_plateau_max_age} 岁不进高高原；双机长年龄和 <${PR.age_limits && PR.age_limits.captain_pair_age_sum_max}`, impl: 'extraCrewIssue（无年龄数据不生效）' },
-      { id: 'senior_pilot_rule', src: 'RE12 第五节.10', kind: '硬', status: !EO.senior_pilot_rule_active ? '停用（用户指示）· 待年龄数据' : ageSt, desc: '58 岁以上机长带队搭配 F6+（教员 F5+）', impl: 'extraCrewIssue（engine_options.senior_pilot_rule_active）' },
-      { id: 'medical_standards.special_qualified_excluded', src: '手册 17.1.4', kind: '硬', status: anySQ ? '生效' : '生效（暂无特许标记人员）', desc: '体检特许合格人员不进高高原（人员健康标记 specialQualified）', impl: 'extraCrewIssue' },
-      { id: 'restriction_table_schema', src: '公司搭配限制表', kind: '硬', status: nR ? `生效（${nR} 对）` : '生效（未导入）', desc: '人员A/人员B/限制类型(不可同机) → 不可同组', impl: 'extraCrewIssue / 导入按钮' },
-      { id: 'experience_requirements', src: '手册 17.1.3(6)', kind: '展示', status: '仅展示（无经历小时数据）', desc: Object.entries(PR.experience_requirements || {}).map(([k, v]) => k + '=' + v).join(' · '), impl: '规则库' },
-      { id: 'medical_standards', src: '手册 17.1.4', kind: '展示', status: '仅展示', desc: '心率 ' + ((PR.medical_standards || {}).preflight_heart_rate_min) + '–' + ((PR.medical_standards || {}).preflight_heart_rate_max) + '；血氧 非高原≥' + ((PR.medical_standards || {}).preflight_spo2_non_plateau) + '% 高原≥' + ((PR.medical_standards || {}).preflight_spo2_plateau) + '%；禁酒 ' + ((PR.medical_standards || {}).alcohol_banned_hours) + 'h', impl: '规则库' },
-      { id: 'arj21_restriction', src: '手册17章 总经理声明', kind: '展示', status: '仅展示（本演示无 ARJ21 高高原航线）', desc: ((PR.arj21_restriction || {}).aircraft_regs || []).join('/') + ' 仅 ' + ((PR.arj21_restriction || {}).route_only || ''), impl: '规则库' },
-      { id: 'operating_rules_reference', src: 'RE12 操作级', kind: '展示', status: '仅展示（操作级，非排班约束）', desc: ((RC && RC.operating_rules_reference) || []).join('；'), impl: '规则库' },
-      { id: 'RE12-操作 F1/F2', src: 'RE12（既有引擎规则）', kind: '硬', status: '生效', desc: 'F1/F2 须与教员同组', impl: 'crewIssue' },
-      { id: 'RE12-新机长', src: 'RE12（既有引擎规则）', kind: '硬', status: '生效', desc: '新机长执飞须有 TL+ 教员同组', impl: 'crewIssue' },
+      { id: 'CR-01', cat: '座位搭配', kind: '硬', status: '生效', legacyId: 'cruise_pairing_matrix',
+        title: '巡航座位最低级别', params: 'US/J0/J1→右座≥F4；J2/J3→≥F3；教员 TL/TB/TC→右座≥F1',
+        desc: '责任机长（左座）与上座副驾驶的级别配对下限。右座若同为机长类则不受副驾驶下限约束。',
+        source: 'CCAR-121 R8 机组配备原则 / 公司机型操作与搭配规定', example: 'US 机长不得搭配 F3 及以下上座副驾驶。' },
+      { id: 'CR-02', cat: '座位搭配', kind: '硬', status: '生效', legacyId: 'captain_levels.excluded_from_roster',
+        title: '在训机长不上左座', params: 'SPIC 禁止作为责任机长',
+        desc: 'SPIC 为在训阶段，不得担任本任务责任机长（左座）。',
+        source: '公司机型操作与搭配规定', example: 'SPIC 可任观察员，不可任机长位。' },
+      { id: 'CR-03', cat: '座位搭配', kind: '硬', status: '生效', legacyId: 'fo_combination_matrix.allow',
+        title: '双副驾驶禁止低低搭配', params: 'low×low（F1–F3 与 F1–F3）禁止',
+        desc: '两名副驾驶同组时，不允许双方同属低级别组。',
+        source: '公司机型操作与搭配规定', example: 'F2+F3 同组不合规；F2+F5 合规。' },
+      { id: 'CR-04', cat: '座位搭配', kind: '软', status: '生效', legacyId: 'fo_combination_matrix.preference_score',
+        title: '副驾驶搭配偏好分', params: Object.entries((RC && RC.fo_combination_matrix && RC.fo_combination_matrix.preference_score) || {}).map(([k, v]) => k + '=' + v).join(' · ') || '见配置',
+        desc: '自动排班时对副驾驶级别组合打分，优先较均衡的搭配。',
+        source: '公司机型操作与搭配规定（软约束）', example: 'low_mid 得分高于 mid_mid。' },
+      { id: 'CR-05', cat: '机组构成', kind: '硬', status: '生效', legacyId: 'three_person_crew',
+        title: '三人制第三人不占上座矩阵', params: '机组=1 机长 + 2 副驾驶；第三人最低 F1',
+        desc: '满足上座双人规则后，第三人（观察员）不参与左右座矩阵；仍须资质、体检与搭配限制。',
+        source: '公司运行政策 · 三人制', example: '机长+F5 已合规上座时，第三人可为 F1。' },
+      { id: 'CR-06', cat: '特殊机场', kind: '硬', status: EO.lxa_double_captain !== false ? '生效（双机长）' : '生效',
+        legacyId: 'special_airport_rules.LXA', title: '拉萨（高高原）双机长',
+        params: '左座 J3/教员；右座机长≥J3；第三人副驾驶；两上座持拉萨资质',
+        desc: '飞经拉萨时须双机长制，且上座两人持对应机场资质。',
+        source: 'CCAR-121 R8 高原运行 / 公司手册高原与特殊机场章节', example: 'J3+J3+F7 合规；单机长+两副驾驶不合规。' },
+      { id: 'CR-07', cat: '特殊机场', kind: '硬', status: '生效', legacyId: 'special_airport_rules.LJG',
+        title: '高原/复杂机场（丽江等）', params: '机长 J2+；J2/J3→FO≥F6，教员→FO≥F5；两上座持资质',
+        desc: '丽江、西双版纳、西昌、西宁、大连等机场的座位与资质要求。',
+        source: '公司手册高原与特殊机场章节', example: 'J2+F5 飞丽江不合规；J2+F6 合规。' },
+      { id: 'CR-08', cat: '特殊机场', kind: '硬', status: '生效', legacyId: 'special_airport_rules.KMG',
+        title: '一般高原（昆明等）', params: '机长 J2+；J2/J3→FO≥F5，教员→FO≥F4；两上座持资质',
+        desc: '昆明等一般高原机场的座位与资质要求。',
+        source: '公司手册高原与特殊机场章节', example: '教员+F4 飞昆明合规。' },
+      { id: 'CR-09', cat: '特殊机场', kind: '展示', status: '生效', legacyId: 'airport_category_list',
+        title: '机场类别标签', params: '一类高高原 / 二类 / 三类 / 四类 / 复杂',
+        desc: '用于界面展示与资质补全提示；授权校验以具体机场规则为准。',
+        source: '公司飞行技术/资质管理规定', example: '人员总览按类别列示授权列。' },
+      { id: 'CR-10', cat: '高高原', kind: '硬', status: '生效', legacyId: 'plateau_airport_rules.crew_requirements',
+        title: '高高原机组人数', params: '至少 2 名机长 + 1 名副驾驶',
+        desc: '高高原机场运行时机组须满足双机长配备。',
+        source: '公司运行手册高原机场章节', example: '拉萨任务不得仅 1 名机长。' },
+      { id: 'CR-11', cat: '高高原', kind: '硬', status: ageSt, legacyId: 'plateau_airport_rules.age_limits',
+        title: '高高原年龄限制', params: `单人≥${(PR.age_limits && PR.age_limits.high_plateau_max_age) || '—'} 岁禁飞；双机长年龄和 <${(PR.age_limits && PR.age_limits.captain_pair_age_sum_max) || '—'}`,
+        desc: '有年龄数据时生效；无年龄字段则本规则不触发。',
+        source: '公司运行手册高原机场章节', example: '两名 60 岁机长年龄和超限则不可同组飞高高原。' },
+      { id: 'CR-12', cat: '年龄', kind: '硬', status: !EO.senior_pilot_rule_active ? '停用' : ageSt, legacyId: 'senior_pilot_rule',
+        title: '资深机长带队副驾下限', params: '≥58 岁机长带队时副驾≥F6（教员带队≥F5）',
+        desc: '可由引擎选项关闭；需年龄数据。',
+        source: '公司机型操作与搭配规定', example: '60 岁机长 + F5（非教员任务）不合规。' },
+      { id: 'CR-13', cat: '健康', kind: '硬', status: anySQ ? '生效' : '生效（暂无特许人员）', legacyId: 'medical_standards.special_qualified_excluded',
+        title: '体检特许不进高高原', params: 'health.specialQualified = true 禁飞高高原',
+        desc: '体检特许合格标记人员不得进入高高原机场运行。',
+        source: '公司运行手册健康标准章节', example: '标记特许后不得排拉萨。' },
+      { id: 'CR-14', cat: '搭配限制', kind: '硬', status: nR ? `生效（${nR} 对）` : '生效（未导入）', legacyId: 'restriction_table_schema',
+        title: '人员不可同机表', params: '导入 CSV：人员A/人员B/不可同机',
+        desc: '公司搭配限制表中的人员对不可出现在同一任务机组。',
+        source: '公司搭配限制表', example: '导入后两人同组即硬违规。' },
+      { id: 'CR-15', cat: '经历', kind: '展示', status: '仅展示', legacyId: 'experience_requirements',
+        title: '经历小时参考', params: Object.entries(PR.experience_requirements || {}).map(([k, v]) => k + '=' + v).join(' · ') || '见配置',
+        desc: '手册经历要求摘要；本演示无个人经历小时台账，不自动校验。',
+        source: '公司运行手册', example: '—' },
+      { id: 'CR-16', cat: '健康', kind: '展示', status: '仅展示', legacyId: 'medical_standards',
+        title: '飞行前生理指标参考', params: '心率/血氧/禁酒时限见手册摘要',
+        desc: '供讲解；不接入自动排班硬校验。',
+        source: '公司运行手册健康标准章节', example: '—' },
+      { id: 'CR-17', cat: '机型', kind: '展示', status: '仅展示', legacyId: 'arj21_restriction',
+        title: '特定机型航线限制', params: ((PR.arj21_restriction || {}).aircraft_regs || []).join('/') || '—',
+        desc: '特定注册号仅限指定航线；本演示无对应航线。',
+        source: '公司运行手册', example: '—' },
+      { id: 'CR-18', cat: '操作参考', kind: '展示', status: '仅展示', legacyId: 'operating_rules_reference',
+        title: '操作级注意事项', params: '非排班硬约束',
+        desc: ((RC && RC.operating_rules_reference) || []).slice(0, 3).join('；') || '见配置',
+        source: '公司机型操作规定（参考）', example: '—' },
+      { id: 'CR-19', cat: '带飞', kind: '硬', status: '生效', legacyId: 'RE12-操作 F1/F2',
+        title: 'F1/F2 须与教员同组', params: '机组含 F1 或 F2 时须有 TL/TB/TC',
+        desc: '低级别副驾驶须由教员带飞同组。',
+        source: '公司机型操作与搭配规定', example: 'F1+J3+F5 无教员 → 不合规。' },
+      { id: 'CR-20', cat: '带飞', kind: '硬', status: '生效', legacyId: 'RE12-新机长',
+        title: '新机长须有教员同组', params: '新机长（含 SPIC/US/机长A/B 等）执飞须 TL+',
+        desc: '新机长担任机组成员时须有教员同组（观察员位级别不限）。',
+        source: '公司机型操作与搭配规定', example: '机长A 任机长位时须有 TL/TB/TC 同组。' },
     ];
-    return { meta: (RC && RC.meta) || null, sha: RC && RC._sha1, rules: R };
+    return { meta: Object.assign({}, (RC && RC.meta) || {}, { catalog: 'CR', note: '界面规则编号为 CR-xx，与引擎校验逻辑一一对应' }),
+      sha: RC && RC._sha1, rules: R,
+      legacyMap: Object.fromEntries(R.filter(x => x.legacyId).map(x => [x.legacyId, x.id])) };
   }
   // T=观察员：任意级别可上；RE12 座位规则只约束执飞双人座对
   const SLOT_NAME = { C: '机', F: '副', T: '观察' };

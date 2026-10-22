@@ -139,7 +139,7 @@
     st.pilots.forEach(p => { const k = C.isFO(p.rank) ? 'F' : 'C'; new Set([...(p.prefs || []), ...(p.leave || [])]).forEach(d => off[k][d]++); });
     const per = {}; sum.per.forEach(x => per[x.id] = x);
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
-    let h = `<div class="grid g2"><div class="panel"><h3>每日休息/请假人数 · 机长类 <small>上限 ${S.maxOffCapt} 人/天</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.C[d], color: off.C[d] > S.maxOffCapt ? '#ff5a6a' : '#3ea6ff' })), { w: 620, h: 200, lines: [{ v: S.maxOffCapt, label: '上限', color: '#ff5a6a' }] })}</div>
+    let h = `<div class="grid g2"><div class="panel"><h3>每日休息/请假人数 · 机长类 <small>不设每日上限（任意请假模式）</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.C[d], color: '#3ea6ff' })), { w: 620, h: 200 })}</div>
       <div class="panel"><h3>每日休息/请假人数 · 副驾驶 <small>上限 ${S.maxOffFO} 人/天</small></h3>${CH.bars(days.map(d => ({ label: String(d), value: off.F[d], color: off.F[d] > S.maxOffFO ? '#ff5a6a' : '#2ecc8f' })), { w: 620, h: 200, lines: [{ v: S.maxOffFO, label: '上限', color: '#ff5a6a' }] })}</div></div>
       <div class="panel"><h3>意向休息日申报 <small>每人可申报 2 个意向休息日（排班前提交）；满足率 <b class="okc">${(sum.prefRate * 100).toFixed(1)}%</b>（${sum.prefOK}/${sum.prefT}）</small></h3>
       <div class="scroll"><table><tr><th>员工号</th><th>姓名</th><th>级别</th><th>意向休息日 1</th><th>意向休息日 2</th><th>请假日</th><th>满足情况</th></tr>

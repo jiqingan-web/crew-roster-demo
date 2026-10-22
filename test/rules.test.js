@@ -47,8 +47,8 @@ const rs = C.parseRestrictions('人员A,人员B,限制类型\nc,a,不可同机\n
 chk('restriction CSV parse', rs.pairs.length === 2 && rs.pairs[1].type === '不可同机', JSON.stringify(rs));
 // catalog
 const cat = C.rulesCatalog({ pilots: [P('a', 'F3')] });
-chk('catalog age pending', cat.rules.find(r => r.id === 'plateau_airport_rules.age_limits').status === '待年龄数据');
-chk('catalog senior disabled', /停用/.test(cat.rules.find(r => r.id === 'senior_pilot_rule').status));
+chk('catalog age pending', cat.rules.find(r => r.id === 'CR-11' || r.legacyId === 'plateau_airport_rules.age_limits').status === '待年龄数据');
+chk('catalog senior disabled', /停用/.test(cat.rules.find(r => r.id === 'CR-12' || r.legacyId === 'senior_pilot_rule').status));
 // end-to-end: sample autofill produces no rule violations
 for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.autoFill(s); const v = C.validate(s);
   chk('lite ' + seed + ' no rule hard', !v.some(x => x.level === 'hard' && /搭配|机组|FO|高高原|特殊/.test(x.type)));
