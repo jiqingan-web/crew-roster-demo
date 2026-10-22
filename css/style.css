@@ -479,3 +479,9 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 .candrow .cand.on{border-color:var(--acc);box-shadow:0 0 0 1px rgba(77,184,255,.35)}
 #lvP{min-width:280px;max-width:420px;flex:1}
 .ops-spark{display:block;margin-top:4px;background:#0d1728;border-radius:6px;padding:2px}
+
+.gbg div.tr.sim{background:#2a2f6b;box-shadow:inset 0 0 0 1px #8a8ff0}
+.gbg div.idle{display:flex;align-items:flex-end;justify-content:center;background:#3a3f46;outline:1px dashed #9aa4b0;outline-offset:-2px;opacity:.85}
+.gbg div.idle.ctl{background:#3d3a20;outline-color:#c9b458}
+.gbg div.lv.lv-rest{background:repeating-linear-gradient(45deg,#2d6b6b,#2d6b6b 3px,transparent 3px,transparent 6px)}
+.gbg .idle span,.gbg .lv span{font-size:10px;color:#dfe6ee;padding-left:2px}

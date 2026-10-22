@@ -416,7 +416,7 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, sampleSchema: 9, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 11, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -485,7 +485,7 @@
     }
     chosen.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     chosen.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
-    return { version: 1, sample: true, lite: true, sampleSchema: 10, settings: S, pilots, pairings: chosen, fills: [],
+    return { version: 1, sample: true, lite: true, sampleSchema: 11, settings: S, pilots, pairings: chosen, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [], sampleMeta: SAMPLE_META };
   }
 
@@ -690,7 +690,104 @@
     return pairings;
   }
 
+
+  // ---- 按真实七中队排班形态生成任务：日=基地→…→同日回基地（府/蓉），少数外站过夜链；去程单号/回程双号 ----
+  function buildPatternPairings(r, opt) {
+    const meta = SAMPLE_META || {};
+    const BASE = ['ZUTF', 'ZUUU'];
+    const isBase = c => c === 'ZUTF' || c === 'ZUUU';
+    const regsAb = (meta.sampleRegsAirbus || []).slice();
+    const regsC9 = (meta.sampleRegsC909 || []).slice();
+    const dom = Object.keys(AIRPORTS).filter(c => !isBase(c) && /^Z/.test(c) && AIRPORTS[c] && AIRPORTS[c].length >= 3);
+    const near = dom.filter(c => { const b = blockMin("ZUTF", c); return b >= 55 && b <= 205; });
+    const normal = near.filter(c => (AIRPORTS[c][3] || 'NONE') === 'NONE');
+    const special = near.filter(c => (AIRPORTS[c][3] || 'NONE') !== 'NONE').concat(dom.filter(c => apCat(c) === 'LHASA'));
+    const pick = a => a[Math.floor(r() * a.length)];
+    let spP = 0.03; const pickDest = () => (r() < spP && special.length ? pick(special) : pick(normal));
+    let fno = 2201 + Math.floor(r() * 40) * 2;
+    const nextPair = () => { fno += 2 + 2 * Math.floor(r() * 6); if (fno > 2997) fno = 2201 + Math.floor(r() * 50) * 2; return fno; }; // 去程单号=fno-? 用 odd
+    const flt = n => 'EU' + String(n).padStart(4, '0');
+    const T = (dayAbs, min) => (dayAbs - 1) * DAY + min;
+    const legOf = (d, from, to, dep, ac, reg, no) => { const bm = blockMin(from, to); return { d, flt: flt(no), from, to, dep, arr: dep + bm, ac, reg }; };
+    // 单日：base→X→base 或 base→X→Y→base；late 时段起飞较晚
+    function dayRound(d, dayAbs, base, ac, reg, slot) {
+      let dep = T(dayAbs, slot ? 11 * 60 + 30 + Math.floor(r() * 60) : 7 * 60 + 20 + Math.floor(r() * 100));
+      const legs = []; const odd = nextPair(); const n = odd + 1;
+      const X = pickDest();
+      if (r() < 0.22) { // 三段 base-X-Y-base（可从府出、蓉回）
+        let Y = pickDest(); let tries = 0; while ((Y === X || blockMin(X, Y) > 150) && tries++ < 20) Y = pickDest();
+        if (Y !== X && blockMin(base, X) + blockMin(X, Y) + blockMin(Y, base) <= 420) {
+          const a = legOf(d, base, X, dep, ac, reg, odd); legs.push(a);
+          const b = legOf(d, X, Y, a.arr + 50, ac, reg, odd); legs.push(b);
+          legs.push(legOf(d, Y, r() < 0.25 ? (base === 'ZUTF' ? 'ZUUU' : 'ZUTF') : base, b.arr + 50, ac, reg, n));
+          return legs;
+        }
+      }
+      const a = legOf(d, base, X, dep, ac, reg, odd); legs.push(a);
+      legs.push(legOf(d, X, base, a.arr + 50, ac, reg, n));
+      return legs;
+    }
+    const pairings = [];
+    const regs = regsAb.map(g => [g, 'A320']).concat(regsC9.map(g => [g, 'C909']));
+    regs.forEach(([reg, ac], ri) => {
+      spP = (ri % 4 === 3) ? 0.7 : 0.01; let longDone = false; // 高原/特殊机场集中在少数机号（与原周模板一致）
+      const slots = (ri % 5 === 0) ? [0] : [0, 1];
+      slots.forEach(K => {
+        let day = 1, nChunk = 0;
+        while (day <= DAYS) {
+          const len = Math.min(DAYS - day + 1, nChunk === 0 ? 2 + ((ri + K) % 2) : ((nChunk + K + ri) % 4 === 3) ? 2 : 3); nChunk++; // 首块错相，避免各机号同日换块
+          const legs = [];
+          // 罕见：外站驻点长块（如沈阳驻点 4 日：去程 1 段、外站往返 2 日、回程 1 段；固定带飞对）
+          if (K === 0 && ri % 7 === 2 && !longDone && day >= 9 && len === 3 && AIRPORTS.ZYTX) {
+            // 罕见：外站驻点块（如沈阳驻点：D1 府→沈 过夜，D2 沈→X→沈 过夜，D3 沈→府；固定带飞对）
+            longDone = true; const O = 'ZYTX', base = 'ZUTF'; const n0 = nextPair();
+            legs.push(legOf(1, base, O, T(day, 9 * 60), ac, reg, n0));
+            let X = pick(normal); let tr = 0; while ((blockMin(O, X) > 150 || blockMin(O, X) < 50) && tr++ < 60) X = pick(normal); const m = nextPair();
+            const o = legOf(2, O, X, T(day + 1, 9 * 60 + 30), ac, reg, m); legs.push(o, legOf(2, X, O, o.arr + 50, ac, reg, m + 1));
+            legs.push(legOf(3, O, base, T(day + 2, 10 * 60), ac, reg, n0 + 1));
+            pairings.push({ id: 'PR', start: day, ndays: 3, ac, legs, crew: { C: null, F: null, T: null }, demoSynth: false, dutySlot: K, demoFill: true, layover: true, outstationBase: O });
+            day += 3; continue;
+          }
+          const lay = len >= 2 && r() < 0.5; // 外站过夜链（真实约 40% 飞行日）
+          const layAt = lay && len === 3 && r() < 0.5 ? 1 : 0;
+          let k = 0;
+          while (k < len) {
+            const d = k + 1, dayAbs = day + k;
+            const base = r() < 0.55 ? 'ZUTF' : 'ZUUU';
+            if (lay && k === layAt) {
+              // D_k: base→X→Y(过夜)，晚班；D_k+1: Y→Z→base，次日中午起
+              const X = pickDest(); let Y = pickDest(); let tr = 0;
+              while ((Y === X || blockMin(X, Y) > 170 || blockMin(base, X) + blockMin(X, Y) > 360) && tr++ < 30) { Y = pickDest(); }
+              const n1 = nextPair();
+              const a = legOf(d, base, X, T(dayAbs, 12 * 60 + Math.floor(r() * 60)), ac, reg, n1);
+              const b = legOf(d, X, Y, a.arr + 50, ac, reg, n1);
+              legs.push(a, b);
+              const n2 = n1 + 1; const d2 = d + 1, dayAbs2 = dayAbs + 1;
+              const dep2 = Math.max(b.arr + 13 * 60, T(dayAbs2, 9 * 60 + 30));
+              const back = r() < 0.3 ? (base === 'ZUTF' ? 'ZUUU' : 'ZUTF') : base;
+              if (r() < 0.5 && blockMin(Y, X) + blockMin(X, back) <= 360) {
+                const c = legOf(d2, Y, X, dep2, ac, reg, n2); const e = legOf(d2, X, back, c.arr + 50, ac, reg, n2); legs.push(c, e);
+              } else legs.push(legOf(d2, Y, back, dep2, ac, reg, n2));
+              k += 2; continue;
+            }
+            dayRound(d, dayAbs, base, ac, reg, K).forEach(l => legs.push(l));
+            k++;
+          }
+          pairings.push({ id: 'PR', start: day, ndays: len, ac, legs, crew: { C: null, F: null, T: null }, demoSynth: false, dutySlot: K, demoFill: true, layover: lay });
+          day += len;
+        }
+      });
+    });
+    // 机号时间冲突：同机号同日两班按时段错开即可（早班≤13:30 落地；晚班 ≥13:30 起）
+    const maxP = opt.maxPairings || 1800;
+    pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
+    const out = pairings.slice(0, maxP);
+    out.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
+    return out;
+  }
+
   function buildPairingsFromWeek(r, opt) {
+    if (!opt || opt.legacy !== true) return buildPatternPairings(r, opt || {});
     const meta = SAMPLE_META || {};
     const abRegs = new Set(meta.sampleRegsAirbus || []);
     const c9Regs = new Set(meta.sampleRegsC909 || []);
@@ -2374,17 +2471,27 @@
       // 先拉起闲置（同职级），允许供体降至 25h
       Object.keys(by).forEach(rk => {
         const xs = by[rk]; if (xs.length < 2) return;
-        const idle = xs.filter(p => idx.hours[p.id] < 8).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        const LOW = 8; // 同职级低尾抬升（真实班表在岗者 ≥35h；含过夜链时低尾更易出现）
+        const idle = xs.filter(p => idx.hours[p.id] < LOW).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         const donors = xs.filter(p => idx.hours[p.id] >= 40).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
         for (const lo of idle) {
           let guard = 0;
-          while (idx.hours[lo.id] < 8 && guard++ < 6) {
+          while (idx.hours[lo.id] < LOW && guard++ < 6) {
             let got = false;
             for (const hi of donors) {
               if (tryMove(idx, hi, lo, 25)) { moved++; got = true; break; }
             }
             if (!got) break;
           }
+        }
+      });
+      // 高尾削峰：同职级 >64h（真实班表上限约 64h）者匀给 <45h 者
+      Object.keys(by).forEach(rk => {
+        const xs = by[rk]; if (xs.length < 2) return;
+        const hiS = xs.filter(p => idx.hours[p.id] > 60).sort((a, b) => idx.hours[b.id] - idx.hours[a.id]);
+        for (const hi of hiS) {
+          const los = xs.filter(p => idx.hours[p.id] < 50).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+          for (const lo of los) { if (idx.hours[hi.id] <= 60) break; if (tryMove(idx, hi, lo, 48)) moved++; }
         }
       });
       // 仍闲置：跨职级仅观察员位救援

@@ -42,9 +42,9 @@
         // 在 migratePilots 改写中队名之前检测旧示例（一大队等）
         const LEGACY = new Set(['一大队', '二大队', '三大队', '教学中队']);
         const isSampleish = s.sample === true;
-        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 10 || s.pilots.length !== 101) : (s.pilots.length < 500 || s.lite))
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 11 || s.pilots.length !== 101) : (s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 7;
+          || !s.sampleSchema || s.sampleSchema < 11;
         if (isSampleish && stale) {
           reset(false);
           toast('示例数据已升级（整月演示补全 + 导出），已自动重置');

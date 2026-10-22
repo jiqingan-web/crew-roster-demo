@@ -62,7 +62,7 @@ for (const seed of [20261101, 7, 42]) {
   }
   chk(seed + ' pairing continuity', contOk, contInfo);
 
-  chk(seed + ' schema10', st.sampleSchema === 10);
+  chk(seed + ' schema11', st.sampleSchema === 11);
   chk(seed + ' training 1-2', Math.min(...tr) >= 1 && Math.max(...tr) <= 2);
   const sb = st.pilots.map(p => ((st.standby || {})[p.id] || []).length);
   chk(seed + ' standby rare', Math.max(...sb) <= 1);
