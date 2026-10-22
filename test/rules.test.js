@@ -62,5 +62,12 @@ for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.auto
   const ix = C.buildIndex(s);
   const op = C.ftlCheckPerson(capt, mk5(false), s, ix, {}), dh = C.ftlCheckPerson(capt, mk5(true), s, ix, {});
   chk('121.495b day5 operating flagged', op.some(x => x.includes('第5日')), op.join('|'));
-  chk('121.495b day5 deadhead allowed', !dh.some(x => x.includes('第5日')), dh.join('|')); }
+  chk('121.495b day5 deadhead allowed', !dh.some(x => x.includes('第5日')), dh.join('|'));
+  // 第 5 日置位：合规但软提示
+  s.pairings.push(mk5(true)); s.pairings[4].crew.C = capt.id; const v5 = C.validate(s);
+  chk('day5 deadhead soft note', v5.some(v => v.type === '第5日置位' && v.level === 'soft') && !v5.some(v => v.level === 'hard' && /第5日/.test(v.msg)));
+  // 仅置位的日子不计入连续值勤日：D1-3 执飞 + D4 仅置位 + D5 执飞 → 不违规
+  s.pairings = s.pairings.slice(0, 3); s.pairings.push({ id: 'Q4', start: 4, ndays: 1, ac: 'A320', legs: [leg(4, 'ZUUU', 'ZBHH', 9, true)], crew: { C: capt.id, F: null, T: null } });
+  const ix2 = C.buildIndex(s); const r6 = C.ftlCheckPerson(capt, mk5(false), s, ix2, {});
+  chk('deadhead-only day not counted', !r6.some(x => x.includes('第5日')), r6.join('|')); }
 console.log(fail ? 'RULES FAIL ' + fail : 'RULES ALL OK'); process.exitCode = fail ? 1 : 0;

@@ -12,7 +12,7 @@
       <label class="flex"><input type="checkbox" id="demoAnom" ${S.demoAnomalies ? 'checked' : ''}> 自动填人后植入【演示异常】（默认关；开启时至多 1 项座位硬违规）</label>
       ${num('demoHoles', '自动填人后预留易补空洞数', '个（建议 3–5）')}
       <div class="note" style="margin-top:6px">空洞优先落在 1–2 天、无特殊机场的任务副驾位，便于现场「空洞换人」演示；不会故意留下大量 FTL 硬失败。</div>
-      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司手册 EU.COM 3.6.4 与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日历日后第5日不飞、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
+      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司手册 EU.COM 3.6.4 与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日（执飞或主备份；仅置位的日子不计）后第5日不得执飞（第5日置位合规，软提示尽量避免）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <h3 style="margin-top:16px">飞行值勤期（FDP）限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>

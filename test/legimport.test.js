@@ -24,6 +24,8 @@ let fail = 0; const chk = (n, ok, info) => { console.log('LEGIMP ' + n, ok ? 'OK
   if (fs.existsSync(f)) { const t0 = Date.now(); const x = await LI.readXlsx(ExcelJS, fs.readFileSync(f)); const r = LI.parseRows(x.rows, C, st, { allowUnknown: true });
     chk('backtest file 256 pairings', r.pairings.length === 256, LI.reportText(r.report).replace(/\n/g, ' | '));
     const s = C.generateLiteSample(20261101); LI.apply(s, r, 'replace', C); C.autoFill(s); const sm = C.summarize(s);
+    const seatHard = C.validate(s).filter(v => v.level === 'hard' && !['未满员', '日飞行时间超限', '执勤期超限'].includes(v.type));
+    chk('residual = empty seats only', seatHard.length === 0, seatHard.slice(0, 3).map(v => v.msg).join(' | '));
     chk('backtest fill runs', sm.full >= 248, `满员 ${sm.full}/${sm.total} hard ${sm.hard} ${Date.now() - t0}ms`);
     // 固有问题 + 空洞诊断 + 强制指派
     const ir = LI.intrinsicReport(r, C, st); const ib = ir.filter(x => x.blocking.length), iF = ir.filter(x => x.ftl.length);
