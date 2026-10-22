@@ -416,7 +416,7 @@
     ];
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
-    return { version: 1, sample: true, sampleSchema: 13, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 14, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -435,6 +435,22 @@
     return [['TC', 2], ['TB', 4], ['TL', 8], ['J3', 15], ['机长A', 2], ['机长B', 3], ['SPIC', 1], ['US', 1],
       ['F8', 1], ['F7', 16], ['F6', 12], ['F5', 5], ['F4', 15], ['F3', 15], ['F1', 1]];
   }
+
+  // ---------- 外中队候补飞行员（化名，非真实人员）：按七中队职级比例补充机长/副驾驶 ----------
+  function addReservePilots(st, nC, nF, seed) {
+    const r = rng(seed || 909); const own = st.pilots.filter(p => !p.reserve);
+    const SUR = '安柏常戴范方甘古韩郝贺洪华纪江金康柯孔雷黎廉梁林凌柳龙鲁陆罗吕马孟莫倪宁欧潘庞裴彭蒲齐秦邱任阮尚邵沈盛石舒宋苏谈汤唐陶田童万汪韦温文翁巫吴伍夏项萧谢辛熊徐许薛严颜晏燕阳姚叶易殷尹应于余俞虞袁岳云詹章甄钟周朱庄卓邹';
+    const GIV = '安邦博昌辰诚川丹东方飞峰钢冠光浩昊航和弘鸿华辉吉佳嘉建江杰金晋靖君凯康朗磊林霖龙鹏琦谦强清然锐森山尚晟树舒顺松涛腾天亭庭伟文翔骁晓欣新星旭轩阳一屹毅永宇羽元远岳越云泽哲振征志舟卓梓';
+    const used = new Set(st.pilots.map(p => p.name)); const nm = () => { for (let k = 0; k < 500; k++) { const s = SUR[Math.floor(r() * SUR.length)] + GIV[Math.floor(r() * GIV.length)] + (r() < 0.5 ? GIV[Math.floor(r() * GIV.length)] : ''); if (!used.has(s)) { used.add(s); return s; } } return '候补' + used.size; };
+    const capt = own.filter(p => isCaptClass(p.rank)), fo = own.filter(p => isFO(p.rank));
+    const out = []; let seq = (st.pilots.filter(p => p.reserve).length) + 1;
+    const mk = (tpl) => { const p = JSON.parse(JSON.stringify(tpl)); p.id = 'R9' + String(seq++).padStart(4, '0'); p.name = nm(); p.squad = '外中队候补·演示'; p.reserve = true; p.prefs = []; p.leave = []; p.health = defaultHealth(); delete p.traineeCapt; delete p.requalCapt; delete p.qualNotes; out.push(p); };
+    for (let i = 0; i < nC; i++) mk(capt[(i * 7 + 3) % capt.length]);
+    for (let i = 0; i < nF; i++) mk(fo[(i * 5 + 1) % fo.length]);
+    st.pilots.push(...out); return out;
+  }
+
+  const LITE_RESERVES = [20, 20];
   function generateLiteSample(seed, opt) {
     opt = opt || {};
     const r = rng(seed || 20261101);
@@ -475,7 +491,8 @@
     const byReg = {}; all.forEach(p => { const g = p.legs[0].reg; (byReg[g] = byReg[g] || []).push(p); });
     const spShare = g => { let a = 0, b = 0; byReg[g].forEach(p => { a += p.ndays; if (p.legs.some(l => isSpecial(l.from) || isSpecial(l.to))) b += p.ndays; }); return b / Math.max(1, a); };
     const regs = Object.keys(byReg).sort((x, y) => (spShare(x) > 0.6) - (spShare(y) > 0.6) || x.localeCompare(y));
-    const want = Math.round(pilots.length * (opt.dutyDays || 12.3) / 3 * (opt.load || 1));
+    const RESV = opt.reserves === false ? [0, 0] : (opt.reserves || LITE_RESERVES); // 候补按 ~90% 出勤折算进需求，保持余量约 20–30%
+    const want = Math.round((pilots.length + 0.9 * (RESV[0] + RESV[1])) * (opt.dutyDays || 12.3) / 3 * (opt.load || 1));
     const chosen = []; let pd = 0;
     for (const g of regs) {
       for (const p of byReg[g].sort((a, b) => a.start - b.start || (a.dutySlot || 0) - (b.dutySlot || 0))) {
@@ -485,8 +502,11 @@
     }
     chosen.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     chosen.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
-    return { version: 1, sample: true, lite: true, sampleSchema: 13, settings: S, pilots, pairings: chosen, fills: [],
+    const out = { version: 1, sample: true, lite: true, sampleSchema: 14, settings: S, pilots, pairings: chosen, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [], sampleMeta: SAMPLE_META };
+    // 外中队候补（化名）：按 9 月真实航段回测，+20 机长类 +20 副驾驶 → 0 供给性空缺、余量约 28%
+    const RES = opt.reserves === false ? [0, 0] : (opt.reserves || LITE_RESERVES); if (RES[0] || RES[1]) addReservePilots(out, RES[0], RES[1], 909);
+    return out;
   }
 
 
@@ -1307,6 +1327,11 @@
       for (const v of ivS) iv.push(v);
       if (!has48hRestBefore(iv, ivP[oi][0])) rs.push('144h内无连续48h休息(121.495/3.6.10)');
     }
+    // 1b) 每一主备份日开始前 144h 内同样须有连续 48h 休息（新增任务不得破坏已排备份）
+    if (extra) for (let si = 0; si < ivS.length; si++) {
+      const iv = []; ivD.forEach(a => a.forEach(v => iv.push(v))); ivS.forEach((v, k) => { if (k !== si) iv.push(v); });
+      if (!has48hRestBefore(iv, ivS[si][0])) { rs.push('主备份前144h内无连续48h休息(121.495/3.6.10)'); break; }
+    }
     // 2) 任一飞行日：若前 4 个日历日均为飞行值勤或主备份，则违规
     const flags = dutyDayFlags(p, st, idx, ex, extra);
     const flew = Array(DAYS + 2).fill(false);
@@ -1834,6 +1859,7 @@
     if (st.lite) { liteEqualize(st); rhythmRepair(st); repairFtl(st); liteEqualize(st); }
     progStage('trainingPairs');
     stickTrainingPairs(st);
+    repairCrewIssues(st); repairFtl(st); // 均衡/带飞调整后复核搭配矩阵与 FTL
     progStage('assignStandby');
     assignStandby(st);
     progStage('assignTraining');
@@ -3874,6 +3900,6 @@
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });

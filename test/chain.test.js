@@ -43,5 +43,5 @@ const rv = C.validate(lite).filter(v => v.type === '岗位级别不符'); if (rv
 if (!C.slotRankOK('F', 'TL', '机长A') || C.slotRankOK('F', 'TL', 'J3')) { bad++; console.log('slotRankOK TL-in-FO rule wrong'); }
 console.log('lite deadhead legs', lite.pairings.reduce((s, p) => s + p.legs.filter(l => l.dh).length, 0), 'long blocks', lp.length);
 const full = C.generateSample(20261101); check('full', full);
-if (lite.sampleSchema < 13 || full.sampleSchema < 13) { bad++; console.log('schema not bumped'); }
+if (lite.sampleSchema < 14 || full.sampleSchema < 13) { bad++; console.log('schema not bumped'); }
 console.log(bad ? 'FAIL ' + bad : 'chain OK'); process.exit(bad ? 1 : 0);

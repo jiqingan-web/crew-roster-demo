@@ -5,8 +5,8 @@ const med = a => { a = a.slice().sort((x, y) => x - y); return a[a.length >> 1];
 for (const seed of [20261101, 7, 42]) {
   const st = C.generateLiteSample(seed);
   const capt = st.pilots.filter(p => C.RANK_VAL[p.rank] >= 9 || C.NEW_CAPT.includes(p.rank) || C.INSTR.includes(p.rank) || p.rank === 'J3').length;
-  chk(seed + ' size', st.lite && st.pilots.length === 101 && [...new Set(st.pilots.map(p => p.squad))][0] === '七中队·演示', st.pilots.length + ' pilots');
-  chk(seed + ' mix', st.pilots.filter(p => C.INSTR.includes(p.rank)).length === 14 && st.pilots.filter(p => C.NEW_CAPT.includes(p.rank)).length === 7, '');
+  chk(seed + ' size', st.lite && st.pilots.filter(p => !p.reserve).length === 101 && st.pilots.filter(p => p.reserve).length === 40 && st.pilots.filter(p => p.reserve).every(p => p.squad === '外中队候补·演示') && [...new Set(st.pilots.map(p => p.squad))][0] === '七中队·演示', st.pilots.length + ' pilots');
+  { const own = st.pilots.filter(p => !p.reserve); chk(seed + ' mix', own.filter(p => C.INSTR.includes(p.rank)).length === 14 && own.filter(p => C.NEW_CAPT.includes(p.rank)).length === 7, ''); }
   chk(seed + ' demoFill', st.pairings.every(p => p.demoFill));
   const t = Date.now(); C.autoFill(st); C.leaveDemoHoles(st); const ms = Date.now() - t;
   chk(seed + ' speed<4s(node)', ms < 4000, ms + 'ms');
@@ -63,7 +63,7 @@ for (const seed of [20261101, 7, 42]) {
   }
   chk(seed + ' pairing continuity', contOk, contInfo);
 
-  chk(seed + ' schema13', st.sampleSchema === 13);
+  chk(seed + ' schema14', st.sampleSchema === 14);
   chk(seed + ' training 1-2', Math.min(...tr) >= 1 && Math.max(...tr) <= 2);
   const sb = st.pilots.map(p => ((st.standby || {})[p.id] || []).length);
   chk(seed + ' standby rare', Math.max(...sb) <= 1);
