@@ -111,10 +111,6 @@
         <div><label class="lab">中队</label><select id="edSquad">${squads.map(x => `<option ${x === p.squad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
         <div><label class="lab">体检到期日</label><input type="date" id="edMed" value="${esc(h.medExamExpiry || '')}"></div>
       </div>
-      <h3 style="margin-top:14px">帮扶标记</h3>
-      <div class="flex" style="flex-wrap:wrap;gap:12px">
-        <label><input type="checkbox" id="edBangfu" ${p.bangfu ? 'checked' : ''}> 帮扶对象（同航班至多一名）</label>
-      </div>
       <h3 style="margin-top:14px">健康 / 身体限制</h3>
       <div class="flex" style="flex-wrap:wrap;gap:12px">
         <label><input type="checkbox" id="edNoFly" ${h.noFly ? 'checked' : ''}> 暂时不适飞</label>
@@ -128,6 +124,11 @@
       </div>
       <div style="margin-top:8px"><label class="lab">血压相关备注</label><input id="edBp" style="width:100%" value="${esc(h.bpNote || '')}" placeholder="如：血压偏高随访、须带记录本"></div>
       <div style="margin-top:8px"><label class="lab">其他备注</label><input id="edNote" style="width:100%" value="${esc(h.note || '')}"></div>
+      <h3 style="margin-top:14px">帮扶对象</h3>
+      <div class="flex" style="flex-wrap:wrap;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--border,#3a424c);border-radius:8px;background:var(--panel2,#1a222c)">
+        <label style="font-weight:600;cursor:pointer"><input type="checkbox" id="edBangfu" ${p.bangfu ? 'checked' : ''}> 「帮扶对象」</label>
+        <span class="mut">同航班/任务机组至多一名；保存写入 p.bangfu</span>
+      </div>
       <h3 style="margin-top:14px">特殊机场授权 <small>点击切换</small></h3>
       <div class="authgrid" id="edAuth">${authList.map(c => `<button type="button" class="authtag ${(p.auth || []).includes(c) ? 'on' : ''} edA" data-c="${c}">${esc(C.apName(c, st))}<span class="mut"> ${c}</span></button>`).join('')}</div>
       <div class="flex" style="margin-top:14px"><button class="btn primary" id="edSave">保存</button><button class="btn" id="edCancel">取消</button>${isNew ? '' : '<button class="btn" id="edDel" style="margin-left:auto;color:var(--red)">删除此人</button>'}<span id="edErr" class="red" style="margin-left:10px"></span></div>`;
