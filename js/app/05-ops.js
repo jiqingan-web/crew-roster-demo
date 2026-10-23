@@ -13,7 +13,7 @@
   }
   function rReport() {
     const s = sum, S = st.settings;
-    const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突', '搭配限制表', 'FO搭配矩阵', '高高原机组', '58岁带队'];
+    const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '帮扶对象', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突', '搭配限制表', 'FO搭配矩阵', '高高原机组', '58岁带队'];
     const card = (lab, val, sub, cls) => `<div class="card"><div class="lab">${lab}</div><div class="val ${cls || ''}">${val}</div><div class="sub">${sub}</div></div>`;
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
     const demos = st.pairings.filter(p => p.demoAnomaly);

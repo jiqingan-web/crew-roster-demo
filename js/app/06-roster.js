@@ -17,6 +17,7 @@
     if (ui.rh === '限制夜间') ps = ps.filter(p => p.health && p.health.noNight);
     if (ui.rh === '月≤60h') ps = ps.filter(p => p.health && p.health.maxMonthH === 60);
     if (ui.rh === '非唯一机长') ps = ps.filter(p => p.health && p.health.noSoleCaptain);
+    if (ui.rh === '帮扶对象') ps = ps.filter(p => p.bangfu);
     if (ui.rq) ps = ps.filter(p => pilotSearchMatch(p, ui.rq) || ((p.health && p.health.note || '').includes(ui.rq.trim())));
     const squads = ['全部', ...new Set(st.pilots.map(p => p.squad).filter(Boolean))];
     const nAuth = authList.length;
@@ -27,8 +28,8 @@
         <select id="rg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.rg ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="rs">${squads.map(g => `<option ${g === ui.rs ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
-        <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
-        <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 授权机场 ${nAuth} 个</span>
+        <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长', '帮扶对象'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
+        <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 帮扶 ${st.pilots.filter(p => p.bangfu).length} 人 · 授权机场 ${nAuth} 个</span>
         <button class="btn sm primary" id="roAdd" style="margin-left:auto">＋ 新增人员</button>
         <button class="btn sm" id="roExp">导出人员 CSV</button>
         <button class="btn sm primary" id="exMonthRoster">全月班表</button>
@@ -38,7 +39,7 @@
       ${demoFillBanner()}
       <div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div></div>
       <div class="panel scroll" style="max-height:calc(100vh - 220px);padding:0"><table class="rost"><thead><tr>
-        <th>员工号</th><th>姓名</th><th>级别</th><th>中队</th><th>健康限制</th>
+        <th>员工号</th><th>姓名</th><th>级别</th><th>中队</th><th>帮扶</th><th>健康限制</th>
         ${authList.map(c => `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`).join('')}
         <th>授权数</th><th></th></tr></thead><tbody>`;
     for (const p of ps) {
@@ -53,6 +54,7 @@
       const authN = (p.auth || []).filter(c => authList.includes(c)).length;
       h += `<tr class="rorow" data-pid="${p.id}">
         <td class="mut">${p.id}</td><td><b>${esc(p.name)}</b></td><td>${pill(p.rank)}</td><td>${esc(p.squad || '—')}</td>
+        <td class="hcell"><button type="button" class="btn sm roBangfu ${p.bangfu ? 'primary' : ''}" data-pid="${p.id}" title="切换帮扶对象">${p.bangfu ? '帮扶✓' : '—'}</button></td>
         <td class="hcell">${badges}</td>
         ${authList.map(c => `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`).join('')}
         <td>${authN}/${nAuth}</td>
@@ -72,16 +74,20 @@
     $('#roAdd').onclick = () => openRosterEdit(null);
     document.querySelectorAll('.roSwap').forEach(b => b.onclick = e => { e.stopPropagation(); openTransfer(b.dataset.pid); });
     document.querySelectorAll('.roEdit').forEach(b => b.onclick = e => { e.stopPropagation(); openRosterEdit(b.dataset.pid); });
+    document.querySelectorAll('.roBangfu').forEach(b => b.onclick = e => {
+      e.stopPropagation(); const p = st.pilots.find(x => x.id === b.dataset.pid); if (!p) return;
+      p.bangfu = !p.bangfu; pilotsChanged('bangfu'); toast(p.bangfu ? `✔ ${esc(p.name)} 已标为帮扶对象` : `✔ ${esc(p.name)} 已取消帮扶对象`);
+    });
     document.querySelectorAll('.roLeave').forEach(b => b.onclick = e => {
       e.stopPropagation(); const id = b.dataset.pid; const ix = C.buildIndex(st); const nx = (ix.sched[id] || []).find(pr => pr.start + pr.ndays - 1 >= 1) || (ix.sched[id] || [])[0];
       goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1);
     });
     document.querySelectorAll('.rorow').forEach(r => r.ondblclick = () => openRosterEdit(r.dataset.pid));
     $('#roExp').onclick = () => {
-      const rows = [['员工号', '姓名', '级别', '组别', '中队', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
+      const rows = [['员工号', '姓名', '级别', '组别', '中队', '帮扶对象', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
       st.pilots.forEach(p => {
         const h = p.health || C.defaultHealth();
-        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.maxMonthH != null ? h.maxMonthH : '', h.noSoleCaptain ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
+        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', p.bangfu ? '是' : '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.maxMonthH != null ? h.maxMonthH : '', h.noSoleCaptain ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
           ...authList.map(c => (p.auth || []).includes(c) ? '✓' : ''), (p.auth || []).filter(c => authList.includes(c)).length]);
       });
       dl('人员总览_授权与健康_2026-11.csv', csv(rows));
@@ -92,7 +98,7 @@
   function newPilotId() { let n = 80001; const ids = new Set(st.pilots.map(p => p.id)); while (ids.has('N' + n)) n++; return 'N' + n; }
   function openRosterEdit(pid) {
     C.migratePilots(st);
-    const isNew = !pid; const p = isNew ? { id: newPilotId(), name: '', rank: 'C1', squad: (st.pilots[0] && st.pilots[0].squad) || '', auth: [], prefs: [], leave: [], health: C.defaultHealth() } : st.pilots.find(x => x.id === pid); if (!p) return;
+    const isNew = !pid; const p = isNew ? { id: newPilotId(), name: '', rank: 'C1', squad: (st.pilots[0] && st.pilots[0].squad) || '', auth: [], prefs: [], leave: [], health: C.defaultHealth(), bangfu: false } : st.pilots.find(x => x.id === pid); if (!p) return;
     const authList = C.authAirports(st);
     const h = Object.assign(C.defaultHealth(), p.health || {});
     // 中队选项 = 现有人员中队 ∪ 标准中队（保留当前值，避免保存时被改成列表第一项）
@@ -104,6 +110,10 @@
         <div><label class="lab">级别</label><select id="edRank">${C.RANKS.map(r => `<option ${r === p.rank ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
         <div><label class="lab">中队</label><select id="edSquad">${squads.map(x => `<option ${x === p.squad ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
         <div><label class="lab">体检到期日</label><input type="date" id="edMed" value="${esc(h.medExamExpiry || '')}"></div>
+      </div>
+      <h3 style="margin-top:14px">帮扶标记</h3>
+      <div class="flex" style="flex-wrap:wrap;gap:12px">
+        <label><input type="checkbox" id="edBangfu" ${p.bangfu ? 'checked' : ''}> 帮扶对象（同航班至多一名）</label>
       </div>
       <h3 style="margin-top:14px">健康 / 身体限制</h3>
       <div class="flex" style="flex-wrap:wrap;gap:12px">
@@ -135,6 +145,7 @@
       if (lxa.length && !C.lhasaRankOK(rk)) { $('#edErr').textContent = `拉萨资质仅限 J3 及以上（含教员）；当前级别 ${rk} 不可持有，请取消「${lxa.map(c => C.apName(c, st)).join('、')}」授权或调整级别`; return; }
       if (isNew) p.id = id; p.name = name; p.rank = $('#edRank').value;
       p.squad = $('#edSquad').value;
+      p.bangfu = !!$('#edBangfu').checked;
       const mhRaw = $('#edMaxMH').value.trim();
       const mh = mhRaw === '' ? null : Math.max(1, Math.min(100, parseInt(mhRaw, 10) || 0));
       p.health = {

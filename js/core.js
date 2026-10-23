@@ -237,6 +237,7 @@
       if (!p.squad) p.squad = ALL_SQUADS[i % ALL_SQUADS.length];
       if (!p.fleet) p.fleet = SQUADS_C909.includes(p.squad) ? 'C909' : 'A320';
       if (!Array.isArray(p.auth)) p.auth = [];
+      if (p.bangfu == null) p.bangfu = false; else p.bangfu = !!p.bangfu;
     });
     return st;
   }
@@ -1114,7 +1115,9 @@
   }
   function crewIssue(p, crewPilots, st) {
     const cs = crewPilots.filter(Boolean);
-    if (cs.length < 3) return null; // 不完整机组不做组合判定
+    // CR-22 帮扶对象：同任务机组至多 1 名（不完整机组也判，避免空座时漏拦）
+    if (cs.filter(x => x.bangfu).length >= 2) return '[CR-22] 同航班不可有两名帮扶对象';
+    if (cs.length < 3) return null; // 不完整机组不做其余组合判定
     // 新机长执飞须组内有教员（教员可任执飞座之一）；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
     if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '[CR-20] 新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
     if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '[CR-05] 机组无机长';
@@ -1176,6 +1179,8 @@
   function rulesCatalog(st) {
     const anyAge = !!(st && st.pilots && st.pilots.some(p => ageOf(p) != null));
     const anySQ = !!(st && st.pilots && st.pilots.some(p => p.health && p.health.specialQualified));
+    const nBangfu = (st && st.pilots) ? st.pilots.filter(p => p.bangfu).length : 0;
+    const anyBangfu = nBangfu > 0;
     const nR = ((st && st.restrictions) || []).length; const PR = (RC && RC.plateau_airport_rules) || {};
     const ageSt = anyAge ? '生效' : '待年龄数据';
     // 自有规则编号 CR-xx；legacyId 仅供引擎内部/旧文案映射，界面不展示 YAML 键名
@@ -1265,6 +1270,10 @@
         title: '模拟机块编排', params: '约5%人员/月 · 连续2–4日 · 非执勤期 · 邻接≥12h（软）',
         desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入FDP/连续值勤日链；与相邻飞行或培训尽量保留≥12小时间隔。',
         source: '排班助手编排策略（非手册条文抄录）', example: '本月约二十分之一飞行员安排一块3日模拟机，前后不贴飞行日。' },
+      { id: 'CR-22', cat: '帮扶', kind: '硬', status: anyBangfu ? `生效（${nBangfu} 人）` : '生效（暂无标记）', legacyId: 'bangfu_one_per_crew',
+        title: '同航班至多一名帮扶对象', params: 'pilot.bangfu；同任务 C+F+T 机组 ≤1 名',
+        desc: '标记为帮扶对象的飞行员，同一航班/任务机组（三人制座位）中至多一人；两人及以上同组为硬违规，自动填人与候选人校验均拦截。',
+        source: '公司人员帮扶搭配规定', example: '两名帮扶对象同排一任务 → 校验异常「同航班不可有两名帮扶对象」。' },
     ];
     return { meta: Object.assign({}, (RC && RC.meta) || {}, { catalog: 'CR', note: '界面规则编号为 CR-xx，与引擎校验逻辑一一对应' }),
       sha: RC && RC._sha1, rules: R,
@@ -1416,6 +1425,11 @@
       rs.push(personal ? ('超出个人月飞行上限' + cap + 'h') : ('超出月飞行小时硬上限' + cap + 'h'));
     }
     healthBlocks(p, pr, st, opt).forEach(x => rs.push(x));
+    // CR-22：本人为帮扶对象时，同任务已排机组不得再有帮扶对象
+    if (p.bangfu) {
+      const others = ['C', 'F', 'T'].map(s => pr.crew[s] && idx.pm[pr.crew[s]]).filter(x => x && x.id !== p.id);
+      if (others.some(x => x.bangfu)) rs.push('同航班不可有两名帮扶对象');
+    }
     if (!opt.skipFtl) ftlCheckPerson(p, pr, st, idx, opt).forEach(x => rs.push(x));
     return [rs.length === 0, rs];
   }
@@ -3016,6 +3030,7 @@
         rs.forEach(r => { const t = r.startsWith('请假') ? '请假冲突' : r.startsWith('时间') ? '时间重叠' : r.startsWith('休息') ? '休息不足'
             : (r.includes('144h') ? '144h内48h休息' : r.includes('第5日') ? '连续4日后第5日飞行' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : (r.includes('月飞行小时') || r.includes('个人月飞行上限')) ? '月小时超法规上限' : null);
           if (t) add(t, 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('帮扶')) add('帮扶对象', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
           else if (r.includes('不适飞') || r.includes('体检已过期') || r.includes('不能作为唯一机长')) add('健康限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
           else if (r.includes('限制高原') || r.includes('限制夜间')) add('健康限制', 'soft', `${pr.id} ${p.name}：${r}`, pr, p.id);
           else if (/144h|第5日|连续7日|月飞行值勤|年飞行/.test(r)) add('飞行时间限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id); });
@@ -3023,9 +3038,11 @@
         const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
         if (pf.length) add('意向休息日未满足', 'soft', `${pr.id} ${p.name} 意向休息日 ${pf.join(',')} 日被排班`, pr, p.id);
       });
-      if (crew.every(Boolean)) {
+      {
         const iss = crewIssue(pr, crew, st);
-        if (iss) { const t = iss.includes('新机长') ? '新机长无教员' : iss.includes('restriction_table') ? '搭配限制表' : iss.includes('fo_combination_matrix') ? 'FO搭配矩阵' : iss.includes('17.1.') ? '高高原机组' : iss.includes('senior_pilot_rule') ? '58岁带队' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
+        // bangfu 在不完整机组也会返回；其余规则仍要求三人齐全（crewIssue 内部）
+        if (iss && (crew.every(Boolean) || iss.includes('帮扶'))) {
+          const t = iss.includes('帮扶') ? '帮扶对象' : iss.includes('新机长') ? '新机长无教员' : iss.includes('restriction_table') ? '搭配限制表' : iss.includes('fo_combination_matrix') ? 'FO搭配矩阵' : iss.includes('17.1.') ? '高高原机组' : iss.includes('senior_pilot_rule') ? '58岁带队' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
           const demo = pr.demoAnomaly ? '【演示异常】' : '';
           add(t, 'hard', `${demo}${pr.id} ${iss}`, pr); }
       }
@@ -3123,6 +3140,7 @@
     if (/日飞行时间|执勤期|FDP|飞行值勤期/.test(r)) return '日飞行/执勤期超限';
     if (/月|年|上限|60h|100h|工时/.test(r)) return '工时上限';
     if (/健康|不适飞|体检|高原|夜间|机长/.test(r)) return '健康限制';
+    if (/帮扶/.test(r)) return '机组搭配';
     if (/搭配|矩阵|教员|带飞|F3/.test(r)) return '机组搭配';
     return '其他'; }
   // 任务固有问题：用“空白档案、全授权、最高级别”的虚拟人单独执行此任务，仍不合规的原因即任务自身问题
