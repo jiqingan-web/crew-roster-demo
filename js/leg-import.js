@@ -118,7 +118,7 @@
     (res.unknownCodes || []).forEach(c => { st.airports = st.airports || {}; if (!st.airports[c] && !C.AIRPORTS[c]) st.airports[c] = [c + '(导入)', 30.6, 104.0]; });
     let add = res.pairings.map(p => JSON.parse(JSON.stringify(p)));
     if (mode === 'merge') { const ids = new Set(st.pairings.map(p => p.id)); add.forEach(p => { let id = p.id, k = 2; while (ids.has(id)) id = p.id + '-' + k++; ids.add(id); p.id = id; }); st.pairings = st.pairings.concat(add).sort((a, b) => a.legs[0].dep - b.legs[0].dep); }
-    else { st.pairings = add; st.fills = []; st.training = null; }
+    else { st.pairings = add; st.fills = []; st.training = null; st.sim = null; }
     st.standby = null; st.sample = false; st.solHist = []; st.solIdx = null; return add.length;
   }
   function reportText(rep) { const L = []; L.push(`读取 ${rep.rows} 行 → 可导入任务 ${rep.pairings || 0} 个 / 航段 ${rep.legs || 0}（置位 ${rep.dhLegs || 0}）` + (rep.month ? `；排班月 ${rep.month.year}-${String(rep.month.month).padStart(2, '0')}（1–${rep.month.days} 日）` : ''));

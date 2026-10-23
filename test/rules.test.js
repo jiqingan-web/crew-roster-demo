@@ -56,7 +56,7 @@ for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.auto
 // 121.495(b) 第 5 日：执飞违规；置位(随)回基地不违规（EU.COM 3.6.10 2）「执行任何飞行任务」）
 { const s = C.generateLiteSample(20261101); const capt = s.pilots.find(x => C.isCaptClass(x.rank)); const D = C.DAY;
   const leg = (d, f, t, h, dh) => ({ d: 1, flt: 'EU' + d + f, from: f, to: t, dep: (d - 1) * D + h * 60, arr: (d - 1) * D + h * 60 + 120, ac: 'A320', dh });
-  s.pairings = []; s.standby = null; s.training = null;
+  s.pairings = []; s.standby = null; s.training = null; s.sim = null;
   for (let d = 1; d <= 4; d++) s.pairings.push({ id: 'Q' + d, start: d, ndays: 1, ac: 'A320', legs: [leg(d, 'ZUUU', 'ZGGG', 9), leg(d, 'ZGGG', 'ZUUU', 13)], crew: { C: capt.id, F: null, T: null } });
   const mk5 = dh => ({ id: 'Q5', start: 5, ndays: 1, ac: 'A320', legs: [leg(5, 'ZUUU', 'ZBHH', 9, dh), leg(5, 'ZBHH', 'ZUUU', 13, dh)], crew: { C: null, F: null, T: null } });
   const ix = C.buildIndex(s);

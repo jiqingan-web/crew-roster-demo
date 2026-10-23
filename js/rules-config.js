@@ -3,7 +3,7 @@
   "use strict";
   const RULES_CONFIG = {
  "meta": {
-  "source": "RE12 + 运行手册第17章",
+  "source": "公司机型搭配规定 + 运行手册高原/特殊机场章节（CCAR-121 R8）",
   "source_date": "RE12 2026-09-11 / 手册17章 2025-09-01",
   "version": "RE12+17章-1.0"
  },
@@ -310,6 +310,17 @@
   ],
   "default_type": "不可同机"
  },
+ "simulator_scheduling": {
+  "monthly_personnel_rate": 0.05,
+  "block_days_min": 2,
+  "block_days_max": 4,
+  "consecutive": true,
+  "counts_as_duty_period": false,
+  "counts_as_ftl_duty_day": false,
+  "blocks_flying": true,
+  "soft_gap_hours_vs_flight_or_training": 12,
+  "remark": "邻接无时刻时按日历日隔离；有起飞/落地时刻时按 ≥12h 校验"
+ },
  "engine_options": {
   "lxa_double_captain": true,
   "lxa_fallback_fo_min_single_captain": false,
@@ -318,7 +329,7 @@
   "senior_pilot_rule_active": false,
   "restriction_table_hard": true
  },
- "_sha1": "0ccd50f195"
+ "_sha1": "2f60aa94a8"
 };
   if (typeof module === "object" && module.exports) module.exports = { RULES_CONFIG };
   else root.RosterRulesConfig = { RULES_CONFIG };

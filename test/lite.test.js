@@ -41,7 +41,7 @@ for (const seed of [20261101, 7, 42]) {
     ((st.standby || {})[p.id] || []).forEach(d => du[d] = 1);
     for (let d = 5; d <= C.DAYS; d++) if (fl[d] && [1, 2, 3, 4].every(k => du[d - k])) { op5++; D5.push(p.id + '@' + d); } });
   chk(seed + ' rest0-1 <=10%, no day-5 operating', g01 <= 0.1 && op5 === 0, (100 * g01).toFixed(0) + '% 5+blocks ' + (100 * b5).toFixed(1) + '% op5 ' + op5 + ' ' + D5.slice(0, 3));
-  const tr = st.pilots.map(p => ((st.training || {})[p.id] || []).length);
+  const tr = st.pilots.filter(p => ix.hours[p.id] > 0.5).map(p => ((st.training || {})[p.id] || []).length);
 
   // 值勤连续性：日内衔接；任务起讫成都；日间要么同站过夜要么两端均在成都
   const BASE = { ZUUU: 1, ZUTF: 1 };
@@ -68,9 +68,16 @@ for (const seed of [20261101, 7, 42]) {
   }
   chk(seed + ' pairing continuity', contOk, contInfo);
 
-  chk(seed + ' schema16', st.sampleSchema === 16);
+  chk(seed + ' schema17', st.sampleSchema === 17);
   { const rc = st.pilots.filter(p => p.reserve && C.isCaptClass(p.rank)); chk(seed + ' reserve captains Lhasa = J3+ only', rc.length === 20 && rc.every(p => p.auth.includes('ZULS') === C.lhasaRankOK(p.rank)), rc.filter(p => p.auth.includes('ZULS')).length + '/20'); }
-  chk(seed + ' training 1-2', Math.min(...tr) >= 1 && Math.max(...tr) <= 2);
+  chk(seed + ' training 1-2', tr.length && Math.min(...tr) >= 1 && Math.max(...tr) <= 2, (tr.length ? Math.min(...tr) + '-' + Math.max(...tr) : 'none'));
+  const active = st.pilots.filter(p => !(p.health && p.health.noFly) && ix.hours[p.id] > 0.5);
+  const withSim = active.filter(p => ((st.sim || {})[p.id] || []).length > 0);
+  const rate = withSim.length / Math.max(1, active.length);
+  chk(seed + ' sim ~5%', rate >= 0.02 && rate <= 0.12, (100 * rate).toFixed(1) + '% ' + withSim.length + '/' + active.length);
+  let simOk = withSim.length > 0;
+  withSim.forEach(p => { const ds = ((st.sim || {})[p.id] || []).slice().sort((a,b)=>a-b); if (ds.length < 2 || ds.length > 4) simOk = false; for (let i = 1; i < ds.length; i++) if (ds[i] !== ds[i-1] + 1) simOk = false; });
+  chk(seed + ' sim 2-4 consecutive', simOk);
   const sb = st.pilots.map(p => ((st.standby || {})[p.id] || []).length);
   chk(seed + ' standby rare', Math.max(...sb) <= 1);
 }

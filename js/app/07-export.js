@@ -26,13 +26,13 @@
       const safe = String(f.name).replace(/[\\/:*?"<>|]/g, '_');
       folder.file(f.id + '_' + safe + '_' + f.rank + '.csv', csv(f.rows));
     });
-    const sumRows = [['员工号', '姓名', '级别', '中队', '本月飞行小时', '培训天数', '备份天数', '休假天数']];
+    const sumRows = [['员工号', '姓名', '级别', '中队', '本月飞行小时', '培训天数', '模拟机天数', '备份天数', '休假天数']];
     const idx = C.buildIndex(st);
     st.pilots.forEach(p => {
       sumRows.push([p.id, p.name, p.rank, p.squad || '', (idx.hours[p.id] || 0).toFixed(2),
-        ((st.training || {})[p.id] || []).length, ((st.standby || {})[p.id] || []).length, (p.leave || []).length]);
+        ((st.training || {})[p.id] || []).length, ((st.sim || {})[p.id] || []).length, ((st.standby || {})[p.id] || []).length, (p.leave || []).length]);
     });
-    folder.file('_汇总_工时培训备份.csv', csv(sumRows));
+    folder.file('_汇总_工时培训模拟机备份.csv', csv(sumRows));
     const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);

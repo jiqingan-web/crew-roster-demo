@@ -457,5 +457,27 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('legs/day mostly 2', (lpd[2] || 0) / lT >= 0.7 && (lpd[4] || 0) === 0, JSON.stringify(lpd));
   const tr = st.pilots.filter(p => ix.hours[p.id] > 0.5).map(p => ((st.training || {})[p.id] || []).length);
   chk('training 1-2 days', tr.every(n => n >= 0 && n <= 2), Math.min(...tr) + '-' + Math.max(...tr));
+  const active = st.pilots.filter(p => !(p.health && p.health.noFly) && ix.hours[p.id] > 0.5);
+  const withSim = active.filter(p => ((st.sim || {})[p.id] || []).length > 0);
+  const rate = withSim.length / Math.max(1, active.length);
+  chk('sim ~5% personnel', rate >= 0.02 && rate <= 0.10, (100 * rate).toFixed(1) + '% n=' + withSim.length + '/' + active.length);
+  let simLenOk = true, simConsOk = true;
+  withSim.forEach(p => {
+    const ds = ((st.sim || {})[p.id] || []).slice().sort((a, b) => a - b);
+    if (ds.length < 2 || ds.length > 4) simLenOk = false;
+    for (let i = 1; i < ds.length; i++) if (ds[i] !== ds[i - 1] + 1) simConsOk = false;
+  });
+  chk('sim block 2-4 consecutive', simLenOk && simConsOk && withSim.length > 0, withSim.slice(0, 3).map(p => p.id + ':' + ((st.sim || {})[p.id] || []).join('-')).join(','));
+  // sim days must not count as FTL duty days
+  let simDutyLeak = 0;
+  withSim.forEach(p => {
+    const flags = C.dutyDayFlags(p, st, ix);
+    ((st.sim || {})[p.id] || []).forEach(d => { if (flags[d] && !((st.standby || {})[p.id] || []).includes(d)) {
+      // only leak if flagged solely due to something other than flight — flight shouldn't overlap freeRuns
+      const flew = (ix.sched[p.id] || []).some(pr => C.opDays(pr).includes(d));
+      if (!flew) simDutyLeak++;
+    }});
+  });
+  chk('sim not FTL duty day', simDutyLeak === 0, simDutyLeak);
   chk('all pairings demoFill', st.pairings.every(p => p.demoFill), '');
 }

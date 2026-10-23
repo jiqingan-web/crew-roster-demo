@@ -40,9 +40,10 @@
       h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点击：为此人临时请假 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
       const trd = (st.training || {})[p.id] || [];
+      const simd = (st.sim || {})[p.id] || [];
       const lbl = s => cw >= 30 && rh >= 18 ? `<span>${s}</span>` : '';
       const busy = new Set(); (idx.sched[p.id] || []).forEach(pr => { for (let k = 0; k < pr.ndays; k++) busy.add(pr.start + k); });
-      for (let d = 1; d <= C.DAYS; d++) { const nk = nonFlyKind(p, d); h += (p.leave || []).includes(d) ? `<div class="lv lv-${nk.lv}" title="${nk.lvName}">${lbl(nk.lvName)}</div>` : trd.includes(d) ? `<div class="tr ${nk.tr === '模拟机训练' ? 'sim' : ''}" title="${nk.tr}">${lbl(nk.tr === '模拟机训练' ? '模拟机' : '培训')}</div>` : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="可能抓飞人员（备份 / Standby）">${lbl('抓飞')}</div>` : (!busy.has(d) && nk.idle) ? `<div class="idle ${nk.idle === '中队控班' ? 'ctl' : ''}" title="${nk.idle}">${lbl(nk.idle === '中队控班' ? '控班' : '空班')}</div>` : '<div></div>'; }
+      for (let d = 1; d <= C.DAYS; d++) { const nk = nonFlyKind(p, d); h += (p.leave || []).includes(d) ? `<div class="lv lv-${nk.lv}" title="${nk.lvName}">${lbl(nk.lvName)}</div>` : simd.includes(d) ? `<div class="tr sim" title="模拟机训练">${lbl('模拟机')}</div>` : trd.includes(d) ? `<div class="tr" title="培训(飞技)">${lbl('培训')}</div>` : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="可能抓飞人员（备份 / Standby）">${lbl('抓飞')}</div>` : (!busy.has(d) && nk.idle) ? `<div class="idle ${nk.idle === '中队控班' ? 'ctl' : ''}" title="${nk.idle}">${lbl(nk.idle === '中队控班' ? '控班' : '空班')}</div>` : '<div></div>'; }
       h += '</div>';
       for (const pr of idx.sched[p.id]) {
         const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id);
@@ -135,10 +136,12 @@
   }
 
 
-// 非飞值勤类型（按真实班表：模拟机训练/培训(飞技)、疗养/年假/病假、空班/中队控班、可能抓飞）——确定性展示标签，不影响排班约束
+// 非飞展示：请假子类/空班/控班仍用确定性标签；模拟机与培训以 st.sim / st.training 为准（不再哈希伪装）
 function nonFlyKind(p, d) {
   let hsh = 0; const s = p.id; for (let i = 0; i < s.length; i++) hsh = (hsh * 31 + s.charCodeAt(i)) | 0; hsh = Math.abs(hsh);
   const lvKinds = [['rest', '疗养'], ['al', '年假'], ['sick', '病假(航医)']]; const lk = lvKinds[hsh % 3];
   const x = Math.abs((hsh * 7 + d * 131) % 100);
-  return { lv: lk[0], lvName: lk[1], tr: (hsh + d) % 3 === 0 ? '培训(飞技)' : '模拟机训练', idle: x < 4 ? '空班' : x < 6 ? '中队控班' : '' };
+  const isSim = (((typeof st !== 'undefined' && st && st.sim) || {})[p.id] || []).includes(d);
+  const isTr = (((typeof st !== 'undefined' && st && st.training) || {})[p.id] || []).includes(d);
+  return { lv: lk[0], lvName: lk[1], tr: isSim ? '模拟机训练' : (isTr ? '培训(飞技)' : ''), idle: x < 4 ? '空班' : x < 6 ? '中队控班' : '' };
 }

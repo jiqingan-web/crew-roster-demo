@@ -44,9 +44,9 @@
         const isSampleish = s.sample === true;
         // 用户改过人员（新增/删除/编辑）后不再按人数判旧，只在 sampleSchema 真正升级时重置
         const edited = !!s.pilotsEdited;
-        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 16 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 17 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 16;
+          || !s.sampleSchema || s.sampleSchema < 17;
         if (isSampleish && stale) {
           reset(false);
           toast('示例数据已升级（整月演示补全 + 导出），已自动重置');
@@ -313,7 +313,7 @@
     const H = st.solHist = st.solHist || []; st.solN = (st.solN || 0) + 1;
     const crews = st.pairings.map(p => Object.assign({}, p.crew));
     const diff = H.length ? C.crewDiff(crews, H[H.length - 1].crews) : null;
-    H.push({ n: st.solN, seed: info.seed != null ? info.seed : null, crews, standby: st.standby || null, training: st.training || null,
+    H.push({ n: st.solN, seed: info.seed != null ? info.seed : null, crews, standby: st.standby || null, training: st.training || null, sim: st.sim || null,
       demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() });
     while (H.length > 5) H.shift(); st.solIdx = H.length - 1;
   }
@@ -321,7 +321,7 @@
     const H = st.solHist || []; const h = H[i]; if (!h) return;
     st.pairings.forEach((p, k) => { p.crew = Object.assign({}, h.crews[k]); delete p.demoHole; }); const dh = new Set(h.demoHoles || []);
     st.pairings.forEach(p => { if (dh.has(p.id)) p.demoHole = true; });
-    st.standby = h.standby; st.training = h.training; st.solIdx = i; refresh(); toast(`已切换到方案 #${h.n}（seed ${h.seed}）`);
+    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; st.solIdx = i; refresh(); toast(`已切换到方案 #${h.n}（seed ${h.seed}）`);
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];
