@@ -1267,8 +1267,8 @@
         desc: '新机长担任机组成员时须有教员同组（观察员位级别不限）。',
         source: '公司机型操作与搭配规定', example: '机长A 任机长位时须有 TL/TB/TC 同组。' },
       { id: 'CR-21', cat: '模拟机', kind: '软+硬', status: '生效', legacyId: 'simulator_scheduling',
-        title: '模拟机块编排', params: '约5%人员/月 · 连续2–4日 · 非执勤期 · 邻接≥12h（软）',
-        desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入FDP/连续值勤日链；与相邻飞行或培训尽量保留≥12小时间隔。',
+        title: '模拟机块编排', params: '约5%人员/月 · 连续2–4日 · 非执勤期 · 邻接≥24h（软）',
+        desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入FDP/连续值勤日链；与相邻飞行或培训尽量保留≥24小时间隔。',
         source: '排班助手编排策略（非手册条文抄录）', example: '本月约二十分之一飞行员安排一块3日模拟机，前后不贴飞行日。' },
       { id: 'CR-22', cat: '帮扶', kind: '硬', status: anyBangfu ? `生效（${nBangfu} 人）` : '生效（暂无标记）', legacyId: 'bangfu_one_per_crew',
         title: '同航班至多一名帮扶对象', params: 'pilot.bangfu；同任务 C+F+T 机组 ≤1 名',
@@ -2951,7 +2951,7 @@
     });
   }
 
-  // ---------- 模拟机：约 5% 人员每月一块连续 2–4 日；非执勤期；软约束邻接 ≥12h ----------
+  // ---------- 模拟机：约 5% 人员每月一块连续 2–4 日；非执勤期；软约束邻接 ≥24h ----------
   function dayLastArrMin(p, d, st, idx) {
     let mx = null;
     (idx.sched[p.id] || []).forEach(pr => {
@@ -2966,9 +2966,9 @@
     });
     return mn;
   }
-  // 软舒适：模拟机块与相邻飞行/培训尽量 ≥12h；无时刻则按日历（邻日不得有飞行/培训）
+  // 软舒适：模拟机块与相邻飞行/培训尽量 ≥24h；无时刻则按日历（邻日不得有飞行/培训）
   function simSoftGapOK(p, a, b, st, idx) {
-    const GAP = 12 * 60;
+    const GAP = 24 * 60;
     const tr = (st.training || {})[p.id] || [];
     const hasTr = d => d >= 1 && d <= DAYS && tr.includes(d);
     const hasFly = d => d >= 1 && d <= DAYS && (idx.sched[p.id] || []).some(pr => daysTouched(pr, st).includes(d));
@@ -3005,7 +3005,7 @@
       const cands = [];
       runs.forEach(([a, b]) => { for (let s = a; s + len - 1 <= b; s++) cands.push([s, s + len - 1]); });
       if (!cands.length) continue;
-      // 先试满足 12h 软缓冲的块，否则退而取任意空档（软约束）
+      // 先试满足 24h 软缓冲的块，否则退而取任意空档（软约束）
       const soft = cands.filter(blk => simSoftGapOK(p, blk[0], blk[1], st, idx));
       const poolC = soft.length ? soft : cands;
       const blk = poolC[Math.floor(rnd() * poolC.length)];

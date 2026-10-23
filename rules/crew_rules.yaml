@@ -226,8 +226,8 @@ simulator_scheduling:
   counts_as_duty_period: false          # 非执勤期
   counts_as_ftl_duty_day: false         # 不进 121.495(b) 连续值勤日
   blocks_flying: true                   # 模拟机日禁止排飞
-  soft_gap_hours_vs_flight_or_training: 12  # 与相邻飞行/培训软舒适间隔
-  remark: "邻接无时刻时按日历日隔离；有起飞/落地时刻时按 ≥12h 校验"
+  soft_gap_hours_vs_flight_or_training: 24  # 与相邻飞行/培训软舒适间隔
+  remark: "邻接无时刻时按日历日隔离；有起飞/落地时刻时按 ≥24h 校验"
 
 # =============================================================================
 # 引擎开关（排班助手追加；非手册原文。修订规则时可在此调整，无需改代码）

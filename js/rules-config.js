@@ -318,8 +318,8 @@
   "counts_as_duty_period": false,
   "counts_as_ftl_duty_day": false,
   "blocks_flying": true,
-  "soft_gap_hours_vs_flight_or_training": 12,
-  "remark": "邻接无时刻时按日历日隔离；有起飞/落地时刻时按 ≥12h 校验"
+  "soft_gap_hours_vs_flight_or_training": 24,
+  "remark": "邻接无时刻时按日历日隔离；有起飞/落地时刻时按 ≥24h 校验"
  },
  "engine_options": {
   "lxa_double_captain": true,
@@ -329,7 +329,7 @@
   "senior_pilot_rule_active": false,
   "restriction_table_hard": true
  },
- "_sha1": "2f60aa94a8"
+ "_sha1": "d29b815af1"
 };
   if (typeof module === "object" && module.exports) module.exports = { RULES_CONFIG };
   else root.RosterRulesConfig = { RULES_CONFIG };

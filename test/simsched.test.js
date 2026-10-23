@@ -1,4 +1,4 @@
-// 模拟机编排：连续块、约5%、非执勤期、与飞行冲突、12h软缓冲
+// 模拟机编排：连续块、约5%、非执勤期、与飞行冲突、24h软缓冲
 const C = require('../js/core.js');
 let fail = 0;
 const chk = (n, ok, info) => { console.log('SIM ' + n, ok ? 'OK' : 'FAIL', info == null ? '' : info); if (!ok) fail++; };
@@ -46,13 +46,13 @@ withSim.forEach(p => {
 });
 chk('sim ≠ FDP duty day', leak === 0, leak);
 
-// soft 12h: majority of blocks should satisfy soft gap (placement prefers soft)
+// soft 24h: majority of blocks should satisfy soft gap (placement prefers soft)
 let softN = 0;
 withSim.forEach(p => {
   const ds = st.sim[p.id].slice().sort((a, b) => a - b);
   if (C.simSoftGapOK(p, ds[0], ds[ds.length - 1], st, ix)) softN++;
 });
-chk('soft 12h preferred', softN >= Math.ceil(withSim.length * 0.5), softN + '/' + withSim.length);
+chk('soft 24h preferred', softN >= Math.ceil(withSim.length * 0.5), softN + '/' + withSim.length);
 
 // training still present and distinct from sim
 const trN = active.filter(p => ((st.training || {})[p.id] || []).length).length;
