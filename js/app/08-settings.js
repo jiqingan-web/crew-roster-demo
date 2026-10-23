@@ -53,7 +53,7 @@
           + 'self.RosterRulesConfig=' + JSON.stringify(window.RosterRulesConfig || null) + ';\n'
           + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData, self.RosterLiteRoster, self.RosterRulesConfig);\n'
           + 'self.onmessage=function(e){var d=e.data;try{var info=C.autoFillDiverse(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
-          + 'self.postMessage({type:"done",info:info,crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null,sim:d.st.sim||null});}'
+          + 'self.postMessage({type:"done",info:info,crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null,sim:d.st.sim||null,simHold:d.st.simHold||null});}'
           + 'catch(err){self.postMessage({type:"error",msg:String(err&&err.stack||err)});}};';
         workerURL = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
       }
@@ -114,7 +114,7 @@
       if (m.type === 'status') { started = true; showAutoStatus(m.x); return; }
       w.terminate(); autoJob = null;
       if (m.type === 'done') {
-        st.pairings.forEach((pr, i) => { pr.crew = m.crews[i]; }); st.standby = m.standby; st.training = m.training; st.sim = m.sim || null;
+        st.pairings.forEach((pr, i) => { pr.crew = m.crews[i]; }); st.standby = m.standby; st.training = m.training; st.sim = m.sim || null; if (m.simHold) st.simHold = m.simHold; else if (st.simHold && C.mergeSimHolds) C.mergeSimHolds(st);
         finishAuto(t0, cb, m.info);
       } else { console.error(m.msg); if (!started) { autoJob = { main: true }; runMain(); } else { p.classList.add('hidden'); toast('自动排班出错：' + esc(String(m.msg).split('\n')[0])); } }
     };

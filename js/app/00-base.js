@@ -69,7 +69,7 @@
     C.migratePilots(st); st.pilotsEdited = true; st.pilotsVer = (st.pilotsVer || 0) + 1;
     const ids = new Set(st.pilots.map(p => p.id));
     st.pairings.forEach(pr => ['C', 'F', 'T'].forEach(s => { if (pr.crew[s] && !ids.has(pr.crew[s])) pr.crew[s] = null; }));
-    ['standby', 'training'].forEach(k => { if (st[k]) Object.keys(st[k]).forEach(id => { if (!ids.has(id)) delete st[k][id]; }); });
+    ['standby', 'training', 'sim', 'simHold'].forEach(k => { if (st[k]) Object.keys(st[k]).forEach(id => { if (!ids.has(id)) delete st[k][id]; }); });
     if (st.standby) st.pilots.forEach(p => { if (!st.standby[p.id]) st.standby[p.id] = []; });
     try { dutyOpts = null; dutySel = null; } catch (e) {}
     try { leaveOpts = null; leaveHoles = null; holePrev = null; leaveHover = null; if (leaveSel && leaveSel.pid && !ids.has(leaveSel.pid)) leaveSel = { pid: null, from: null, to: null }; } catch (e) {}
@@ -313,7 +313,7 @@
     const H = st.solHist = st.solHist || []; st.solN = (st.solN || 0) + 1;
     const crews = st.pairings.map(p => Object.assign({}, p.crew));
     const diff = H.length ? C.crewDiff(crews, H[H.length - 1].crews) : null;
-    H.push({ n: st.solN, seed: info.seed != null ? info.seed : null, crews, standby: st.standby || null, training: st.training || null, sim: st.sim || null,
+    H.push({ n: st.solN, seed: info.seed != null ? info.seed : null, crews, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
       demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() });
     while (H.length > 5) H.shift(); st.solIdx = H.length - 1;
   }
@@ -321,7 +321,7 @@
     const H = st.solHist || []; const h = H[i]; if (!h) return;
     st.pairings.forEach((p, k) => { p.crew = Object.assign({}, h.crews[k]); delete p.demoHole; }); const dh = new Set(h.demoHoles || []);
     st.pairings.forEach(p => { if (dh.has(p.id)) p.demoHole = true; });
-    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; st.solIdx = i; refresh(); toast(`已切换到方案 #${h.n}（seed ${h.seed}）`);
+    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; st.solIdx = i; refresh(); toast(`已切换到方案 #${h.n}（seed ${h.seed}）`);
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];

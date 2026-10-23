@@ -438,8 +438,10 @@
         <input id="lvQ" placeholder="搜索姓名/工号/级别/中队" value="${esc(ui.lvq || '')}" style="width:170px"><span class="mut" id="lvQn"></span>
         <select id="lvP">${caps.filter(c => c.id === leaveSel.pid || C.pilotMatches(c, ui.lvq)).map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
         <span>日期</span><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>至</span><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>日</span>
-        <button class="btn primary" id="lvGo">生成推荐</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
-      <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'}
+        <button class="btn primary" id="lvGo">生成推荐</button>
+        <button class="btn" id="lvHold" title="一键排班前先占模拟机等非飞位置">提前占位</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
+      <div class="note" style="margin-top:4px">一键排班前先占模拟机等非飞位置。连续 2–4 日写入「模拟机占位」，其它长度亦为提前占位（禁飞）；自动排班不会覆盖。</div>
+      <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'} · 提前占位：${((st.simHold || {})[p.id] || []).join(',') || '无'}
         · 灯：<span class="clight green"></span>合规 <span class="clight amber"></span>软性/意向休息 <span class="clight red"></span>硬性冲突</div></div>`;
     if (!holes && !o) h += `<div class="note">选择人员与日期后点击「生成推荐」</div>`;
     if (leaveView === 'holes' && holes) {
@@ -537,6 +539,18 @@
     $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; leaveHoles = null; rLeave(); };
     document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });
     $('#lvGo').onclick = regen;
+    if ($('#lvHold')) $('#lvHold').onclick = () => {
+      if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from;
+      const days = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) days.push(d);
+      const snap = JSON.stringify(st);
+      const r = C.reserveHold(st, leaveSel.pid, days);
+      if (!r.ok) { toast('提前占位失败：' + esc(r.reason)); return; }
+      leaveHist.push({ snap, label: `${p.name} ${r.label} ${r.days[0]}${r.days.length > 1 ? '–' + r.days[r.days.length - 1] : ''} 日`, time: new Date().toTimeString().slice(0, 8) });
+      leaveOpts = null; leaveHoles = null; holePrev = null;
+      refresh();
+      const skip = r.skipped && r.skipped.length ? `（跳过已飞 ${r.skipped.join(',')} 日）` : '';
+      toast(`✔ 已${r.label}：${esc(p.name)} ${r.days.join(',')} 日${skip} · 一键排班不会覆盖`);
+    };
     document.querySelectorAll('.cand').forEach(b => b.onclick = () => { holePrev = { hi: +b.dataset.hi, ci: +b.dataset.ci }; rLeave(); const e = $('#holePrev'); if (e) e.scrollIntoView({ block: 'nearest' }); });
     if ($('#hpX')) $('#hpX').onclick = () => { holePrev = null; rLeave(); };
     if ($('#hpApply')) $('#hpApply').onclick = () => applyHoleCand();

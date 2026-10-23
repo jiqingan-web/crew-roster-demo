@@ -1410,7 +1410,7 @@
     const lv = dt.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
     const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.join(',') + '日)');
     const trd = dt.filter(d => ((st.training || {})[p.id] || []).includes(d)); if (trd.length) rs.push('培训日冲突(' + trd.join(',') + '日)');
-    const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.join(',') + '日)');
+    const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d) || ((st.simHold || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.join(',') + '日)');
     if (!opt.ignorePrefs) { const pf = dt.filter(d => (p.prefs || []).includes(d)); if (pf.length) rs.push('意向休息日(' + pf.join(',') + '日)'); }
     if (!opt.ignorePrefs && !opt.skipFtl) { const d5 = day5Deadheads(p, st, idx, opt.excludeId, idx.sched[p.id].includes(pr) ? null : pr).filter(x => x.pr === pr); if (d5.length) rs.push('第5日置位(尽量避免,D' + d5.map(x => x.d).join(',') + ')'); }
     const a = report(pr, st), b = release(pr, st), rest = S.minRestH * 60;
@@ -1633,7 +1633,8 @@
   }
   function autoFillOnce(st, opts) {
     opts = opts || {}; const nz = opts.noise; const S = st.settings; const keep = !!opts.keepExisting;
-    if (!keep) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; st.training = null; st.sim = null; }
+    if (!keep) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; st.training = null; st.sim = null; /* st.simHold 保留：用户提前占位 */ }
+    mergeSimHolds(st); // 填人前落回提前占位，personCheck 才能禁飞
     // 外站驻点长块：先固定 新机长 + 教员 带飞对（整块同组），再由求解器补其余
     if (!keep) st.pairings.filter(p => p.fixedPair).forEach((pr, i) => {
       const free = q => !(q.health && q.health.noFly) && !(q.leave || []).some(d => d >= pr.start - 1 && d <= pr.start + pr.ndays);
@@ -2622,6 +2623,7 @@
       (p.prefs || []).forEach(d => a[d] = 'P'); (p.leave || []).forEach(d => a[d] = 'L');
       ((st.training || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'N'; });
       ((st.sim || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'M'; });
+      ((st.simHold || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'M'; });
       (sb[p.id] || []).forEach(d => { if (!a[d]) a[d] = 'S'; });
       idx.sched[p.id].forEach(pr => { daysTouched(pr, st).forEach(d => { if (d >= 1 && d <= DAYS) a[d] = 'D'; }); if (pr.offAway) offAwayDays(pr, st).forEach(d => { if (d >= 1 && d <= DAYS && a[d] !== 'D') a[d] = 'O'; }); });
       out[p.id] = a; });
@@ -2987,10 +2989,51 @@
     }
     return true;
   }
+  // 用户「提前占位」：写入 st.sim + st.simHold，一键排班/assignSimulator 不会清掉
+  function reserveHold(st, pid, days) {
+    days = [...new Set((days || []).map(Number).filter(d => d >= 1 && d <= DAYS))].sort((a, b) => a - b);
+    if (!days.length) return { ok: false, reason: '无有效日期' };
+    const p = st.pilots.find(x => x.id === pid);
+    if (!p) return { ok: false, reason: '人员不存在' };
+    if (!st.sim) st.sim = {};
+    if (!st.sim[pid]) st.sim[pid] = [];
+    if (!st.simHold) st.simHold = {};
+    if (!st.simHold[pid]) st.simHold[pid] = [];
+    const idx = buildIndex(st);
+    const fly = days.filter(d => (idx.sched[pid] || []).some(pr => daysTouched(pr, st).includes(d)));
+    const free = days.filter(d => !fly.includes(d));
+    if (!free.length) return { ok: false, reason: '所选日期均有飞行任务，请先清空机组或改选日期' };
+    free.forEach(d => {
+      if (!st.sim[pid].includes(d)) st.sim[pid].push(d);
+      if (!st.simHold[pid].includes(d)) st.simHold[pid].push(d);
+    });
+    st.sim[pid].sort((a, b) => a - b);
+    st.simHold[pid].sort((a, b) => a - b);
+    if (st.standby && st.standby[pid]) st.standby[pid] = st.standby[pid].filter(d => !free.includes(d));
+    if (st.training && st.training[pid]) st.training[pid] = st.training[pid].filter(d => !free.includes(d));
+    const cons = free.every((d, i) => i === 0 || d === free[i - 1] + 1);
+    const asSimBlock = cons && free.length >= 2 && free.length <= 4;
+    return { ok: true, days: free, skipped: fly, asSimBlock, label: asSimBlock ? '模拟机占位' : '提前占位' };
+  }
+  function mergeSimHolds(st) {
+    if (!st.simHold) st.simHold = {};
+    if (!st.sim) st.sim = {};
+    st.pilots.forEach(p => {
+      if (!st.sim[p.id]) st.sim[p.id] = [];
+      const hd = [...new Set((st.simHold[p.id] || []).map(Number).filter(d => d >= 1 && d <= DAYS))].sort((a, b) => a - b);
+      st.simHold[p.id] = hd;
+      hd.forEach(d => { if (!st.sim[p.id].includes(d)) st.sim[p.id].push(d); });
+      st.sim[p.id].sort((a, b) => a - b);
+    });
+  }
   function assignSimulator(st) {
     const idx = buildIndex(st);
+    const holds = st.simHold || {};
+    st.simHold = holds;
     st.sim = {};
     st.pilots.forEach(p => { st.sim[p.id] = []; });
+    // 先落回用户提前占位，再排自动模拟机块（不覆盖 hold）
+    mergeSimHolds(st);
     const ds = dayStatus(st, idx);
     const rnd = rng(20261119);
     const pool = st.pilots.filter(p => !(p.health && p.health.noFly) && (idx.hours[p.id] || 0) >= 0.5);
@@ -3000,6 +3043,8 @@
     let assigned = 0;
     for (const p of order) {
       if (assigned >= nPick) break;
+      // 已有用户占位的人跳过自动块，避免搅乱预留
+      if ((holds[p.id] || []).length) continue;
       const len = 2 + Math.floor(rnd() * 3); // 2–4 连续日
       const runs = freeRuns(ds[p.id]).filter(([a, b]) => b - a + 1 >= len);
       const cands = [];
@@ -3012,6 +3057,7 @@
       for (let d = blk[0]; d <= blk[1]; d++) { st.sim[p.id].push(d); ds[p.id][d] = 'M'; }
       assigned++;
     }
+    mergeSimHolds(st); // 再次确保 hold 未被覆盖
     st.pilots.forEach(p => st.sim[p.id].sort((a, b) => a - b));
     st.simStats = { pool: pool.length, target: nPick, assigned };
     return st.simStats;
@@ -3885,7 +3931,7 @@
     st.pilots.forEach(p => { let n = 0; for (let d = 1; d <= DAYS; d++) if (ds0[p.id][d] === 'D') n++; beforeDuty[p.id] = n; });
 
     const w = st; // mutate then restore if building plan only — apply moves on working copy via JSON
-    const work = JSON.parse(JSON.stringify({ pilots: st.pilots, pairings: st.pairings, settings: st.settings, standby: st.standby || {}, training: st.training || {}, sim: st.sim || {}, fills: st.fills || [], lite: st.lite, sample: st.sample }));
+    const work = JSON.parse(JSON.stringify({ pilots: st.pilots, pairings: st.pairings, settings: st.settings, standby: st.standby || {}, training: st.training || {}, sim: st.sim || {}, simHold: st.simHold || {}, fills: st.fills || [], lite: st.lite, sample: st.sample }));
     // re-link: use work as mutable state sharing pilot objects from clone
     const planMoves = [];
     const touched = new Set();
@@ -4121,6 +4167,7 @@
   }
   function personalDayKind(st, p, d, idx) {
     if ((p.leave || []).includes(d)) return '休假';
+    if (((st.simHold || {})[p.id] || []).includes(d)) return '提前占位';
     if (((st.sim || {})[p.id] || []).includes(d)) return '模拟机';
     if (((st.training || {})[p.id] || []).includes(d)) return '培训';
     if (((st.standby || {})[p.id] || []).includes(d)) return '备份';
@@ -4177,6 +4224,6 @@
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignSimulator, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignSimulator, reserveHold, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
 });
