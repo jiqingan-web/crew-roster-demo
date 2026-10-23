@@ -6,7 +6,7 @@
   document.addEventListener('mousedown', e => { const w = $('#moreWrap'); if (w && !w.contains(e.target)) closeMore(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMore(); });
   $('#btnAuto').onclick = () => runAuto();
-  $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; refresh(); } };
+  $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => { p.crew = { C: null, F: null, T: null }; delete p.demoHole; }); st.standby = null; st.training = null; st.sim = null; st.solHist = []; st.solIdx = null; refresh(); toast('已清空排班与方案历史'); } };
   $('#btnReset').onclick = () => { if (confirm(LITE ? '重置为轻量版示例数据（约100人 / 1中队）？当前修改将丢失。' : '重置为示例数据（约1100人 / 11中队）？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
   { const TH = [['', '深蓝（默认）'], ['light', '浅色'], ['black', '纯黑/高对比'], ['green', '墨绿'], ['warm', '暖灰']];
     const sel = document.createElement('select'); sel.id = 'themeSel'; sel.className = 'btn'; sel.title = '配色主题';
