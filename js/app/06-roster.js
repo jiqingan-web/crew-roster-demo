@@ -125,8 +125,8 @@
       <div style="margin-top:8px"><label class="lab">血压相关备注</label><input id="edBp" style="width:100%" value="${esc(h.bpNote || '')}" placeholder="如：血压偏高随访、须带记录本"></div>
       <div style="margin-top:8px"><label class="lab">其他备注</label><input id="edNote" style="width:100%" value="${esc(h.note || '')}"></div>
       <h3 style="margin-top:14px">帮扶对象</h3>
-      <div class="flex" style="flex-wrap:wrap;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--border,#3a424c);border-radius:8px;background:var(--panel2,#1a222c)">
-        <label style="font-weight:600;cursor:pointer"><input type="checkbox" id="edBangfu" ${p.bangfu ? 'checked' : ''}> 「帮扶对象」</label>
+      <div class="flex" style="flex-wrap:wrap;gap:12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--panel2)">
+        <label style="font-weight:600;cursor:pointer;font-size:14px"><input type="checkbox" id="edBangfu" ${p.bangfu ? 'checked' : ''}> 「帮扶对象」</label>
         <span class="mut">同航班/任务机组至多一名；保存写入 p.bangfu</span>
       </div>
       <h3 style="margin-top:14px">特殊机场授权 <small>点击切换</small></h3>
