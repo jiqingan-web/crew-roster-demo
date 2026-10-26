@@ -501,3 +501,38 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 .tftab tr.on td{background:rgba(62,166,255,.10)}
 
 .hibanner{background:#5a3a08;border:1px solid #d9902a;color:#ffd9a0;padding:7px 12px;border-radius:6px;margin:6px 0 8px;font-size:12.5px}.hibanner a{color:#ffe;margin-left:8px}
+
+/* ============ 千问 AI 排班助手 ============ */
+.qw-fab{position:fixed;right:20px;bottom:76px;z-index:75;display:flex;align-items:center;gap:6px;
+  padding:10px 14px;border-radius:999px;border:1px solid #7a5cff;background:linear-gradient(135deg,#2b2150,#1a1440);
+  color:#fff;font-size:14px;font-weight:600;cursor:pointer;box-shadow:0 4px 18px rgba(122,92,255,.35)}
+.qw-fab:hover{transform:translateY(-1px);box-shadow:0 6px 22px rgba(122,92,255,.5)}
+.qw-drawer{position:fixed;top:0;right:0;bottom:0;width:400px;max-width:94vw;z-index:70;display:flex;flex-direction:column;
+  background:#0d1626;border-left:1px solid #2a3a5c;box-shadow:-12px 0 32px rgba(0,0,0,.45)}
+.qw-drawer.hidden{display:none}
+.qw-hd{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;padding:12px 14px;border-bottom:1px solid #22345a}
+.qw-hd b{font-size:15px}
+.qw-cfg{border-bottom:1px solid #22345a;padding:8px 14px;font-size:13px}
+.qw-cfg summary{cursor:pointer;color:#9fd4ff}
+.qw-cfg-bd{margin-top:8px;display:flex;flex-direction:column;gap:8px}
+.qw-row{display:flex;gap:6px}
+.qw-row .qw-in{flex:1;min-width:0}
+.qw-in{background:#0a1220;border:1px solid #2a3a5c;color:#e8eef8;border-radius:8px;padding:8px 10px;font-size:13px;width:100%;box-sizing:border-box}
+.qw-in:focus{outline:none;border-color:#7a5cff}
+.qw-chips{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;border-bottom:1px solid #22345a}
+.qw-chip{background:#16233d;border:1px solid #2a3a5c;color:#cfe3ff;border-radius:999px;padding:6px 10px;font-size:12px;cursor:pointer}
+.qw-chip:hover{border-color:#7a5cff;color:#fff}
+.qw-msgs{flex:1;overflow-y:auto;padding:12px 14px;display:flex;flex-direction:column;gap:10px}
+.qw-msg{display:flex}
+.qw-msg.user{justify-content:flex-end}
+.qw-bub{max-width:88%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.65;word-break:break-word}
+.qw-msg.user .qw-bub{background:#1c3f7a;color:#fff;border-bottom-right-radius:4px}
+.qw-msg.ai .qw-bub{background:#141f36;border:1px solid #2a3a5c;color:#e8eef8;border-bottom-left-radius:4px}
+.qw-think{color:#9fb2d3;animation:qwblink 1.2s infinite}
+@keyframes qwblink{50%{opacity:.4}}
+.qw-pre{background:#0a1220;border:1px solid #2a3a5c;border-radius:8px;padding:8px 10px;overflow-x:auto;font-size:12px;margin:6px 0;white-space:pre-wrap}
+.qw-code{background:#0a1220;border:1px solid #2a3a5c;border-radius:5px;padding:1px 5px;font-size:12px;color:#ffd58a}
+.qw-h{font-weight:700;margin:8px 0 4px;color:#9fd4ff}
+.qw-li{margin:2px 0 2px 2px}
+.qw-ft{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #22345a;align-items:flex-end}
+.qw-ft .qw-in{flex:1;resize:none}
