@@ -3,248 +3,195 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>机组智能排班助手 · 产品介绍</title>
-<meta name="description" content="面向飞行部排班办的机组智能排班助手轻量演示：一键填人、请假调配、规章校验、压力回测与千问助手。示例数据，非正式生产系统。">
+<title>机组排班 · RUNTIME</title>
+<meta name="description" content="排班，也可以是一套可执行的规则运行时。三人制座位 · CCAR-121 / 公司手册硬约束 · 一键填人与请假补位。演示盘，化名数据。">
 <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
-<link rel="stylesheet" href="intro.css?v=2">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="intro.css?v=3">
 </head>
 <body>
-<!-- 居中悬浮磨砂胶囊导航 -->
-<header class="nav-wrap">
-  <div class="nav-pill" role="banner">
+<div class="crt" aria-hidden="true"></div>
+<div class="grid-bg" aria-hidden="true"></div>
+
+<header class="topbar" role="banner">
+  <div class="topbar-inner">
     <a class="brand" href="#top">
-      <span class="brand-dot" aria-hidden="true"></span>
-      <span class="brand-name">机组智能排班</span>
-      <span class="brand-badge">排班办友好</span>
+      <span class="brand-mark" aria-hidden="true">▣</span>
+      <span class="brand-zh">机组排班</span>
+      <span class="brand-sep">·</span>
+      <span class="brand-en">RUNTIME</span>
     </a>
-    <nav class="nav-links" aria-label="页面导航">
-      <a href="#product">产品</a>
-      <a href="#capabilities">能力</a>
-      <a href="#compliance">合规</a>
-      <a href="#demo">演示</a>
+    <nav class="nav-tabs" aria-label="页面导航">
+      <a href="#stats">STATS</a>
+      <a href="#modules">MODULES</a>
+      <a href="#rules">RULES</a>
+      <a href="#run">RUN</a>
     </nav>
-    <a class="nav-cta" href="../">打开演示</a>
+    <a class="nav-run" href="../">RUN LITE →</a>
   </div>
 </header>
 
 <main id="top">
-  <!-- Hero：超大居中黑字 + 彩色 pill 轮播 -->
+  <!-- Hero -->
   <section class="hero">
     <div class="hero-inner">
+      <div class="boot-line" aria-hidden="true">
+        <span class="prompt">&gt;</span> boot roster.runtime <span class="cursor">_</span>
+      </div>
       <h1 class="hero-title">
-        排班办的
-        <span class="hero-pill" id="heroPill" aria-live="polite">
-          <span class="pill-track" id="pillTrack">
-            <span class="pill-item is-active" data-tone="amber">一键填人</span>
-            <span class="pill-item" data-tone="teal">请假调配</span>
-            <span class="pill-item" data-tone="violet">压力回测</span>
-          </span>
-        </span>
-        智能编排
+        排班，也可以是一套<br>
+        <span class="hero-accent">可执行的规则运行时</span>
       </h1>
       <p class="hero-lead">
-        为飞行部排班办提供可校验的机组排班能力：自动填人、空洞换人、CCAR-121 / 公司手册对照、执勤延误鲁棒与压力回测——浏览器打开即可体验。
+        三人制座位 · CCAR-121 / 公司手册硬约束 · 一键填人与请假补位——浏览器里跑通整月编排。演示盘，化名数据。
       </p>
       <div class="cta-row">
-        <a class="btn btn-black" href="../">打开轻量演示 <span aria-hidden="true">→</span></a>
-        <a class="btn btn-outline" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">查看 GitHub</a>
+        <a class="btn btn-primary" href="../">打开轻量演示 <span aria-hidden="true">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a>
       </div>
-      <div class="cmd-bar" role="note">
-        <span class="cmd-dot" aria-hidden="true"></span>
-        <code>打开轻量版演示 · 示例数据 · 七中队化名 · 非正式生产</code>
-        <a class="cmd-go" href="../">进入 →</a>
-      </div>
+      <button type="button" class="cmd-bar" id="cmdBar" title="点击复制命令" data-cmd="roster run --lite --month 2026-11">
+        <span class="cmd-prompt">$</span>
+        <code class="cmd-text">roster run --lite --month 2026-11</code>
+        <span class="cmd-action" id="cmdAction">COPY</span>
+      </button>
     </div>
   </section>
 
-  <!-- 规模化验证风格统计区：超大数字，极简留白 -->
-  <section class="stats" id="product" aria-labelledby="stats-title">
-    <div class="stats-inner">
-      <h2 id="stats-title" class="stats-h">规模化验证</h2>
-      <p class="stats-desc">数字来自 lite 演示盘与设置页压力回测，均可在仓库复跑。不做商业夸张，不写假交易量。</p>
+  <!-- Stats -->
+  <section class="stats" id="stats" aria-labelledby="stats-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">01 // METRICS</span>
+        <h2 id="stats-title">演示盘实测<span class="sec-note">（非生产流量）</span></h2>
+      </div>
       <div class="stats-grid">
-        <div class="stat">
-          <div class="stat-label">基线满员率</div>
+        <article class="stat-panel">
+          <div class="stat-label">FILL_RATE</div>
           <div class="stat-num">100<span class="stat-unit">%</span></div>
-          <div class="stat-cap">212 / 212 任务满员 · 硬违规 0 · 演示盘</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">人员池</div>
+          <div class="stat-cap">满员 212 / 212 · 硬违规 0</div>
+        </article>
+        <article class="stat-panel">
+          <div class="stat-label">CREW_POOL</div>
           <div class="stat-num">141</div>
-          <div class="stat-cap">七中队·演示 101 人 + 外中队候补 40 人（化名）</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">压力回测场景</div>
+          <div class="stat-cap">人员池 101 + 40 候补（化名）</div>
+        </article>
+        <article class="stat-panel">
+          <div class="stat-label">STRESS_CASES</div>
           <div class="stat-num">3</div>
-          <div class="stat-cap">多人请假 · 任务密度 +30% · 资质稀缺 · 可本机复跑</div>
-        </div>
+          <div class="stat-cap">请假 · 密度+30% · 资质稀缺</div>
+        </article>
       </div>
     </div>
   </section>
 
-  <!-- 能力 1：左右分栏 · 一键填人 -->
-  <section class="split" id="capabilities" aria-labelledby="cap1-title">
-    <div class="split-inner">
-      <div class="split-copy">
-        <div class="split-kicker">Auto Fill</div>
-        <h2 id="cap1-title">一键自动填人<br>三人制座位一次排满</h2>
-        <p>多轮优化填满机长 / 副驾 / 第二副驾，兼顾休息、资质与工时均衡；宁缺毋滥，不以违规飞行塞满。导入预检可跳过任务固有问题。</p>
-        <div class="chips">
-          <span class="chip">三人制 · 无表 C</span>
-          <span class="chip">休息与工时均衡</span>
-          <span class="chip">资质过滤</span>
-          <span class="chip">宁缺毋滥</span>
-          <span class="chip">备份编排</span>
-        </div>
-        <div class="scenario">
-          <div class="scenario-h">典型路径</div>
-          <ul>
-            <li><strong>重置示例</strong> — 载入成都基地 2026-11 样例</li>
-            <li><strong>一键自动填人</strong> — 多轮优化 + 备份</li>
-            <li><strong>校验报告</strong> — 硬 / 软违规分列复核</li>
-          </ul>
-        </div>
+  <!-- Modules -->
+  <section class="modules" id="modules" aria-labelledby="mod-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">02 // MODULES</span>
+        <h2 id="mod-title">能力模块</h2>
+        <p class="sec-desc">像 IDE panel / ROM cartridge——点进 lite 即可跑通。</p>
       </div>
-      <div class="split-visual">
-        <div class="viz-card viz-green">
-          <div class="viz-chrome">
-            <span></span><span></span><span></span>
-            <em>人员视图 · 甘特示意</em>
-          </div>
-          <div class="gantt-mock" aria-hidden="true">
-            <div class="g-row"><b>王··</b><i style="left:8%;width:22%"></i><i class="g2" style="left:42%;width:18%"></i><i style="left:68%;width:20%"></i></div>
-            <div class="g-row"><b>李··</b><i class="g2" style="left:4%;width:16%"></i><i style="left:28%;width:24%"></i><i class="g3" style="left:62%;width:26%"></i></div>
-            <div class="g-row"><b>张··</b><i style="left:12%;width:28%"></i><i class="g2" style="left:52%;width:14%"></i><i style="left:74%;width:16%"></i></div>
-            <div class="g-row"><b>陈··</b><i class="g3" style="left:6%;width:20%"></i><i style="left:36%;width:22%"></i><i class="g2" style="left:66%;width:22%"></i></div>
-            <div class="g-row"><b>赵··</b><i style="left:18%;width:18%"></i><i class="g3" style="left:48%;width:30%"></i></div>
-            <div class="g-row"><b>周··</b><i class="g2" style="left:2%;width:24%"></i><i style="left:40%;width:16%"></i><i class="g3" style="left:70%;width:18%"></i></div>
-          </div>
-          <div class="viz-badge">满员 100% · 硬违规 0</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 能力 2：左右分栏 · 请假调配（镜像） -->
-  <section class="split split-rev" aria-labelledby="cap2-title">
-    <div class="split-inner">
-      <div class="split-copy">
-        <div class="split-kicker">Leave &amp; Fill</div>
-        <h2 id="cap2-title">请假空洞换人<br>多套合规替补可预览</h2>
-        <p>临时请假生成多套补位方案；空洞诊断区分数据问题与真实运力不足。应用后记入补位历史，工时前后可对比。</p>
-        <div class="chips">
-          <span class="chip">请假调配</span>
-          <span class="chip">空洞诊断</span>
-          <span class="chip">多方案预览</span>
-          <span class="chip">补位历史</span>
-          <span class="chip">工时前后</span>
-        </div>
-        <div class="scenario">
-          <div class="scenario-h">典型路径</div>
-          <ul>
-            <li><strong>选人请假</strong> — 标记不可用日段</li>
-            <li><strong>生成方案</strong> — 合规替补候选排序</li>
-            <li><strong>一键应用</strong> — 写入补位痕迹</li>
-          </ul>
-        </div>
-      </div>
-      <div class="split-visual">
-        <div class="viz-card viz-violet">
-          <div class="viz-chrome">
-            <span></span><span></span><span></span>
-            <em>请假调配 · 方案卡</em>
-          </div>
-          <div class="seat-mock" aria-hidden="true">
-            <div class="seat-card">
-              <div class="seat-h">方案 A · 推荐</div>
-              <div class="seats">
-                <div class="seat"><small>机长</small><b>王··</b></div>
-                <div class="seat on"><small>副驾 · 替补</small><b>刘··</b></div>
-                <div class="seat"><small>第二副驾</small><b>陈··</b></div>
-              </div>
-              <div class="seat-meta">休息 OK · 资质 OK · 工时 +2.4h</div>
-            </div>
-            <div class="seat-card dim">
-              <div class="seat-h">方案 B</div>
-              <div class="seats">
-                <div class="seat"><small>机长</small><b>王··</b></div>
-                <div class="seat"><small>副驾 · 替补</small><b>孙··</b></div>
-                <div class="seat"><small>第二副驾</small><b>陈··</b></div>
-              </div>
-              <div class="seat-meta">外中队候补 · 工时 +4.1h</div>
-            </div>
-          </div>
-          <div class="viz-badge">RE12 座位搭配已校验</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <!-- 其余能力：宽松 bento -->
-  <section class="bento-sec" aria-labelledby="bento-title">
-    <div class="bento-inner">
-      <div class="bento-head">
-        <h2 id="bento-title">更多排班办能力</h2>
-        <p>从规章对照到 AI 侧栏——覆盖月度排班与日常调配主线。</p>
-      </div>
-      <div class="bento">
-        <article class="bento-card bento-wide">
-          <h3>压力回测三场景</h3>
-          <p>设置页一键对比基线、多人同时请假、任务密度 +30%、特殊机场资质稀缺——不改 live 排班，报告可复核。</p>
-          <div class="mini-stats">
-            <span><b>基线</b> 满员 100%</span>
-            <span><b>请假</b> 可复跑</span>
-            <span><b>+30%</b> 密度</span>
-            <span><b>资质</b> 稀缺</span>
-          </div>
+      <div class="mod-grid">
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>01</span></div>
+          <div class="mod-id">AUTOFILL</div>
+          <h3>一键填人</h3>
+          <p>三人制座位一次排满；休息、资质、工时均衡；宁缺毋滥。</p>
         </article>
-        <article class="bento-card">
-          <h3>校验报告</h3>
-          <p>硬 / 软违规分列，定位缺人任务；强制指派可审计。</p>
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>02</span></div>
+          <div class="mod-id">LEAVE-REPAIR</div>
+          <h3>请假补位</h3>
+          <p>临时请假生成多套合规替补；应用后写入补位痕迹。</p>
         </article>
-        <article class="bento-card">
-          <h3>执勤 / 延误鲁棒</h3>
-          <p>执勤余量监控与 +30/+60 分延误压力；高风险日可拆分换组。</p>
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>03</span></div>
+          <div class="mod-id">VALIDATE</div>
+          <h3>校验与空洞诊断</h3>
+          <p>硬 / 软违规分列；区分数据问题与真实运力不足。</p>
         </article>
-        <article class="bento-card">
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>04</span></div>
+          <div class="mod-id">OPS</div>
           <h3>运营看板</h3>
           <p>满员率、备份缺口、请假人日与每日空洞趋势一屏掌握。</p>
         </article>
-        <article class="bento-card">
-          <h3>千问 AI 侧栏</h3>
-          <p>纯前端 DashScope，Key 仅存本机；解读满员 / 违规 / 工时。</p>
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>05</span></div>
+          <div class="mod-id">STRESS</div>
+          <h3>压力回测</h3>
+          <p>基线 · 多人请假 · 密度+30% · 资质稀缺——不改 live 排班。</p>
         </article>
-        <article class="bento-card">
-          <h3>模拟机 · 帮扶</h3>
-          <p>模拟机块提前占位；帮扶对象同任务机组至多一名。</p>
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>06</span></div>
+          <div class="mod-id">QWEN</div>
+          <h3>千问侧栏</h3>
+          <p>纯前端 DashScope；Key 仅存本机；解读满员 / 违规 / 工时。</p>
+        </article>
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>07</span></div>
+          <div class="mod-id">SIM-HOLD</div>
+          <h3>模拟机占位</h3>
+          <p>模拟机块提前占位，避免与飞行任务冲突。</p>
+        </article>
+        <article class="mod-card">
+          <div class="mod-chrome"><span>ROM</span><span>08</span></div>
+          <div class="mod-id">BANGFU</div>
+          <h3>帮扶规则</h3>
+          <p>帮扶对象同任务机组至多一名；写进规则引擎。</p>
         </article>
       </div>
     </div>
   </section>
 
-  <!-- 合规 -->
-  <section class="comply-sec" id="compliance" aria-labelledby="comp-title">
-    <div class="comply-inner">
-      <h2 id="comp-title">规章写进规则，回测写进仓库</h2>
-      <p class="comply-desc">三人制运行，不走扩编表 C。公开对照报告随仓库发布，便于审阅与核对。</p>
-      <div class="comply-row">
-        <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/121%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">CCAR-121-R8</a>
-        <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/%E5%85%AC%E5%8F%B8%E6%89%8B%E5%86%8C%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">EU.COM Re07-06</a>
-        <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/%E5%85%AC%E5%8F%B8%E6%89%8B%E5%86%8C%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">RE12 座位搭配</a>
-        <span>三人制 · 无表 C</span>
+  <!-- Terminal demo panel -->
+  <section class="term-sec" aria-hidden="false">
+    <div class="sec-inner">
+      <div class="term-win">
+        <div class="term-bar">
+          <span class="term-dots"><i></i><i></i><i></i></span>
+          <span class="term-title">roster://lite · session</span>
+          <span class="term-badge">LIVE</span>
+        </div>
+        <pre class="term-body"><span class="t-muted"># 演示盘基线（可本机复跑）</span>
+<span class="t-prompt">$</span> roster validate --month 2026-11
+<span class="t-ok">OK</span>  fill_rate=<span class="t-cyan">1.00</span>  seats=<span class="t-cyan">212/212</span>  hard_violations=<span class="t-cyan">0</span>
+<span class="t-prompt">$</span> roster stress --cases leave,density+30,qual-scarce
+<span class="t-warn">RUN</span> 3 scenarios · reports → 回测/
+<span class="t-prompt">$</span> <span class="cursor">_</span></pre>
       </div>
-      <p class="comply-note">亦可打开仓库内 <code>回测/</code> 目录 Markdown；PDF 原件不入库。</p>
     </div>
   </section>
 
-  <!-- 底 CTA -->
-  <section class="end-cta" id="demo">
-    <div class="end-inner">
-      <h2>打开浏览器，走完一条排班主线</h2>
-      <p>导入或重置示例 → 一键自动填人 → 请假调配 → 校验报告 → 设置页压力回测。无需安装，Key 可选。</p>
+  <!-- Rules -->
+  <section class="rules" id="rules" aria-labelledby="rules-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">03 // RULES</span>
+        <h2 id="rules-title">硬约束进引擎</h2>
+        <p class="sec-desc">三人制运行，不走扩编表 C。公开对照报告随仓库发布。</p>
+      </div>
+      <div class="rules-row">
+        <a class="rule-chip" href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/121%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">CCAR-121-R8</a>
+        <a class="rule-chip" href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/%E5%85%AC%E5%8F%B8%E6%89%8B%E5%86%8C%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">EU.COM Re07-06</a>
+        <a class="rule-chip" href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/%E5%85%AC%E5%8F%B8%E6%89%8B%E5%86%8C%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">RE12 座位搭配</a>
+        <span class="rule-chip is-static">三人制 · 无表 C</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- End CTA -->
+  <section class="end-cta" id="run">
+    <div class="sec-inner end-box">
+      <span class="sec-tag">04 // EXECUTE</span>
+      <h2>打开浏览器，跑通一条排班主线</h2>
+      <p>重置示例 → AUTOFILL → LEAVE-REPAIR → VALIDATE → STRESS。无需安装，Key 可选。</p>
       <div class="cta-row">
-        <a class="btn btn-black" href="../">打开轻量演示 <span aria-hidden="true">→</span></a>
-        <a class="btn btn-outline" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub 源码</a>
+        <a class="btn btn-primary" href="../">打开轻量演示 <span aria-hidden="true">→</span></a>
+        <a class="btn btn-ghost" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a>
       </div>
     </div>
   </section>
@@ -253,11 +200,11 @@
 <footer class="footer">
   <div class="footer-inner">
     <div class="disclaimer">
-      <strong>机组智能排班助手 · 轻量版演示</strong><br>
+      <strong>机组排班 · RUNTIME · DEMO</strong><br>
       示例数据 · 七中队化名 · 外中队候补为演示构造。本页与演示<strong>非正式生产系统</strong>，不构成运行批准或规章解释依据。
       压力回测与满员等数字均可在本仓库 / lite 复现。
     </div>
-    <div class="footer-links">
+    <div class="footer-meta">
       <div><a href="../">轻量演示</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a></div>
       <div class="footer-copy">© 演示用途 · 静态 GitHub Pages</div>
     </div>
@@ -266,19 +213,29 @@
 
 <script>
 (function () {
-  var track = document.getElementById('pillTrack');
-  if (!track) return;
-  var items = Array.prototype.slice.call(track.querySelectorAll('.pill-item'));
-  if (items.length < 2) return;
-  var i = 0;
-  var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce) return;
-  setInterval(function () {
-    items[i].classList.remove('is-active');
-    i = (i + 1) % items.length;
-    items[i].classList.add('is-active');
-    track.setAttribute('data-tone', items[i].getAttribute('data-tone') || 'amber');
-  }, 2200);
+  var bar = document.getElementById('cmdBar');
+  var action = document.getElementById('cmdAction');
+  if (!bar) return;
+  bar.addEventListener('click', function () {
+    var cmd = bar.getAttribute('data-cmd') || '';
+    function done(ok) {
+      if (!action) return;
+      var prev = action.textContent;
+      action.textContent = ok ? 'COPIED' : 'OPEN';
+      action.classList.add('is-done');
+      setTimeout(function () {
+        action.textContent = prev;
+        action.classList.remove('is-done');
+      }, 1400);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd).then(function () { done(true); }).catch(function () {
+        window.location.href = '../';
+      });
+    } else {
+      window.location.href = '../';
+    }
+  });
 })();
 </script>
 </body>
