@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>机组排班 · 规则运行时升级</title>
-<meta name="description" content="把机组排班从手工填表升级为可执行、可校验、可诊断、可追溯、可压力测试的规则运行时。演示盘，化名数据，非正式生产系统。">
+<title>机组排班 · 规则运行时</title>
+<meta name="description" content="把机组排班从手工填表，升级为可执行、可校验、可追溯的规则运行时。演示盘，化名数据。">
 <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="intro.css?v=8">
+<link rel="stylesheet" href="intro.css?v=9">
 </head>
 <body>
 <div class="grid-bg" aria-hidden="true"></div>
@@ -24,14 +24,14 @@
     </a>
     <button type="button" class="nav-toggle" id="navToggle" aria-expanded="false" aria-controls="siteNav" aria-label="打开导航">☰</button>
     <nav class="nav-tabs" id="siteNav" aria-label="页面导航">
-      <a href="#diff">新旧对比</a>
-      <a href="#loop">核心闭环</a>
-      <a href="#capabilities">能力详解</a>
-      <a href="#ops">运营看板</a>
-      <a href="#stress">压力回测</a>
-      <a href="#ai">AI 边界</a>
-      <a href="#panorama">功能全景</a>
-      <a href="#evidence">实测证据</a>
+      <a href="#diff">对比</a>
+      <a href="#loop">闭环</a>
+      <a href="#capabilities">能力</a>
+      <a href="#ops">看板</a>
+      <a href="#stress">压测</a>
+      <a href="#ai">AI</a>
+      <a href="#panorama">全景</a>
+      <a href="#evidence">实测</a>
     </nav>
     <a class="nav-run" href="../">打开演示 →</a>
   </div>
@@ -40,477 +40,238 @@
 <main id="top">
 
   <section class="hero" aria-labelledby="hero-title">
-    <div class="hero-grid">
-      <div class="hero-copy">
-        <p class="eyebrow"><span class="dot"></span> AI 升级 · 排班规则运行时 · 演示盘</p>
-        <h1 id="hero-title">把机组排班，从手工填表升级为<br><span class="accent">可执行、可校验、可追溯</span>的规则运行时</h1>
-        <p class="hero-lead">把<strong>自动编排、规章校验、请假补位、风险诊断、压力回测</strong>连成闭环——从靠人盯表，到靠规则跑通。</p>
-        <div class="cta-row">
-          <a class="btn btn-primary" href="../">打开可运行演示 <span aria-hidden="true">→</span></a>
-          <a class="btn btn-ghost" href="#evidence">查看实测证据</a>
-        </div>
-        <p class="hero-note">示例 / 化名数据 · 非正式生产系统 · 不作规章解释依据</p>
+    <div class="hero-copy">
+      <p class="eyebrow"><span class="dot"></span> 演示盘</p>
+      <h1 id="hero-title">排班，也可以是<br><span class="accent">规则运行时</span></h1>
+      <p class="hero-lead">从手工填表，到可执行、可校验、可追溯。</p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="../">打开演示</a>
+        <a class="btn btn-ghost" href="#evidence">查看实测</a>
       </div>
-      <figure class="hero-shot reveal-hero">
-        <div class="shot-chrome">
-          <span class="shot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-          <span class="shot-title">lite · AUTOFILL 后甘特（演示盘）</span>
-          <span class="shot-badge">DEMO</span>
-        </div>
-        <img src="assets/hero-gantt.jpg?v=8" width="1400" height="933" alt="一键自动排班后的人员甘特图：演示盘已近满员" loading="eager" decoding="async">
-        <figcaption>演示盘主界面 · 重置示例后可复跑 AUTOFILL</figcaption>
-      </figure>
     </div>
-    <div class="metric-strip" aria-label="演示盘核心实测指标">
-      <p class="metric-tag">演示盘实测 · 非生产流量</p>
+    <figure class="hero-shot reveal-hero">
+      <div class="shot-chrome">
+        <span class="shot-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="shot-title">AUTOFILL · 演示盘</span>
+        <span class="shot-badge">DEMO</span>
+      </div>
+      <img src="assets/hero-gantt.jpg?v=9" width="1400" height="933" alt="自动排班后的甘特图" loading="eager" decoding="async">
+    </figure>
+    <div class="metric-strip" aria-label="演示盘实测">
+      <p class="metric-tag">演示盘实测 · 非生产</p>
       <div class="metrics">
         <article class="metric">
           <div class="metric-num" data-count="212" data-suffix="/212">0<span class="slash">/</span>0</div>
-          <div class="metric-label">基线座位全部排满</div>
+          <div class="metric-label">座位排满</div>
         </article>
         <article class="metric">
           <div class="metric-num" data-count="0">0</div>
-          <div class="metric-label">基线硬约束违规</div>
+          <div class="metric-label">硬违规</div>
         </article>
         <article class="metric">
           <div class="metric-num" data-count="141">0</div>
-          <div class="metric-label">人员池 · 101 + 40 候补</div>
+          <div class="metric-label">人员池</div>
         </article>
         <article class="metric">
           <div class="metric-num" data-count="3">0</div>
-          <div class="metric-label">请假 / 密度+30% / 资质稀缺</div>
+          <div class="metric-label">压力场景</div>
         </article>
       </div>
     </div>
   </section>
 
   <section class="sec" id="diff" aria-labelledby="diff-title">
-    <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">01 · DIFF</span>
-        <h2 id="diff-title">同一项工作，两种工作流</h2>
-        <p class="sec-desc">旧方式靠填表、经验和群聊；新方式把规则写进引擎。</p>
+    <div class="sec-inner narrow">
+      <header class="sec-head center">
+        <h2 id="diff-title">同一项工作。<br>两种完全不同的方式。</h2>
       </header>
       <div class="diff-grid">
         <article class="diff-card is-before">
-          <header><span class="badge">BEFORE</span><h3>Excel / 旧系统</h3></header>
+          <header><span class="badge">以前</span></header>
           <ul>
-            <li><strong>填人</strong>逐格抠表，靠眼力对账</li>
-            <li><strong>规章</strong>口头提醒，事后翻账</li>
-            <li><strong>请假</strong>群聊喊人，方案难比</li>
-            <li><strong>回溯</strong>痕迹散落聊天记录</li>
-            <li><strong>压测</strong>不敢动 live</li>
+            <li>逐格填表</li>
+            <li>事后翻账</li>
+            <li>群聊喊人</li>
+            <li>不敢动正式表</li>
           </ul>
         </article>
         <article class="diff-card is-after">
-          <header><span class="badge ok">AFTER</span><h3>规则运行时</h3></header>
+          <header><span class="badge ok">现在</span></header>
           <ul>
-            <li><strong>填人</strong>AUTOFILL 出可校验草案</li>
-            <li><strong>规章</strong>硬/软分列，点选定位</li>
-            <li><strong>请假</strong>多方案 + 合规灯</li>
-            <li><strong>回溯</strong>历史 / 补位痕迹可撤销</li>
-            <li><strong>压测</strong>深拷贝三场景，不改 live</li>
+            <li>一键出草案</li>
+            <li>即时定位违规</li>
+            <li>多方案补位</li>
+            <li>隔离压力回测</li>
           </ul>
         </article>
       </div>
-      <div class="table-wrap" role="region" aria-label="工作流变化对照表">
-        <table class="cmp-table">
-          <thead>
-            <tr><th>工作流</th><th>旧方式</th><th>升级后</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>出草案</td><td>按天手工抠</td><td>分钟级可校验草案<span class="cap">演示盘</span></td></tr>
-            <tr><td>找违规</td><td>事后翻账</td><td>即时硬/软分列 + 定位</td></tr>
-            <tr><td>请假补位</td><td>群聊协商</td><td>多方案 · 合规灯 · 空洞诊断</td></tr>
-            <tr><td>规章口径</td><td>个人经验</td><td>规则进引擎 · 结果可复跑</td></tr>
-            <tr><td>应对变化</td><td>不敢动 live</td><td>隔离压测 · 设置页复跑</td></tr>
-            <tr><td>解释结果</td><td>难还原</td><td>历史、痕迹、报告可追溯</td></tr>
-          </tbody>
-        </table>
-      </div>
-      <p class="footnote">「分钟级」为演示盘 / 路演口径，不作未验证生产工时承诺。</p>
     </div>
   </section>
 
   <section class="sec sec-alt" id="loop" aria-labelledby="loop-title">
     <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">02 · LOOP</span>
-        <h2 id="loop-title">一条主线串起五项能力</h2>
-        <p class="sec-desc">推荐路径：重置示例 → AUTOFILL → LEAVE-REPAIR → VALIDATE → STRESS</p>
+      <header class="sec-head center">
+        <h2 id="loop-title">一条闭环。</h2>
+        <p class="sec-desc">重置 → 自动排班 → 校验 → 补位 → 压测</p>
       </header>
       <ol class="loop-track">
-        <li class="loop-step" style="--i:0"><span class="loop-n">01</span><strong>自动排班</strong><span>硬约束下可校验草案</span></li>
-        <li class="loop-step" style="--i:1"><span class="loop-n">02</span><strong>规则校验</strong><span>硬/软分列并定位</span></li>
-        <li class="loop-step" style="--i:2"><span class="loop-n">03</span><strong>请假补位</strong><span>多方案 · 应用留痕</span></li>
-        <li class="loop-step" style="--i:3"><span class="loop-n">04</span><strong>运营监控</strong><span>饱和 · 韧性 · 今日风险</span></li>
-        <li class="loop-step" style="--i:4"><span class="loop-n">05</span><strong>压力回测</strong><span>不改 live · 试失守点</span></li>
+        <li class="loop-step" style="--i:0"><span class="loop-n">01</span><strong>自动排班</strong></li>
+        <li class="loop-step" style="--i:1"><span class="loop-n">02</span><strong>规则校验</strong></li>
+        <li class="loop-step" style="--i:2"><span class="loop-n">03</span><strong>请假补位</strong></li>
+        <li class="loop-step" style="--i:3"><span class="loop-n">04</span><strong>运营监控</strong></li>
+        <li class="loop-step" style="--i:4"><span class="loop-n">05</span><strong>压力回测</strong></li>
       </ol>
-      <div class="value-row" aria-label="五类管理价值">
-        <div class="value-chip">更快出可校验草案</div>
-        <div class="value-chip">更早发现违规与运力风险</div>
-        <div class="value-chip">更快处理请假换班延误</div>
-        <div class="value-chip">更从容应对密度与资质变化</div>
-        <div class="value-chip">更方便复盘审计</div>
-      </div>
     </div>
   </section>
 
   <section class="sec" id="capabilities" aria-labelledby="cap-title">
     <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">03 · CAPABILITIES</span>
-        <h2 id="cap-title">核心能力：痛点 → 证据</h2>
-        <p class="sec-desc">均为已实现能力；不编造算法名或未测指标。</p>
+      <header class="sec-head center">
+        <h2 id="cap-title">核心能力。</h2>
       </header>
 
-      <article class="cap" id="cap-autofill">
-        <div class="cap-head">
-          <span class="cap-id">A · AUTOFILL</span>
-          <h3>一键自动排班</h3>
+      <article class="feat" id="cap-autofill">
+        <div class="feat-copy">
+          <p class="feat-id">AUTOFILL</p>
+          <h3>一键出草案。</h3>
+          <p class="feat-line">硬约束下排满座位。宁缺毋滥。</p>
+          <p class="feat-proof">演示盘 <strong>212 / 212</strong> · 硬违规 <strong>0</strong></p>
         </div>
-        <div class="cap-body">
-          <div class="cap-text">
-            <dl class="cap-dl">
-              <div><dt>痛点</dt><dd>整月逐格填；休息 / 资质 / 工时交叉，排完仍不敢说硬规则过了。</dd></div>
-              <div><dt>场景</dt><dd>月度草案：导入空白表或重置示例后，要尽快出可校验初稿。</dd></div>
-              <div><dt>操作</dt><dd>一键排班 → 后台进度 → 甘特刷新 → 校验满员与硬违规。</dd></div>
-              <div><dt>能力</dt><dd>三人制座位、休息、特殊机场、新机长带教、帮扶≤1、模拟机占位、工时均衡；<strong>宁缺毋滥</strong>。</dd></div>
-              <div><dt>证据</dt><dd>演示盘 <strong>212 / 212</strong> 满员，硬违规 <strong>0</strong>（可复跑）。</dd></div>
-              <div><dt>价值</dt><dd>出草案从按天手工 → 分钟级可校验起点（演示盘体感）。</dd></div>
-            </dl>
-          </div>
-          <figure class="cap-shot">
-            <img src="assets/hero-gantt.jpg?v=8" width="1400" height="933" alt="自动填人后的甘特图" loading="lazy" decoding="async">
-            <figcaption>AUTOFILL 后甘特 · 演示盘</figcaption>
-          </figure>
-        </div>
+        <figure class="feat-shot">
+          <img src="assets/hero-gantt.jpg?v=9" width="1400" height="933" alt="自动排班后甘特" loading="lazy" decoding="async">
+        </figure>
       </article>
 
-      <article class="cap" id="cap-validate">
-        <div class="cap-head">
-          <span class="cap-id">B · VALIDATE</span>
-          <h3>规则引擎与即时校验</h3>
+      <article class="feat feat-rev" id="cap-validate">
+        <div class="feat-copy">
+          <p class="feat-id">VALIDATE</p>
+          <h3>违规，点一下就到。</h3>
+          <p class="feat-line">硬软分列。点击定位任务。</p>
         </div>
-        <div class="cap-body">
-          <div class="cap-text">
-            <dl class="cap-dl">
-              <div><dt>痛点</dt><dd>规章靠口头；硬伤与软提醒搅在一起，不知先修哪条。</dd></div>
-              <div><dt>场景</dt><dd>草案后、请假应用前、压测对照——任何要确认合规的节点。</dd></div>
-              <div><dt>操作</dt><dd>校验报告 → 硬/软分列 → 点击定位 → 换人 / 补位 / 自动纠错。</dd></div>
-              <div><dt>能力</dt><dd>三人制、特殊机场、新机长带教、帮扶≤1、模拟机、121.495(b) 第5日、休息与 FDP 等；硬阻断 / 软提示。</dd></div>
-              <div><dt>证据</dt><dd>基线硬违规 0；校验报告可在 lite 打开。</dd></div>
-              <div><dt>价值</dt><dd>事后翻账 → 即时定位；规章进统一引擎（公开页不作规章解释依据）。</dd></div>
-            </dl>
-          </div>
-          <figure class="cap-shot">
-            <img src="assets/validate.jpg?v=8" width="1200" height="1500" alt="校验报告界面，硬软违规分列" loading="lazy" decoding="async">
-            <figcaption>校验报告 · 硬/软分列 · 可定位</figcaption>
-          </figure>
-        </div>
+        <figure class="feat-shot">
+          <img src="assets/validate.jpg?v=9" width="1200" height="1500" alt="校验报告" loading="lazy" decoding="async">
+        </figure>
       </article>
 
-      <article class="cap" id="cap-leave">
-        <div class="cap-head">
-          <span class="cap-id">C · LEAVE-REPAIR</span>
-          <h3>请假补位</h3>
+      <article class="feat" id="cap-leave">
+        <div class="feat-copy">
+          <p class="feat-id">LEAVE-REPAIR</p>
+          <h3>请假，多方案比较。</h3>
+          <p class="feat-line">合规灯。应用留痕。可撤销。</p>
         </div>
-        <div class="cap-body">
-          <div class="cap-text">
-            <dl class="cap-dl">
-              <div><dt>痛点</dt><dd>群聊喊人；方案难比，合规与工时说不清，难审计。</dd></div>
-              <div><dt>场景</dt><dd>运行日请假、同级转让 / 换班，需合规补空座。</dd></div>
-              <div><dt>操作</dt><dd>选人 → 多方案卡片 → 比合规灯 → 应用 → 留痕；可撤销。</dd></div>
-              <div><dt>能力</dt><dd>多方案、合规灯、空洞诊断、同级转让、历史撤销、补位痕迹。</dd></div>
-              <div><dt>证据</dt><dd>方案对比 / 应用高亮 / 补位历史截图；lite「请假调配」可复现。</dd></div>
-              <div><dt>价值</dt><dd>群聊协商 → 可比较、可合规、可审计的补位决策。</dd></div>
-            </dl>
-          </div>
-          <figure class="cap-shot">
-            <img src="assets/leave-plans.jpg?v=8" width="1200" height="853" alt="请假补位多方案对比卡片" loading="lazy" decoding="async">
-            <figcaption>多方案卡片 · 合规与影响并列</figcaption>
-          </figure>
-        </div>
-        <div class="cap-gallery">
-          <figure>
-            <img src="assets/leave-applied.jpg?v=8" width="1200" height="825" alt="应用补位方案后甘特高亮" loading="lazy" decoding="async">
-            <figcaption>应用后高亮</figcaption>
-          </figure>
-          <figure>
-            <img src="assets/repair-mark.jpg?v=8" width="1200" height="784" alt="补位标记写入甘特" loading="lazy" decoding="async">
-            <figcaption>补位痕迹</figcaption>
-          </figure>
-          <figure>
-            <img src="assets/repair-hist.jpg?v=8" width="1000" height="653" alt="补位历史可撤销列表" loading="lazy" decoding="async">
-            <figcaption>历史可撤销</figcaption>
-          </figure>
-        </div>
+        <figure class="feat-shot">
+          <img src="assets/leave-plans.jpg?v=9" width="1200" height="853" alt="请假多方案" loading="lazy" decoding="async">
+        </figure>
       </article>
 
-      <article class="cap" id="cap-hole">
-        <div class="cap-head">
-          <span class="cap-id">D · DIAGNOSE</span>
-          <h3>空洞诊断</h3>
+      <article class="feat feat-rev" id="cap-hole">
+        <div class="feat-copy">
+          <p class="feat-id">DIAGNOSE</p>
+          <h3>排不满，也说得清。</h3>
+          <p class="feat-line">区分数据问题、规则冲突与运力不足。</p>
         </div>
-        <div class="cap-body">
-          <div class="cap-text">
-            <dl class="cap-dl">
-              <div><dt>痛点</dt><dd>只知「排不满」，分不清数据问题、规则冲突还是运力不足。</dd></div>
-              <div><dt>场景</dt><dd>AUTOFILL 留洞、请假无候选、导入后固有冲突。</dd></div>
-              <div><dt>操作</dt><dd>打开诊断 → 看原因分类 → 强制指派 / 换人链 / 回修数据规则。</dd></div>
-              <div><dt>能力</dt><dd>区分数据 / 规则 / 运力；联动换人推荐与一键自动纠错。</dd></div>
-              <div><dt>证据</dt><dd>诊断与强制指派界面、自动纠错步骤均可演示。</dd></div>
-              <div><dt>价值</dt><dd>报错数量 → 下一步动作，缩短修复路径。</dd></div>
-            </dl>
-          </div>
-          <figure class="cap-shot">
-            <img src="assets/hole-diag.jpg?v=8" width="1200" height="760" alt="空洞诊断与强制指派界面" loading="lazy" decoding="async">
-            <figcaption>空洞诊断 · 指导下一步</figcaption>
-          </figure>
-        </div>
+        <figure class="feat-shot">
+          <img src="assets/hole-diag.jpg?v=9" width="1200" height="760" alt="空洞诊断" loading="lazy" decoding="async">
+        </figure>
       </article>
-
-      <div class="cap-jump">
-        <a class="jump-card" href="#ops">
-          <span class="cap-id">E · OPS</span>
-          <strong>运营看板</strong>
-          <span>饱和 · 韧性 · 今日 · 基尼 · 延误</span>
-        </a>
-        <a class="jump-card" href="#stress">
-          <span class="cap-id">F · STRESS</span>
-          <strong>压力回测</strong>
-          <span>不改 live · 三场景</span>
-        </a>
-        <a class="jump-card" href="#ai">
-          <span class="cap-id">G · QWEN</span>
-          <strong>千问侧栏</strong>
-          <span>解读结果 · Key 可选</span>
-        </a>
-      </div>
     </div>
   </section>
 
   <section class="sec sec-alt" id="ops" aria-labelledby="ops-title">
     <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">04 · OPS</span>
-        <h2 id="ops-title">运营看板：看懂风险</h2>
-        <p class="sec-desc">饱和、韧性、今日风险、公平、资质、延误——收成一屏。</p>
+      <header class="sec-head center">
+        <h2 id="ops-title">排出班表。<br>更看懂风险。</h2>
       </header>
-      <div class="ops-layout">
-        <figure class="ops-hero">
-          <img src="assets/ops-sat.jpg?v=8" width="1200" height="916" alt="运营看板：饱和度与韧性四象限" loading="lazy" decoding="async">
-          <figcaption>饱和度 / 韧性 · 四象限</figcaption>
-        </figure>
-        <div class="ops-list">
-          <article>
-            <h3>饱和度 · 韧性度</h3>
-            <p>已排 ÷ 容量、剩余 ÷ 容量；四象限，可下钻中队。</p>
-          </article>
-          <article>
-            <h3>今日运营</h3>
-            <p>未满员、高 FDP、待补空洞、备份缺口；可导出简报。</p>
-          </article>
-          <article>
-            <h3>执勤 · 延误鲁棒</h3>
-            <p>FDP 余量滚动监控；+30 / +60 分钟冲击测处置空间。</p>
-          </article>
-          <article>
-            <h3>公平性 · 资质</h3>
-            <p>工时基尼、班型占比；体检到期、带教、特殊机场供需。</p>
-          </article>
-          <article>
-            <h3>风险驱动韧性</h3>
-            <p>晚→早连飞、过站偏紧、单点脆弱、空洞火花线。</p>
-          </article>
-        </div>
+      <figure class="wide-shot">
+        <img src="assets/ops-sat.jpg?v=9" width="1200" height="916" alt="运营看板" loading="lazy" decoding="async">
+      </figure>
+      <div class="pill-row">
+        <span>饱和与韧性</span>
+        <span>今日风险</span>
+        <span>工时公平</span>
+        <span>延误 +30 / +60</span>
+        <span>资质缺口</span>
       </div>
-      <div class="cap-gallery ops-gallery">
-        <figure>
-          <img src="assets/ops-today.jpg?v=8" width="1100" height="840" alt="今日运营与规模面板" loading="lazy" decoding="async">
-          <figcaption>今日运营与规模</figcaption>
-        </figure>
-        <figure>
-          <img src="assets/ops-board.jpg?v=8" width="1200" height="750" alt="运营看板总览" loading="lazy" decoding="async">
-          <figcaption>看板总览</figcaption>
-        </figure>
-        <figure>
-          <img src="assets/ops-scale.jpg?v=8" width="1100" height="733" alt="运营看板规模视图" loading="lazy" decoding="async">
-          <figcaption>规模视图</figcaption>
-        </figure>
-      </div>
-      <p class="footnote">指标来自 lite 已实现模块；无公开公式处不二次编造。</p>
     </div>
   </section>
 
   <section class="sec" id="stress" aria-labelledby="stress-title">
     <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">05 · STRESS</span>
-        <h2 id="stress-title">压力回测：先试哪里失守</h2>
-        <p class="sec-desc"><strong>不改 live</strong>，深拷贝预演多人请假、密度+30%、资质稀缺。</p>
+      <header class="sec-head center">
+        <h2 id="stress-title">变化来了。<br>先试哪里失守。</h2>
+        <p class="sec-desc">不改 live。三场景隔离回测。</p>
       </header>
-      <div class="stress-layout">
-        <div class="stress-copy">
-          <dl class="cap-dl">
-            <div><dt>痛点</dt><dd>不敢动正式表做假设；密了 / 少了只能等爆再救。</dd></div>
-            <div><dt>场景</dt><dd>草案评审、运力规划、资质结构变化前的预演。</dd></div>
-            <div><dt>操作</dt><dd>设置页 → 跑三场景（或单跑）→ 结果写面板，live 不变。</dd></div>
-            <div><dt>能力</dt><dd>基线对照 + 请假 / 密度+30% / 资质稀缺；深拷贝后汇总。</dd></div>
-            <div><dt>证据</dt><dd>公开页<strong>不编通过率</strong>；数字以本机 lite 面板为准。</dd></div>
-            <div><dt>价值</dt><dd>不敢试 → 隔离试，更从容应对变化。</dd></div>
-          </dl>
-          <div class="stress-cases">
-            <div class="case"><span>CASE 01</span><strong>多人请假</strong><em>集中请假冲击</em></div>
-            <div class="case"><span>CASE 02</span><strong>任务密度 +30%</strong><em>暴露运力瓶颈</em></div>
-            <div class="case"><span>CASE 03</span><strong>资质稀缺</strong><em>特殊机场授权收紧</em></div>
-          </div>
-        </div>
-        <figure class="cap-shot">
-          <img src="assets/settings-stress.jpg?v=8" width="1200" height="675" alt="设置页压力回测入口" loading="lazy" decoding="async">
-          <figcaption>设置页 · 压力回测（结果仅写本面板）</figcaption>
-        </figure>
+      <div class="stress-row">
+        <div class="case"><strong>多人请假</strong></div>
+        <div class="case"><strong>密度 +30%</strong></div>
+        <div class="case"><strong>资质稀缺</strong></div>
       </div>
+      <figure class="wide-shot sm">
+        <img src="assets/settings-stress.jpg?v=9" width="1200" height="675" alt="压力回测入口" loading="lazy" decoding="async">
+      </figure>
     </div>
   </section>
 
   <section class="sec sec-alt" id="ai" aria-labelledby="ai-title">
-    <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">06 · AI</span>
-        <h2 id="ai-title">千问侧栏：解读，不取代引擎</h2>
-        <p class="sec-desc">帮理解满员 / 违规 / 工时输出；决策仍以规则引擎与人工确认为准。</p>
+    <div class="sec-inner narrow">
+      <header class="sec-head center">
+        <h2 id="ai-title">AI 解读结果。<br>不替你做决定。</h2>
+        <p class="sec-desc">千问侧栏可选。Key 仅存本机。规则引擎仍是准绳。</p>
       </header>
-      <div class="ai-grid">
-        <article class="ai-card">
-          <h3>它做什么</h3>
-          <ul>
-            <li>解读满员、违规、工时等结果</li>
-            <li>用自然语言标出「先看哪里」</li>
-            <li>协助理解校验与看板输出</li>
-          </ul>
-        </article>
-        <article class="ai-card is-bound">
-          <h3>边界</h3>
-          <ul>
-            <li><strong>不是</strong>不受约束的排班决策者</li>
-            <li>不替代硬约束引擎与人工确认</li>
-            <li>纯前端 DashScope；Key 仅存本机</li>
-            <li>Key 可选：无 Key 核心能力仍可跑</li>
-          </ul>
-        </article>
-      </div>
     </div>
   </section>
 
   <section class="sec" id="panorama" aria-labelledby="pano-title">
     <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">07 · PANORAMA</span>
-        <h2 id="pano-title">功能全景</h2>
-        <p class="sec-desc">已落地能力分组一览；细节见上文与 lite。</p>
+      <header class="sec-head center">
+        <h2 id="pano-title">已实现。</h2>
       </header>
-      <div class="pano-grid">
-        <article>
-          <h3>规则与座位</h3>
-          <ul>
-            <li>三人制座位（RE12 座位搭配）</li>
-            <li>特殊机场授权</li>
-            <li>新机长须教员同组</li>
-            <li>帮扶对象同组 ≤1</li>
-            <li>模拟机提前占位</li>
-            <li>121.495(b) 第5日口径</li>
-          </ul>
-        </article>
-        <article>
-          <h3>编排与修复</h3>
-          <ul>
-            <li>一键自动排班 AUTOFILL</li>
-            <li>导入航段空白表</li>
-            <li>同级转让 / 换班</li>
-            <li>一键自动纠错</li>
-            <li>空洞诊断与换人推荐</li>
-            <li>方案历史 · 补位痕迹</li>
-          </ul>
-        </article>
-        <article>
-          <h3>校验与监控</h3>
-          <ul>
-            <li>硬 / 软违规分列</li>
-            <li>点击定位任务</li>
-            <li>执勤监控与处置</li>
-            <li>延误鲁棒 +30 / +60</li>
-            <li>公平性基尼监控</li>
-            <li>运营看板</li>
-          </ul>
-        </article>
-        <article>
-          <h3>压力与 AI</h3>
-          <ul>
-            <li>压力回测三场景</li>
-            <li>设置页一键复跑</li>
-            <li>千问侧栏（Key 可选）</li>
-            <li>CCAR-121 硬约束入引擎</li>
-            <li>公司运行手册对照（不公开摘录）</li>
-          </ul>
-        </article>
+      <div class="chip-cloud">
+        <span>三人制座位</span>
+        <span>特殊机场授权</span>
+        <span>新机长带教</span>
+        <span>帮扶 ≤1</span>
+        <span>模拟机占位</span>
+        <span>121.495(b) 第5日</span>
+        <span>AUTOFILL</span>
+        <span>硬/软违规</span>
+        <span>空洞诊断</span>
+        <span>同级换班</span>
+        <span>自动纠错</span>
+        <span>补位痕迹</span>
+        <span>延误鲁棒</span>
+        <span>公平性基尼</span>
+        <span>压力三场景</span>
+        <span>千问侧栏</span>
       </div>
     </div>
   </section>
 
   <section class="sec sec-alt" id="evidence" aria-labelledby="ev-title">
-    <div class="sec-inner">
-      <header class="sec-head">
-        <span class="sec-tag">08 · EVIDENCE</span>
-        <h2 id="ev-title">实测与复现</h2>
-        <p class="sec-desc">关键结论可进演示与设置页复跑验证。</p>
+    <div class="sec-inner narrow">
+      <header class="sec-head center">
+        <h2 id="ev-title">可复跑。<br>才可信。</h2>
+        <p class="sec-desc">212 / 212 · 硬违规 0 · 141 人 · 3 场景</p>
       </header>
-      <div class="ev-grid">
-        <article class="ev-card">
-          <h3>基线结果（演示盘）</h3>
-          <ul>
-            <li>满员 <strong>212 / 212</strong></li>
-            <li>硬约束违规 <strong>0</strong></li>
-            <li>人员池 141（101 + 40 候补，化名）</li>
-          </ul>
-          <p class="cap">口径：演示盘实测 / 非生产流量</p>
-        </article>
-        <article class="ev-card">
-          <h3>推荐体验路径</h3>
-          <ol class="path">
-            <li>重置示例</li>
-            <li>AUTOFILL</li>
-            <li>LEAVE-REPAIR</li>
-            <li>VALIDATE</li>
-            <li>STRESS（设置页）</li>
-          </ol>
-          <p><a class="btn btn-primary btn-sm" href="../">打开 lite 演示 →</a></p>
-        </article>
-        <article class="ev-card is-caveat">
-          <h3>建议后续实测项</h3>
-          <ul>
-            <li>生产规模下草案生成耗时分布</li>
-            <li>补位方案采纳率与处理时长</li>
-            <li>真实航班结构下压力失守点</li>
-          </ul>
-          <p class="cap">尚未作为公开量化结论，故不进首屏指标。</p>
-        </article>
+      <ol class="path-plain">
+        <li>重置示例</li>
+        <li>AUTOFILL</li>
+        <li>LEAVE-REPAIR</li>
+        <li>VALIDATE</li>
+        <li>STRESS</li>
+      </ol>
+      <div class="cta-row center">
+        <a class="btn btn-primary" href="../">打开演示</a>
       </div>
-      <aside class="disclaimer-box" role="note">
-        <strong>声明</strong>
-        示例数据与化名人员为演示构造。<strong>非正式生产系统</strong>，不构成运行批准或规章解释依据。效率表述为演示盘 / 路演口径；压测数字以本机复跑为准，公开页不编造通过率。
-      </aside>
+      <p class="fineprint">示例 / 化名数据 · 非正式生产系统 · 不作规章解释依据</p>
     </div>
   </section>
 
   <section class="sec end" id="run" aria-labelledby="end-title">
     <div class="sec-inner end-box">
-      <span class="sec-tag">09 · EXECUTE</span>
-      <h2 id="end-title">打开浏览器，跑通主线</h2>
-      <p>更快出草案、更早发现风险、更快补位、更从容压测、更方便复盘。</p>
-      <div class="cta-row">
-        <a class="btn btn-primary" href="../">打开可运行演示 <span aria-hidden="true">→</span></a>
-        <a class="btn btn-ghost" href="#evidence">回看实测证据</a>
+      <h2 id="end-title">打开浏览器。<br>跑通主线。</h2>
+      <div class="cta-row center">
+        <a class="btn btn-primary" href="../">打开演示</a>
         <a class="btn btn-ghost" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a>
       </div>
     </div>
@@ -519,17 +280,13 @@
 
 <footer class="footer">
   <div class="footer-inner">
-    <div class="disclaimer">
-      <strong>机组排班 · RUNTIME · DEMO</strong><br>
-      示例数据 · 化名人员 · 非正式生产系统。不构成运行批准或规章解释依据。公开介绍页不展示公司手册原文与敏感手册代码。
-    </div>
+    <p>机组排班 · RUNTIME · DEMO · 非正式生产系统</p>
     <div class="footer-meta">
-      <div><a href="../">轻量演示</a> · <a href="#evidence">实测证据</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a></div>
-      <div class="footer-copy">© 演示用途 · 静态 GitHub Pages</div>
+      <a href="../">演示</a> · <a href="#evidence">实测</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a>
     </div>
   </div>
 </footer>
 
-<script src="intro.js?v=8" defer></script>
+<script src="intro.js?v=9" defer></script>
 </body>
 </html>

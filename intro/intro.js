@@ -1,4 +1,4 @@
-/* intro.js v8 — nav + reveal + metric count-up; respects reduced-motion */
+/* intro.js v9 — nav + reveal + metric count-up */
 (function () {
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -36,10 +36,7 @@
     var target = parseInt(el.getAttribute('data-count'), 10);
     if (isNaN(target)) return;
     var suffix = el.getAttribute('data-suffix') || '';
-    if (reduce || target === 0) {
-      finishMetric(el);
-      return;
-    }
+    if (reduce || target === 0) { finishMetric(el); return; }
     var start = null;
     var dur = 900;
     function frame(ts) {
@@ -48,8 +45,7 @@
       var eased = 1 - Math.pow(1 - t, 3);
       var val = Math.round(target * eased);
       if (suffix.indexOf('/') === 0) {
-        var right = Math.round(parseInt(suffix.slice(1), 10) * eased);
-        el.innerHTML = val + '<span class="slash">/</span>' + right;
+        el.innerHTML = val + '<span class="slash">/</span>' + Math.round(parseInt(suffix.slice(1), 10) * eased);
       } else {
         el.textContent = String(val) + suffix;
       }
@@ -60,11 +56,9 @@
   }
 
   var metrics = document.querySelectorAll('.metric');
-  Array.prototype.forEach.call(metrics, function (m, i) {
-    m.style.setProperty('--mi', String(i));
-  });
+  Array.prototype.forEach.call(metrics, function (m, i) { m.style.setProperty('--mi', String(i)); });
 
-  var nodes = document.querySelectorAll('.sec-head, .cap, .diff-card, .metric, .loop-step, .ev-card, .ai-card, .jump-card, .ops-list article, .case, .pano-grid article');
+  var nodes = document.querySelectorAll('.sec-head, .feat, .diff-card, .metric, .loop-step, .case, .wide-shot, .end-box');
   if (reduce || !('IntersectionObserver' in window)) {
     Array.prototype.forEach.call(nodes, function (el) { el.classList.add('is-in'); });
     Array.prototype.forEach.call(document.querySelectorAll('.metric-num[data-count]'), finishMetric);
@@ -72,15 +66,10 @@
   }
 
   Array.prototype.forEach.call(nodes, function (el) { el.classList.add('reveal'); });
-
-  var counted = false;
   var io = new IntersectionObserver(function (entries) {
     entries.forEach(function (entry) {
       if (!entry.isIntersecting) return;
       entry.target.classList.add('is-in');
-      if (entry.target.classList.contains('metric') && !counted) {
-        // count when first metric strip enters
-      }
       var num = entry.target.querySelector && entry.target.querySelector('.metric-num[data-count]');
       if (num && !num.getAttribute('data-done')) {
         num.setAttribute('data-done', '1');
@@ -88,7 +77,6 @@
       }
       io.unobserve(entry.target);
     });
-  }, { rootMargin: '0px 0px -6% 0px', threshold: 0.1 });
-
+  }, { rootMargin: '0px 0px -8% 0px', threshold: 0.12 });
   Array.prototype.forEach.call(nodes, function (el) { io.observe(el); });
 })();
