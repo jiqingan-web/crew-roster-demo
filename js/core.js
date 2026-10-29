@@ -11,7 +11,7 @@
   const PY = Pinyin || {};
   const SAMPLE_WEEK_PATHS = SD.SAMPLE_WEEK_PATHS || [];
   const SAMPLE_META = SD.SAMPLE_META || {};
-  const SQUADS_AIRBUS = ['空客一中队', '空客二中队', '空客三中队', '空客四中队', '空客五中队', '空客六中队', '空客七中队', '空客八中队'];
+  const SQUADS_AIRBUS = ['空客一中队', '空客二中队', '空客三中队', '空客四中队', '空客五中队', '空客六中队', '空客中队G', '空客八中队'];
   const SQUADS_C909 = ['C909一中队', 'C909二中队', 'C909三中队'];
   const ALL_SQUADS = SQUADS_AIRBUS.concat(SQUADS_C909);
 
@@ -431,7 +431,7 @@
   }
   // ---------------- 轻量版（lite/）：单中队 ~100 人，任务量按人均 12–14 值勤日裁剪 ----------------
   function liteRankMix() {
-    // 七中队·演示实际编制（化名）；保留函数供测试/文档
+    // 演示中队实际编制（化名）；保留函数供测试/文档
     if (LR && LR.length) {
       const m = {}; LR.forEach(p => { m[p.rank] = (m[p.rank] || 0) + 1; });
       return Object.keys(m).sort().map(rk => [rk, m[rk]]);
@@ -440,7 +440,7 @@
       ['F8', 1], ['F7', 16], ['F6', 12], ['F5', 5], ['F4', 15], ['F3', 15], ['F1', 1]];
   }
 
-  // ---------- 外中队候补飞行员（化名，非真实人员）：按七中队职级比例补充机长/副驾驶 ----------
+  // ---------- 外中队候补飞行员（化名，非真实人员）：按演示中队职级比例补充机长/副驾驶 ----------
   // 拉萨资质只能由 J3 及以上（含 TL/TB/TC 教员）持有
   function lhasaRankOK(rank) { return INSTR.includes(rank) || CAPT_ORDER.indexOf(rank) >= CAPT_ORDER.indexOf('J3'); }
   function stripLhasaBelowJ3(st) { let n = 0; st.pilots.forEach(p => { if (!lhasaRankOK(p.rank) && (p.auth || []).some(c => apCat(c, st) === 'LHASA')) { p.auth = p.auth.filter(c => apCat(c, st) !== 'LHASA'); n++; } }); return n; }
@@ -468,7 +468,7 @@
     const pilots = LR.map(src => {
       const p = {
         id: src.id, name: src.name, rank: src.rank, auth: (src.auth || []).slice(),
-        prefs: [], leave: [], squad: src.squad || '七中队·演示', fleet: src.fleet || 'A320',
+        prefs: [], leave: [], squad: src.squad || '演示中队', fleet: src.fleet || 'A320',
         health: defaultHealth()
       };
       if (src.rnpAuth && src.rnpAuth.length) p.rnpAuth = src.rnpAuth.slice();
@@ -720,7 +720,7 @@
   }
 
 
-  // ---- 按真实七中队排班形态生成任务：日=基地→…→同日回基地（府/蓉），少数外站过夜链；去程单号/回程双号 ----
+  // ---- 按演示盘真实排班形态生成任务：日=基地→…→同日回基地（府/蓉），少数外站过夜链；去程单号/回程双号 ----
   function buildPatternPairings(r, opt) {
     const meta = SAMPLE_META || {};
     const BASE = ['ZUTF', 'ZUUU'];

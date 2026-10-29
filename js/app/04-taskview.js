@@ -139,7 +139,7 @@
       <line x1="20" y1="180" x2="240" y2="180" class="gl"/><line x1="20" y1="20" x2="20" y2="180" class="gl"/><text x="130" y="197" class="ax" text-anchor="middle">饱和度 %</text><text x="8" y="100" class="ax" transform="rotate(-90 8 100)" text-anchor="middle">韧性度 %</text>
       <text x="60" y="40" class="ax">低效</text><text x="${qx(80) + 2}" y="40" class="ax">理想</text><text x="${qx(90) + 4}" y="40" class="ax">警戒</text><text x="${qx(90) + 4}" y="176" class="ax">高危</text>
       ${om.bySquadron.map(s => `<circle cx="${qx(s.satPct)}" cy="${qy(s.resiliPct)}" r="7" class="q-pt"><title>${esc(s.squad)} 饱和 ${s.satPct}% 韧性 ${s.resiliPct}%</title></circle>`).join('')}</svg>`;
-    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${LITE ? '轻量版 · 七中队·演示（化名）' : '完整版 · 全部中队'} · 2026-11 · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
+    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · 2026-11 · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
         ${kc('平均工时', avg.toFixed(1) + 'h', `${sum.all.min.toFixed(0)}–${sum.all.max.toFixed(0)}h · 基尼 ${sum.all.gini.toFixed(3)}`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, satD.map(v => 100 - v), '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
@@ -162,7 +162,7 @@
   function renderSide() {
     let s = $('#side'); if (!s) { s = document.createElement('aside'); s.id = 'side'; document.body.prepend(s); document.body.classList.add('side-layout'); }
     const hardN = sum ? sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length + (sum.total - sum.full) : 0;
-    s.innerHTML = `<div class="sb-brand"><span class="sb-logo">✈</span><div><b>CrewOps</b><small>${LITE ? 'A320 · 七中队(化名)' : 'A320/C909 · 成都基地'}</small></div><span class="sb-tag">${LITE ? 'LITE' : 'PROTO'}</span></div>`
+    s.innerHTML = `<div class="sb-brand"><span class="sb-logo">✈</span><div><b>CrewOps</b><small>${LITE ? 'A320 · 演示中队(化名)' : 'A320/C909 · 成都基地'}</small></div><span class="sb-tag">${LITE ? 'LITE' : 'PROTO'}</span></div>`
       + SIDE.map(([g, items]) => `<div class="sb-g">${g}</div>` + items.map(([k, ic, n]) => `<button class="sb-i ${tab === k ? 'cur' : ''}" data-go="${k}"><span class="sb-ic">${ic}</span>${n}${k === 'report' && hardN ? `<span class="sb-n">${hardN}</span>` : ''}</button>`).join('')).join('')
       + `<div class="sb-foot"><span class="okc">●</span> 已自动保存 · ${new Date().toTimeString().slice(0, 5)}</div>`;
   }

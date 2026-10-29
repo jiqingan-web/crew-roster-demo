@@ -5,7 +5,7 @@ const med = a => { a = a.slice().sort((x, y) => x - y); return a[a.length >> 1];
 for (const seed of [20261101, 7, 42]) {
   const st = C.generateLiteSample(seed);
   const capt = st.pilots.filter(p => C.RANK_VAL[p.rank] >= 9 || C.NEW_CAPT.includes(p.rank) || C.INSTR.includes(p.rank) || p.rank === 'J3').length;
-  chk(seed + ' size', st.lite && st.pilots.filter(p => !p.reserve).length === 101 && st.pilots.filter(p => p.reserve).length === 40 && st.pilots.filter(p => p.reserve).every(p => p.squad === '外中队候补·演示') && [...new Set(st.pilots.map(p => p.squad))][0] === '七中队·演示', st.pilots.length + ' pilots');
+  chk(seed + ' size', st.lite && st.pilots.filter(p => !p.reserve).length === 101 && st.pilots.filter(p => p.reserve).length === 40 && st.pilots.filter(p => p.reserve).every(p => p.squad === '外中队候补·演示') && [...new Set(st.pilots.map(p => p.squad))][0] === '演示中队', st.pilots.length + ' pilots');
   { const own = st.pilots.filter(p => !p.reserve); chk(seed + ' mix', own.filter(p => C.INSTR.includes(p.rank)).length === 14 && own.filter(p => C.NEW_CAPT.includes(p.rank)).length === 7, ''); }
   chk(seed + ' demoFill', st.pairings.every(p => p.demoFill));
   const t = Date.now(); C.autoFill(st); C.leaveDemoHoles(st); const ms = Date.now() - t;
@@ -21,7 +21,7 @@ for (const seed of [20261101, 7, 42]) {
   for (const [rk, ps] of Object.entries(byRank)) {
     const dm = med(ps.map(p => duty[p.id])), hm = med(ps.map(p => hrs[p.id]));
     if (ps.length < 5) { chk(seed + ' ' + rk + ' duty 8-18 / h>=30', dm >= 8 && dm <= 18 && hm >= 30, dm + 'd ' + hm.toFixed(1) + 'h n=' + ps.length); continue; }
-    // 阈值按真实七中队 10 月班表校准（在岗者 35–64h、中位 ~50h；原 45–78 编码旧生成器偏高中位数；值勤日下限 10→9：外站驻点休息日/置位不计值勤日，个别小职级中位数落在 9 日）
+    // 阈值按演示盘真实 10 月班表校准（在岗者 35–64h、中位 ~50h；原 45–78 编码旧生成器偏高中位数；值勤日下限 10→9：外站驻点休息日/置位不计值勤日，个别小职级中位数落在 9 日）
     chk(seed + ' ' + rk + ' duty 9-16 / h 35-70', dm >= 9 && dm <= 16 && hm >= 35 && hm <= 70, dm + 'd ' + hm.toFixed(1) + 'h');
   }
   chk(seed + ' duty median 12-14', (m => m >= 12 && m <= 14)(med(Object.values(duty))), med(Object.values(duty)));

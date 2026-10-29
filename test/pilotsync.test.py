@@ -61,7 +61,7 @@ with sync_playwright() as p:
     # 编辑：改中队 → 中队筛选可见
     goTab(pg, 'roster'); pg.wait_for_timeout(600)
     sq = pg.evaluate("() => [...document.querySelectorAll('#rs option')].map(o => o.value)")
-    chk('squad filter options intact', any('七中队' in s for s in sq), sq)
+    chk('squad filter options intact', any('演示中队' in s for s in sq), sq)
     # 刷新后仍在（不被示例重置）
     pg.reload(); pg.wait_for_timeout(4000)
     st = pg.evaluate("() => { const st = window.__roster().st; const p = st.pilots.find(x => x.id === 'N99001'); return { p: p && { name: p.name, rank: p.rank, auth: p.auth }, n: st.pilots.length, lxa: !!st.pairings.find(x => x.id === 'PRLXA') }; }")

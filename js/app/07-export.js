@@ -83,7 +83,7 @@
     if (!window.ExcelJS || !window.XlsxGantt) { toast('Excel 组件未加载（js/vendor/exceljs.min.js）'); return; }
     const H = st.solHist || []; const h = H[st.solIdx != null ? st.solIdx : H.length - 1]; const plan = h ? `方案 #${h.n} · seed ${h.seed}` : '当前方案';
     toast('正在生成 Excel 甘特图…');
-    try { const wb = XlsxGantt.build(ExcelJS, C, st, { pilotIds: ids, label: label || (LITE ? '七中队·演示（轻量版）' : '全部人员'), plan });
+    try { const wb = XlsxGantt.build(ExcelJS, C, st, { pilotIds: ids, label: label || (LITE ? '演示中队（轻量版）' : '全部人员'), plan });
       const buf = await wb.xlsx.writeBuffer(); const safe = String(label || '全员').replace(/[\\/:*?"<>|\s]+/g, '_');
       dl(`排班甘特_${C.YEAR}-${String(C.MONTH).padStart(2, '0')}_${safe}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       toast(`✔ 已导出 Excel 甘特图（${ids ? ids.length : st.pilots.length} 人 · ${plan}）`); } catch (e) { toast('导出失败：' + e.message); } }
