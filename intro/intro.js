@@ -1,4 +1,4 @@
-/* intro.js v9 — nav + reveal + metric count-up */
+/* intro.js v10 — nav + reveal + metric count-up */
 (function () {
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
