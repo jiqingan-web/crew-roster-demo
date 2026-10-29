@@ -207,10 +207,10 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('monthly msg cites 100h', vm.length > 0 && vm.every(x => !x.msg.includes('CAAC 月度硬上限') && x.msg.includes('100h')), vm[0] && vm[0].msg); // keep
 }
 
-// ---- 公司手册 EU.COM / RE12 回测回归（出处见 回测/公司手册回测报告.md）----
+// ---- 公司运行手册 / RE12 回测回归（公开仓库不摘录手册代码）----
 { const chk = (n, ok, info) => { console.log('COM ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
   const D = C.defaultSettings();
-  chk('COM month=100', C.COM && C.COM.monthFlightH === 100 && C.COM.rev.indexOf('Re07-06') >= 0);
+  chk('COM month=100', C.COM && C.COM.monthFlightH === 100 && C.COM.rev.indexOf('公司') >= 0);
   chk('reportMin default 95', D.reportMin === 95, D.reportMin);
   chk('hardMax default 100', D.hardMaxHours === 100);
   chk('company == law month', C.COM.monthFlightH === C.CCAR121.monthFlightH);
@@ -224,7 +224,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('LHASA both J3+', C.catOK('LHASA', 'J3', 'J3') && !C.catOK('LHASA', 'J3', 'J2'));
 }
 
-// ---- FTL 硬规则（121.495 / 121.487 · EU.COM 3.6.10 / 3.6.4）----
+// ---- FTL 硬规则（121.495 / 121.487）----
 { const chk = (n, ok, info) => { console.log('FTL ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
   const st = C.generateSample();
   // 构造：某人已有紧密任务导致 144h 内无 48h 休息

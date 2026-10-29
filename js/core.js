@@ -157,8 +157,8 @@
   // CCAR-121-R8（交通运输部令2024年第7号）P章 数值常量；条款出处见 回测/121回测报告.md
   const CCAR121 = { rev: 'R8', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10, augFlightH3: 13, augFlightH4: 17,
     tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
-  // 公司手册 EU.COM（A3）核实值；出处见 回测/公司手册回测报告.md。月飞行公司=法规=100h；hardMaxHours 默认对齐 100h（用户拍板 2026-10-16）。
-  const COM = { rev: 'EU.COM-Re07-06', re12: 'RE12-2026-09-11', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
+  // 公司运行手册核实值（公开页不展示手册代码）。月飞行公司=法规=100h；hardMaxHours 默认对齐 100h（用户拍板 2026-10-16）。
+  const COM = { rev: '公司运行手册', re12: 'RE12', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
     reportMinDomesticFlight: 95, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 };
   // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
   function flightLimitMin(st, reportMin) {
@@ -1295,7 +1295,7 @@
   function shareFor(p) { return Math.max(0.05, (DAYS - (p.leave || []).length) / DAYS); }
 
 
-  // ---------- CCAR-121-R8 / EU.COM 累积与节奏硬规则（121.487 / 121.495 · 3.6.4 / 3.6.10）----------
+  // ---------- CCAR-121-R8 / 公司运行手册 累积与节奏硬规则（121.487 / 121.495）----------
   // 值勤区间：飞行值勤 = [报到, 退场]；主备份按日历日 [日初, 日末) 计入「值勤日」与 144h 窗口。
   function pilotDutyIntervals(p, st, idx, excludeId) {
     const iv = [];
@@ -1364,7 +1364,7 @@
     // 2) 任一飞行日：若前 4 个日历日均为飞行值勤或主备份，则违规
     const flags = dutyDayFlags(p, st, idx, ex, extra);
     const flew = Array(DAYS + 2).fill(false);
-    // CCAR-121.495(b) / EU.COM 3.6.10 2)：值勤+主备份达 4 个连续日历日后，第 5 个日历日不得「执行任何飞行任务」。
+    // CCAR-121.495(b)：值勤+主备份达 4 个连续日历日后，第 5 个日历日不得「执行任何飞行任务」。
     // 第 5 日只看执飞航段（置位(随)回基地不是飞行任务；前日航班落地/放行跨入当日也不算当日执行飞行任务）
     allPr.forEach(o => o.legs.forEach(l => { if (l.dh) return; const a = Math.floor(l.dep / DAY) + 1, b = Math.floor((l.arr - 1) / DAY) + 1; for (let d = a; d <= b; d++) if (d >= 1 && d <= DAYS) flew[d] = true; }));
     for (let d = 1; d <= DAYS; d++) {
