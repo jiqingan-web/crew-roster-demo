@@ -4220,10 +4220,166 @@
     return files;
   }
 
+
+  // ---------- 压力回测（设置页：对 deep clone 跑场景，不改 live 盘） ----------
+  function stressMulberry32(a) {
+    return function () {
+      let t = (a += 0x6D2B79F5);
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+  function clearCrewForStress(st) {
+    st.pairings.forEach(p => { p.crew = { C: null, F: null, T: null }; delete p.demoHole; delete p.demoAnomaly; delete p.demoAnomalyNote; });
+    st.standby = null; st.training = null; st.sim = null;
+    st.demoHolesApplied = false; st.demoHoles = [];
+    st.demoAnomaliesApplied = false; st.demoAnomalies = [];
+  }
+  function countSpecialAuthHolders(st, cats) {
+    const want = cats || ['LHASA', 'HIGH', 'PLATEAU'];
+    return st.pilots.filter(p => (p.auth || []).some(c => want.includes(apCat(c, st)))).length;
+  }
+  /** 多人同时请假：选本月任务多的机长类，写入同一段连休，并清掉这些天的 standby/prefs */
+  function applyStressLeave(st, opt) {
+    opt = opt || {};
+    const days = (opt.leaveDays && opt.leaveDays.length) ? opt.leaveDays.slice() : [12, 13, 14];
+    const nPick = opt.nLeave != null ? opt.nLeave : 7;
+    const idx = buildIndex(st);
+    const caps = st.pilots.filter(p => isCaptClass(p.rank) && !(p.health && p.health.noFly));
+    caps.sort((a, b) => {
+      const ha = idx.hours[a.id] || 0, hb = idx.hours[b.id] || 0;
+      if (hb !== ha) return hb - ha;
+      const na = (idx.sched[a.id] || []).length, nb = (idx.sched[b.id] || []).length;
+      if (nb !== na) return nb - na;
+      return String(a.id).localeCompare(String(b.id));
+    });
+    const picked = caps.slice(0, Math.min(nPick, caps.length));
+    picked.forEach(p => {
+      p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
+      p.prefs = (p.prefs || []).filter(d => !days.includes(d));
+      if (st.standby && st.standby[p.id]) st.standby[p.id] = st.standby[p.id].filter(d => !days.includes(d));
+    });
+    return {
+      leaveIds: picked.map(p => p.id),
+      leaveDays: days,
+      leavePersonDays: picked.length * days.length,
+      leavePilots: picked.length
+    };
+  }
+  /** 任务密度 +30%：复制扩编 pairings（新 id STRxxx，天数微移） */
+  function applyStressDensity(st, opt) {
+    opt = opt || {};
+    const ratio = opt.densityRatio != null ? opt.densityRatio : 0.3;
+    const before = st.pairings.length;
+    const addN = Math.max(1, Math.round(before * ratio));
+    const src = st.pairings.slice();
+    let seq = 1;
+    for (let i = 0; i < addN; i++) {
+      const base = src[i % src.length];
+      const copy = clone(base);
+      copy.id = 'STR' + String(seq++).padStart(3, '0');
+      copy.crew = { C: null, F: null, T: null };
+      delete copy.demoHole; delete copy.demoAnomaly; delete copy.demoAnomalyNote; delete copy.forced;
+      const shift = ((i % 5) - 2); // -2..+2
+      if (shift) {
+        const nd = copy.ndays || 1;
+        copy.start = Math.max(1, Math.min(DAYS - nd + 1, (copy.start || 1) + shift));
+        (copy.legs || []).forEach(l => {
+          l.dep += shift * DAY; l.arr += shift * DAY;
+          if (l.d != null) l.d = Math.max(1, Math.min(DAYS, l.d + shift));
+        });
+      }
+      st.pairings.push(copy);
+    }
+    return { pairingsBefore: before, pairingsAfter: st.pairings.length, pairingsAdded: addN };
+  }
+  /** 特殊机场资质稀缺：只保留约 25–35% 持 LHASA/HIGH/PLATEAU 授权的人 */
+  function applyStressAuthScarce(st, opt) {
+    opt = opt || {};
+    const seed = opt.seed != null ? (opt.seed >>> 0) : 20261029;
+    const rnd = stressMulberry32(seed ^ 0xA5A5);
+    const keepRatio = opt.authKeepRatio != null ? opt.authKeepRatio : 0.3;
+    const cats = ['LHASA', 'HIGH', 'PLATEAU'];
+    const holders = st.pilots.filter(p => (p.auth || []).some(c => cats.includes(apCat(c, st))));
+    const shuffled = holders.slice();
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(rnd() * (i + 1));
+      const t = shuffled[i]; shuffled[i] = shuffled[j]; shuffled[j] = t;
+    }
+    const keepN = Math.max(1, Math.round(holders.length * Math.min(0.35, Math.max(0.25, keepRatio))));
+    const keep = new Set(shuffled.slice(0, keepN).map(p => p.id));
+    let stripped = 0;
+    holders.forEach(p => {
+      if (keep.has(p.id)) return;
+      const before = (p.auth || []).length;
+      p.auth = (p.auth || []).filter(c => !cats.includes(apCat(c, st)));
+      if ((p.auth || []).length < before) stripped++;
+      if (p.lhasaFull) p.lhasaFull = false;
+    });
+    return {
+      authHoldersBefore: holders.length,
+      authHoldersAfter: countSpecialAuthHolders(st, cats),
+      authStripped: stripped,
+      authKeepRatio: keepRatio
+    };
+  }
+  function stressRowFromSummary(label, key, s, ms, extra) {
+    return Object.assign({
+      label, key,
+      full: s.full, total: s.total,
+      coverage: s.total ? s.full / s.total : 0,
+      hard: s.hard,
+      unfilled: s.total - s.full,
+      hoursMin: s.all ? s.all.min : 0,
+      hoursMax: s.all ? s.all.max : 0,
+      soft: s.soft,
+      ms
+    }, extra || {});
+  }
+  /**
+   * 对 st 的 deep clone 跑基线 + 压力场景；不修改传入的 live st。
+   * opt: { seed, tries, minDiff, scenarios, onProgress, leaveDays, nLeave, densityRatio, authKeepRatio }
+   */
+  function runStressBacktest(st, opt) {
+    opt = opt || {};
+    const seed = opt.seed != null ? (opt.seed >>> 0) : 20261029;
+    const fillOpts = { seed, tries: opt.tries != null ? opt.tries : 1, minDiff: opt.minDiff != null ? opt.minDiff : 0 };
+    const want = opt.scenarios && opt.scenarios.length ? opt.scenarios : ['baseline', 'leave', 'density', 'auth'];
+    const onProgress = typeof opt.onProgress === 'function' ? opt.onProgress : function () {};
+    const defs = [
+      { key: 'baseline', label: '基线', apply: null },
+      { key: 'leave', label: '多人同时请假', apply: applyStressLeave },
+      { key: 'density', label: '任务密度 +30%', apply: applyStressDensity },
+      { key: 'auth', label: '特殊机场资质稀缺', apply: applyStressAuthScarce }
+    ];
+    const rows = [];
+    for (let i = 0; i < defs.length; i++) {
+      const d = defs[i];
+      if (!want.includes(d.key)) continue;
+      onProgress({ i, n: want.length, key: d.key, label: d.label, stage: 'prepare' });
+      const w = clone(st);
+      let extra = {};
+      if (d.apply) extra = d.apply(w, Object.assign({}, opt, { seed })) || {};
+      clearCrewForStress(w);
+      onProgress({ i, n: want.length, key: d.key, label: d.label, stage: 'autofill' });
+      const t0 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      autoFillDiverse(w, fillOpts);
+      const t1 = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
+      const ms = Math.round(t1 - t0);
+      const s = summarize(w);
+      if (d.key === 'auth' && extra.authHoldersAfter == null) extra.authHoldersAfter = countSpecialAuthHolders(w, ['LHASA', 'HIGH', 'PLATEAU']);
+      rows.push(stressRowFromSummary(d.label, d.key, s, ms, extra));
+      onProgress({ i, n: want.length, key: d.key, label: d.label, stage: 'done', row: rows[rows.length - 1] });
+    }
+    return { seed, rows, at: Date.now() };
+  }
+
+
     return { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAYS, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignSimulator, reserveHold, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin };
+    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
 });

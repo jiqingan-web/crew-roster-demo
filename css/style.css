@@ -536,3 +536,6 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 .qw-li{margin:2px 0 2px 2px}
 .qw-ft{display:flex;gap:8px;padding:10px 14px;border-top:1px solid #22345a;align-items:flex-end}
 .qw-ft .qw-in{flex:1;resize:none}
+
+/* v=644 stress-backtest: settings #stressOut table spacing */
+#stressOut table.fdpt td, #stressOut table.fdpt th { padding: 4px 6px; }

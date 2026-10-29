@@ -17,6 +17,15 @@
       <label class="flex"><input type="checkbox" id="demoAnom" ${S.demoAnomalies ? 'checked' : ''}> 自动填人后植入【演示异常】（默认关；开启时至多 1 项座位硬违规）</label>
       ${num('demoHoles', '自动填人后预留易补空洞数', '个（建议 3–5）')}
       <div class="note" style="margin-top:6px">空洞优先落在 1–2 天、无特殊机场的任务副驾位，便于现场「空洞换人」演示；不会故意留下大量 FTL 硬失败。</div>
+      <h3 style="margin-top:14px">压力回测</h3>
+      <div class="note">在当前示例盘的 <strong>深拷贝</strong> 上跑基线与三档压力（多人同时请假 / 任务密度+30% / 特殊机场资质稀缺），与基线对比；<strong>不会改坏当前排班</strong>。</div>
+      <div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <button class="btn primary sm" id="stressRun" type="button">跑压力场景回测</button>
+        <button class="btn sm" id="stressLeave" type="button">仅·多人请假</button>
+        <button class="btn sm" id="stressDense" type="button">仅·密度+30%</button>
+        <button class="btn sm" id="stressAuth" type="button">仅·资质稀缺</button>
+      </div>
+      <div id="stressOut" class="note" style="margin-top:6px">尚未跑过压力回测。</div>
       <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司手册 EU.COM 3.6.4 与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日（执飞或主备份；仅置位的日子不计）后第5日不得执飞（第5日置位合规，软提示尽量避免）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
@@ -39,6 +48,61 @@
     $('#dlyChk').onclick = () => { const r = C.delayRobustness(st, [30, 60]);
       $('#dlyOut').innerHTML = [30, 60].map(m => `+${m}min：新增硬超限 <b class="${r[m].newHard ? 'red' : ''}">${r[m].newHard}</b> 项（${r[m].pilots} 人 / ${r[m].pairings} 任务）${Object.entries(r[m].byType).map(([k, v]) => k + '×' + v).join('，')}`).join('；'); };
     $('#fdpReset').onclick = () => { S.fdpTable = C.defaultFdpTable(); rSettings(); toast('已恢复默认 FDP 表（尚未保存）'); };
+    const fmtStressTable = (rep) => {
+      if (!rep || !rep.rows || !rep.rows.length) return '无结果';
+      const base = rep.rows.find(r => r.key === 'baseline') || rep.rows[0];
+      const head = '<table class="fdpt" style="font-size:12px;margin-top:6px"><tr><th>场景</th><th>满员</th><th>满员率</th><th>硬违规</th><th>未满员</th><th>工时区间</th><th>耗时</th><th>备注</th></tr>';
+      const body = rep.rows.map(r => {
+        let note = '';
+        if (r.key === 'leave') note = `请假 ${r.leavePilots || 0} 人×${(r.leaveDays || []).length || 0} 日＝${r.leavePersonDays || 0} 人日`;
+        else if (r.key === 'density') note = `任务 ${r.pairingsBefore || '?'}→${r.pairingsAfter || r.total}（+${r.pairingsAdded || 0}）`;
+        else if (r.key === 'auth') note = `特殊机场资质 ${r.authHoldersBefore || '?'}→${r.authHoldersAfter || '?'}`;
+        else if (r.key === 'baseline') note = '对照';
+        const cov = ((r.coverage || 0) * 100).toFixed(1) + '%';
+        const hardCls = r.hard ? 'red' : '';
+        const dFull = base && r.key !== 'baseline' ? ` <span class="mut">(${r.full - base.full >= 0 ? '+' : ''}${r.full - base.full})</span>` : '';
+        const dHard = base && r.key !== 'baseline' ? ` <span class="mut">(${r.hard - base.hard >= 0 ? '+' : ''}${r.hard - base.hard})</span>` : '';
+        return `<tr><td>${esc(r.label)}</td><td>${r.full}/${r.total}${dFull}</td><td>${cov}</td><td class="${hardCls}">${r.hard}${dHard}</td><td>${r.unfilled}</td><td>${(+r.hoursMin || 0).toFixed(1)}–${(+r.hoursMax || 0).toFixed(1)}h</td><td>${r.ms} ms</td><td class="mut">${note}</td></tr>`;
+      }).join('');
+      return head + body + `</table><div class="mut" style="margin-top:4px">seed=${rep.seed} · 仅写结果到本面板（及可选 st.stressReport），live 排班未改</div>`;
+    };
+    const paintStress = (rep) => {
+      st.stressReport = rep;
+      const el = $('#stressOut'); if (el) el.innerHTML = fmtStressTable(rep);
+    };
+    if (st.stressReport) paintStress(st.stressReport);
+    let stressBusy = false;
+    const runStress = (scenarios) => {
+      if (stressBusy) { toast('压力回测进行中…'); return; }
+      if (!C.runStressBacktest) { toast('当前核心未含压力回测'); return; }
+      stressBusy = true;
+      const out = $('#stressOut');
+      if (out) out.innerHTML = '<span class="mut">计算中…（深拷贝上 autofill，请稍候）</span>';
+      toast('压力回测计算中…');
+      const labels = { baseline: '基线', leave: '多人同时请假', density: '任务密度 +30%', auth: '特殊机场资质稀缺' };
+      setTimeout(() => {
+        try {
+          const rep = C.runStressBacktest(st, {
+            seed: 20261029, tries: 1, minDiff: 0, scenarios,
+            onProgress: (x) => {
+              if (!out) return;
+              out.innerHTML = `<span class="mut">计算中… ${esc(x.label || labels[x.key] || x.key)}（${(x.i || 0) + 1}/${x.n || scenarios.length}）· ${esc(x.stage || '')}</span>`;
+            }
+          });
+          paintStress(rep);
+          const brief = (rep.rows || []).map(r => `${r.label} 满员${r.full}/${r.total} 硬${r.hard}`).join('；');
+          toast('✔ 压力回测完成：' + brief, 7000);
+        } catch (err) {
+          console.error(err);
+          if (out) out.innerHTML = '<span class="red">压力回测失败：' + esc(String(err && err.message || err)) + '</span>';
+          toast('压力回测失败');
+        } finally { stressBusy = false; }
+      }, 40);
+    };
+    $('#stressRun').onclick = () => runStress(['baseline', 'leave', 'density', 'auth']);
+    $('#stressLeave').onclick = () => runStress(['baseline', 'leave']);
+    $('#stressDense').onclick = () => runStress(['baseline', 'density']);
+    $('#stressAuth').onclick = () => runStress(['baseline', 'auth']);
   }
 
   // ---------------- 自动填人 ----------------
