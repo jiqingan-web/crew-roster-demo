@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>机组智能排班助手 · 产品介绍</title>
+<meta name="description" content="面向飞行部排班办的机组智能排班助手轻量演示：一键填人、请假调配、规章校验、压力回测与千问助手。示例数据，非正式生产系统。">
+<meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
+<link rel="stylesheet" href="intro.css">
+</head>
+<body>
+<header class="nav">
+  <div class="nav-inner">
+    <a class="brand" href="#top" aria-label="机组智能排班助手">
+      <span class="brand-mark" aria-hidden="true">✈</span>
+      <span>机组智能排班助手</span>
+    </a>
+    <nav class="nav-links" aria-label="页面导航">
+      <a href="#product">产品</a>
+      <a href="#capabilities">能力</a>
+      <a href="#compliance">合规</a>
+      <a class="nav-cta" href="../">打开演示</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+  <section class="hero">
+    <div class="wrap">
+      <div class="hero-badge"><i></i>轻量版演示 · 路演 / 排班办审阅</div>
+      <h1>让每月机组排班<br>从表格堆砌，变成<em>可校验的智能编排</em></h1>
+      <p class="hero-lead">
+        面向飞行部排班办：一键自动填人、请假空洞换人、CCAR-121 / 公司手册对照校验、
+        执勤延误鲁棒与压力回测——在浏览器里打开即可体验。示例数据，七中队化名。
+      </p>
+      <div class="cta-row">
+        <a class="btn btn-primary" href="../">打开轻量演示</a>
+        <a class="btn btn-ghost" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">看 GitHub</a>
+      </div>
+      <p class="hero-note">演示盘 · 成都基地 · 2026 年 11 月样例 · 全量版暂关，轻量版即可走完主线</p>
+    </div>
+  </section>
+
+  <div class="chips-band" aria-label="能力关键词">
+    <div class="chips-label">能力关键词 · 非客户名单</div>
+    <div class="marquee" aria-hidden="true">
+      <span class="chip"><strong>三人制</strong> 无表 C</span>
+      <span class="chip"><strong>CCAR-121-R8</strong></span>
+      <span class="chip"><strong>EU.COM</strong> Re07-06</span>
+      <span class="chip"><strong>RE12</strong> 座位搭配</span>
+      <span class="chip"><strong>千问助手</strong> 本机 Key</span>
+      <span class="chip"><strong>压力回测</strong> 三场景</span>
+      <span class="chip"><strong>一键自动填人</strong></span>
+      <span class="chip"><strong>请假调配</strong></span>
+      <span class="chip"><strong>空洞诊断</strong></span>
+      <span class="chip"><strong>执勤延误鲁棒</strong></span>
+      <span class="chip"><strong>帮扶对象</strong> 规则</span>
+      <span class="chip"><strong>模拟机占位</strong></span>
+      <!-- duplicate for seamless loop -->
+      <span class="chip"><strong>三人制</strong> 无表 C</span>
+      <span class="chip"><strong>CCAR-121-R8</strong></span>
+      <span class="chip"><strong>EU.COM</strong> Re07-06</span>
+      <span class="chip"><strong>RE12</strong> 座位搭配</span>
+      <span class="chip"><strong>千问助手</strong> 本机 Key</span>
+      <span class="chip"><strong>压力回测</strong> 三场景</span>
+      <span class="chip"><strong>一键自动填人</strong></span>
+      <span class="chip"><strong>请假调配</strong></span>
+      <span class="chip"><strong>空洞诊断</strong></span>
+      <span class="chip"><strong>执勤延误鲁棒</strong></span>
+      <span class="chip"><strong>帮扶对象</strong> 规则</span>
+      <span class="chip"><strong>模拟机占位</strong></span>
+    </div>
+  </div>
+
+  <section class="section" id="product" aria-labelledby="metrics-title">
+    <div class="wrap">
+      <div class="section-h">
+        <span class="eyebrow">演示盘指标</span>
+        <h2 id="metrics-title">数字来自 lite 回测，不做商业夸张</h2>
+        <p>以下口径均可在仓库测试与设置页「压力回测」复核。标注「演示盘」的为示例生成器结果，非生产运行数据。</p>
+      </div>
+      <div class="metrics">
+        <article class="metric">
+          <div class="num">100%</div>
+          <div class="lab">基线满员率</div>
+          <div class="sub">212 / 212 任务满员<br>硬违规 0</div>
+          <span class="tag-demo">演示盘</span>
+        </article>
+        <article class="metric">
+          <div class="num">101+40</div>
+          <div class="lab">人员池</div>
+          <div class="sub">七中队·演示 101 人<br>外中队候补 40 人（化名）</div>
+          <span class="tag-demo">演示盘</span>
+        </article>
+        <article class="metric">
+          <div class="num">≈50h</div>
+          <div class="lab">中位工时</div>
+          <div class="sub">在岗者约 35–64h 区间<br>校准自真实频次量级</div>
+          <span class="tag-demo">演示盘</span>
+        </article>
+        <article class="metric">
+          <div class="num">3</div>
+          <div class="lab">压力回测场景</div>
+          <div class="sub">多人请假 · 任务+30%<br>特殊机场资质稀缺</div>
+          <span class="tag-demo">可本机复跑</span>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="capabilities" aria-labelledby="cap-title">
+    <div class="wrap">
+      <div class="section-h">
+        <span class="eyebrow">产品能力</span>
+        <h2 id="cap-title">为排班办准备的能力矩阵</h2>
+        <p>从自动编排到异常处置、规章对照与 AI 侧栏——覆盖月度排班与日常调配主线。</p>
+      </div>
+      <div class="features">
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">⚡</div>
+          <h3>一键自动填人</h3>
+          <p>多轮优化填满三人制座位，兼顾休息、资质与工时均衡；宁缺毋滥，不以违规飞行塞满。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">🔄</div>
+          <h3>请假调配 / 空洞换人</h3>
+          <p>临时请假生成多套补位方案；空洞诊断区分数据问题与真实运力不足，应用后记入补位历史。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">📋</div>
+          <h3>校验报告与空洞诊断</h3>
+          <p>硬/软违规分列，定位缺人任务；导入预检可跳过任务固有问题，强制指派可审计。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">📊</div>
+          <h3>运营看板</h3>
+          <p>满员率、备份缺口、请假人日与每日空洞趋势一屏掌握，服务日清与月度复盘。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">⏱</div>
+          <h3>执勤 / 延误鲁棒</h3>
+          <p>执勤期余量监控与 +30/+60 分延误压力；高风险日可生成预防性拆分换组方案。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">🧪</div>
+          <h3>压力回测三场景</h3>
+          <p>设置页一键对比基线、多人同时请假、任务密度 +30%、特殊机场资质稀缺——不改 live 排班。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">🤖</div>
+          <h3>千问 AI 侧栏</h3>
+          <p>纯前端对接 DashScope，Key 仅存本机；解读满员/违规/工时，给出请假调配思路。</p>
+        </article>
+        <article class="feat">
+          <div class="feat-ico" aria-hidden="true">✈</div>
+          <h3>模拟机占位 · 帮扶规则</h3>
+          <p>模拟机块提前占位、一键排班不覆盖；帮扶对象同任务机组至多一名，人员页可标记。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" aria-labelledby="pain-title">
+    <div class="wrap">
+      <div class="section-h">
+        <span class="eyebrow">场景路径</span>
+        <h2 id="pain-title">为每一种排班痛点找到路径</h2>
+        <p>不是另一张大表格，而是对应日常决策的可点击路径。</p>
+      </div>
+      <div class="paths">
+        <article class="path">
+          <div class="step">PATH 01</div>
+          <h3>临时请假</h3>
+          <p>选人 → 生成合规替补方案 → 预览工时前后 → 一键应用并留下补位痕迹。</p>
+        </article>
+        <article class="path">
+          <div class="step">PATH 02</div>
+          <h3>资质瓶颈</h3>
+          <p>特殊机场 / 座位搭配 RE12 约束进候选过滤；压力场景可模拟授权人数骤降。</p>
+        </article>
+        <article class="path">
+          <div class="step">PATH 03</div>
+          <h3>工时公平</h3>
+          <p>自动填人与同级转让倾向低工时；看板与校验报告暴露区间、标准差与高强度提示。</p>
+        </article>
+        <article class="path">
+          <div class="step">PATH 04</div>
+          <h3>规章合规</h3>
+          <p>表 A/B、休息与第 5 日口径写入硬规则；回测报告对照 R8 与公司手册可公开查阅。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="section section-alt" id="compliance" aria-labelledby="comp-title">
+    <div class="wrap">
+      <div class="section-h">
+        <span class="eyebrow">合规对照</span>
+        <h2 id="comp-title">规章写进规则，回测写进仓库</h2>
+        <p>三人制运行，不走扩编表 C。公开对照报告随仓库发布，便于审阅与核对。</p>
+      </div>
+      <div class="comply">
+        <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/121%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">
+          <span class="dot" aria-hidden="true"></span>CCAR-121-R8
+        </a>
+        <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/%E5%85%AC%E5%8F%B8%E6%89%8B%E5%86%8C%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">
+          <span class="dot" aria-hidden="true"></span>EU.COM Re07-06
+        </a>
+        <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/%E5%9B%9E%E6%B5%8B/%E5%85%AC%E5%8F%B8%E6%89%8B%E5%86%8C%E5%9B%9E%E6%B5%8B%E6%8A%A5%E5%91%8A.md" target="_blank" rel="noopener">
+          <span class="dot" aria-hidden="true"></span>RE12 座位搭配 / 特殊机场
+        </a>
+        <span><span class="dot" aria-hidden="true"></span>三人制 · 无表 C</span>
+      </div>
+      <p class="comply-note">亦可直接打开仓库内 <code>回测/</code> 目录 Markdown；PDF 原件不入库。</p>
+    </div>
+  </section>
+
+  <section class="section" id="demo">
+    <div class="wrap">
+      <div class="cta-block">
+        <h2>打开浏览器，走完一条排班主线</h2>
+        <p>导入或重置示例 → 一键自动填人 → 请假调配 → 校验报告 → 设置页压力回测。无需安装，Key 可选。</p>
+        <div class="cta-row" style="justify-content:center">
+          <a class="btn btn-primary" href="../">打开轻量演示</a>
+          <a class="btn btn-ghost" href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub 源码</a>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="footer">
+  <div class="wrap footer-inner">
+    <div class="disclaimer">
+      <strong>机组智能排班助手 · 轻量版演示</strong><br>
+      示例数据 · 七中队化名 · 外中队候补为演示构造。本页与演示<strong>非正式生产系统</strong>，不构成运行批准或规章解释依据。
+      压力回测与满员等数字均可在本仓库 / lite 复现。
+    </div>
+    <div>
+      <div><a href="../">轻量演示</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a></div>
+      <div style="margin-top:8px">© 演示用途 · 静态 GitHub Pages</div>
+    </div>
+  </div>
+</footer>
+</body>
+</html>
