@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600;700&family=Press+Start+2P&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="intro.css?v=3">
+<link rel="stylesheet" href="intro.css?v=4">
 </head>
 <body>
 <div class="crt" aria-hidden="true"></div>
@@ -25,8 +25,11 @@
     </a>
     <nav class="nav-tabs" aria-label="页面导航">
       <a href="#stats">STATS</a>
+      <a href="#diff">DIFF</a>
       <a href="#modules">MODULES</a>
-      <a href="#rules">RULES</a>
+      <a href="#opsboard">OPS</a>
+      <a href="#gains">GAINS</a>
+      <a href="#delta">DELTA</a>
       <a href="#run">RUN</a>
     </nav>
     <a class="nav-run" href="../">RUN LITE →</a>
@@ -70,7 +73,7 @@
         <article class="stat-panel">
           <div class="stat-label">FILL_RATE</div>
           <div class="stat-num">100<span class="stat-unit">%</span></div>
-          <div class="stat-cap">满员 212 / 212 · 硬违规 0</div>
+          <div class="stat-cap">满员 212 / 212 · 硬违规 0 · 演示盘口径</div>
         </article>
         <article class="stat-panel">
           <div class="stat-label">CREW_POOL</div>
@@ -86,11 +89,64 @@
     </div>
   </section>
 
+  <!-- BEFORE / AFTER -->
+  <section class="diff" id="diff" aria-labelledby="diff-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">02 // DIFF</span>
+        <h2 id="diff-title">BEFORE / AFTER</h2>
+        <p class="sec-desc">从表格手工流，到规则运行时——同一套业务，两种体感。</p>
+      </div>
+      <div class="diff-grid">
+        <article class="diff-card is-before">
+          <div class="diff-chrome">
+            <span class="diff-badge">BEFORE</span>
+            <span class="diff-sys">Excel / 旧排班系统</span>
+          </div>
+          <ul class="diff-list">
+            <li><span class="diff-k">填人</span>手工逐格抠表，跨表对不上就靠眼力</li>
+            <li><span class="diff-k">规章</span>靠经验与口头提醒，违规定位靠事后翻账</li>
+            <li><span class="diff-k">请假</span>群里喊一声、电话串人，方案难并列比较</li>
+            <li><span class="diff-k">回溯</span>「当时为什么这么排」难还原，痕迹散落聊天记录</li>
+            <li><span class="diff-k">压测</span>不敢动 live 表；密度一涨只能硬扛</li>
+          </ul>
+        </article>
+        <article class="diff-card is-after">
+          <div class="diff-chrome">
+            <span class="diff-badge is-ok">AFTER</span>
+            <span class="diff-sys">本助手 · RUNTIME</span>
+          </div>
+          <ul class="diff-list">
+            <li><span class="diff-k">填人</span>一键 AUTOFILL，三人制座位一次排满</li>
+            <li><span class="diff-k">规章</span>硬/软违规即时校验，可点击定位到任务</li>
+            <li><span class="diff-k">请假</span>多方案卡片 + 空洞诊断 + 合规灯</li>
+            <li><span class="diff-k">回溯</span>方案历史 / 补位痕迹可撤销、可对照</li>
+            <li><span class="diff-k">压测</span>三场景压力回测不改 live；千问侧栏解读</li>
+          </ul>
+        </article>
+      </div>
+      <div class="diff-table-wrap" role="region" aria-label="对比速查表">
+        <table class="diff-table">
+          <thead>
+            <tr><th>维度</th><th>旧方式</th><th>RUNTIME</th></tr>
+          </thead>
+          <tbody>
+            <tr><td>出草案</td><td>按天手工抠</td><td>分钟级可校验草案（演示盘体感）</td></tr>
+            <tr><td>违规</td><td>事后翻账</td><td>即时硬/软分列 + 点选定位</td></tr>
+            <tr><td>请假补位</td><td>群聊协商</td><td>多方案卡片 · 合规灯 · 空洞诊断</td></tr>
+            <tr><td>规章口径</td><td>口头经验</td><td>引擎内可执行规则 + 公开回测报告</td></tr>
+            <tr><td>压力</td><td>不敢动 live</td><td>深拷贝三场景 · 设置页一键复跑</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
   <!-- Modules -->
   <section class="modules" id="modules" aria-labelledby="mod-title">
     <div class="sec-inner">
       <div class="sec-head">
-        <span class="sec-tag">02 // MODULES</span>
+        <span class="sec-tag">03 // MODULES</span>
         <h2 id="mod-title">能力模块</h2>
         <p class="sec-desc">像 IDE panel / ROM cartridge——点进 lite 即可跑通。</p>
       </div>
@@ -117,7 +173,7 @@
           <div class="mod-chrome"><span>ROM</span><span>04</span></div>
           <div class="mod-id">OPS</div>
           <h3>运营看板</h3>
-          <p>满员率、备份缺口、请假人日与每日空洞趋势一屏掌握。</p>
+          <p>饱和度/韧性、今日运营、公平性基尼、延误韧性一屏掌握。</p>
         </article>
         <article class="mod-card">
           <div class="mod-chrome"><span>ROM</span><span>05</span></div>
@@ -147,6 +203,124 @@
     </div>
   </section>
 
+  <!-- Ops board detail -->
+  <section class="opsboard" id="opsboard" aria-labelledby="ops-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">04 // OPS-BOARD</span>
+        <h2 id="ops-title">运营看板能力</h2>
+        <p class="sec-desc">对照 lite「运营看板 / 执勤监控 / 设置」真实模块——不编造仓库里没有的图。</p>
+      </div>
+      <div class="ops-grid">
+        <article class="ops-mod">
+          <div class="ops-code">SAT / RESILI</div>
+          <h3>饱和度 · 韧性度</h3>
+          <p>已排小时 ÷ 容量、剩余可排 ÷ 容量；四象限（理想 / 低效 / 告警 / 危急）。可下钻分中队。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">TODAY-OPS</div>
+          <h3>今日运营</h3>
+          <p>焦点日未满员任务、高 FDP 风险、待补位空洞、备份缺口（当日备份 vs 请假）；可复制 / 导出今日简报。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">MONTH-BRIEF</div>
+          <h3>月度简报口径</h3>
+          <p>未满员、FDP 风险日、备份缺口人日、请假人日等——写入 briefText，随看板一键带出。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">DUTY-MON</div>
+          <h3>执勤监控</h3>
+          <p>按实际/预计时刻滚动监控 FDP 余量；延误致余量告急时可生成多套合规换人方案。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">DELAY ±30/60</div>
+          <h3>延误鲁棒</h3>
+          <p>设置页「延误鲁棒性检查」：每段 +30 / +60 分钟冲击，统计仍合规的处置空间。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">FAIR · GINI</div>
+          <h3>公平性 · 工时分布</h3>
+          <p>全员工时基尼、各组 σ、值勤天数分布；周末 / 夜航 / 早班占比日常监控。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">QUAL-MON</div>
+          <h3>资质监控</h3>
+          <p>体检将到期、新机长任务含教员同组数、特殊机场供需比表。</p>
+        </article>
+        <article class="ops-mod">
+          <div class="ops-code">RISK-DRIVE</div>
+          <h3>风险驱动韧性</h3>
+          <p>FDP 余量均值、晚→早连飞、过站&lt;50 分、FO 单点脆弱任务抽样；每日空洞火花线。</p>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Efficiency gains -->
+  <section class="gains" id="gains" aria-labelledby="gains-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">05 // GAINS</span>
+        <h2 id="gains-title">效率提升<span class="sec-note">演示盘 / 路演口径</span></h2>
+        <p class="sec-desc">可吹体感，但数字一律标注来源；禁止当成生产 DAU 或未验证工时节省。</p>
+      </div>
+      <div class="gains-lead">
+        <p class="gains-punch">从按天手工抠表，到<strong>分钟级</strong>出一版可校验草案。</p>
+        <p class="gains-punch">请假补位从群聊协商，到<strong>多方案卡片 + 合规灯</strong>。</p>
+        <p class="gains-punch">规章从口头经验，到<strong>可点击违规定位</strong>。</p>
+      </div>
+      <div class="gains-facts">
+        <article class="gain-fact">
+          <div class="gain-label">BASELINE · 演示盘</div>
+          <div class="gain-body">基线满员 <b>212 / 212</b>，硬违规 <b>0</b>——可在 lite 重置示例后一键复跑验证。</div>
+        </article>
+        <article class="gain-fact">
+          <div class="gain-label">STRESS · +30%</div>
+          <div class="gain-body">压力「任务密度 +30%」可暴露瓶颈；与基线对照，<strong>不改坏</strong>当前 live 排班。</div>
+        </article>
+        <article class="gain-fact">
+          <div class="gain-label">REPLAY</div>
+          <div class="gain-body">设置页一键复跑三场景（请假 / 密度+30% / 资质稀缺）；结果可对照报告目录。</div>
+        </article>
+        <article class="gain-fact is-caveat">
+          <div class="gain-label">口径声明</div>
+          <div class="gain-body">「约 · 演示盘 · 目标体感 / 路演口径」可用；未写进仓库实测的「节省 80% 工时」等百分比，不作生产承诺。</div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- Delta features -->
+  <section class="delta" id="delta" aria-labelledby="delta-title">
+    <div class="sec-inner">
+      <div class="sec-head">
+        <span class="sec-tag">06 // DELTA</span>
+        <h2 id="delta-title">比起老旧系统多了什么</h2>
+        <p class="sec-desc">功能清单芯片——均对照仓库已实现能力，非愿景清单。</p>
+      </div>
+      <div class="delta-chips">
+        <span class="dchip">RE12 三人制座位规则</span>
+        <span class="dchip">特殊机场授权校验</span>
+        <span class="dchip">新机长须教员同组</span>
+        <span class="dchip">帮扶对象同组 ≤1</span>
+        <span class="dchip">模拟机提前占位</span>
+        <span class="dchip">121.495(b) 第5日口径</span>
+        <span class="dchip">压力回测三场景</span>
+        <span class="dchip">千问 AI 侧栏</span>
+        <span class="dchip">同级转让 / 换班</span>
+        <span class="dchip">一键自动纠错</span>
+        <span class="dchip">导入航段空白表</span>
+        <span class="dchip">硬/软违规分列</span>
+        <span class="dchip">空洞诊断</span>
+        <span class="dchip">延误鲁棒 +30/+60</span>
+        <span class="dchip">公平性基尼监控</span>
+        <span class="dchip">执勤监控 · 处置方案</span>
+        <span class="dchip">方案历史可撤销</span>
+        <span class="dchip">补位痕迹写入</span>
+      </div>
+    </div>
+  </section>
+
   <!-- Terminal demo panel -->
   <section class="term-sec" aria-hidden="false">
     <div class="sec-inner">
@@ -170,7 +344,7 @@
   <section class="rules" id="rules" aria-labelledby="rules-title">
     <div class="sec-inner">
       <div class="sec-head">
-        <span class="sec-tag">03 // RULES</span>
+        <span class="sec-tag">07 // RULES</span>
         <h2 id="rules-title">硬约束进引擎</h2>
         <p class="sec-desc">三人制运行，不走扩编表 C。公开对照报告随仓库发布。</p>
       </div>
@@ -186,7 +360,7 @@
   <!-- End CTA -->
   <section class="end-cta" id="run">
     <div class="sec-inner end-box">
-      <span class="sec-tag">04 // EXECUTE</span>
+      <span class="sec-tag">08 // EXECUTE</span>
       <h2>打开浏览器，跑通一条排班主线</h2>
       <p>重置示例 → AUTOFILL → LEAVE-REPAIR → VALIDATE → STRESS。无需安装，Key 可选。</p>
       <div class="cta-row">
@@ -202,7 +376,7 @@
     <div class="disclaimer">
       <strong>机组排班 · RUNTIME · DEMO</strong><br>
       示例数据 · 七中队化名 · 外中队候补为演示构造。本页与演示<strong>非正式生产系统</strong>，不构成运行批准或规章解释依据。
-      压力回测与满员等数字均可在本仓库 / lite 复现。
+      压力回测与满员等数字均可在本仓库 / lite 复现；文中效率表述均为演示盘 / 路演口径。
     </div>
     <div class="footer-meta">
       <div><a href="../">轻量演示</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo" target="_blank" rel="noopener">GitHub</a></div>
