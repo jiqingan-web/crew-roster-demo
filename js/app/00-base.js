@@ -50,7 +50,7 @@
         const offStale = LITE && isSampleish && window.RosterOfficial && s.official !== 1;
         if (isSampleish && (stale || offStale)) {
           reset(false);
-          toast(offStale && !stale ? '已载入「正式班表（原样）」为默认方案（可在方案切换处切到自动填人方案）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
+          toast(offStale && !stale ? '已载入「模拟表格1」为默认方案（可在方案切换处切到自动填人方案）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
           return;
         }
         st = s;
@@ -64,7 +64,7 @@
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
-  // 正式班表（原样）：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
+  // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
   function loadOfficial() {
     st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample() : st); st.solHist = []; st.solN = 0;
     pushSolution(C.summarize(st), { seed: '正式', name: window.RosterOfficial.NAME }); return st;
@@ -321,7 +321,7 @@
     const diff = H.length ? C.crewDiff(crews, H[H.length - 1].crews) : null;
     H.push({ n: st.solN, name: info.name || null, seed: info.seed != null ? info.seed : null, crews, control: st.control || null, trainingKind: st.trainingKind || null, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
       demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() });
-    while (H.length > 5) { const k = H.findIndex(x => !x.name); H.splice(k < 0 ? 0 : k, 1); } st.solIdx = H.length - 1; // 「正式班表（原样）」固定保留在首位
+    while (H.length > 5) { const k = H.findIndex(x => !x.name); H.splice(k < 0 ? 0 : k, 1); } st.solIdx = H.length - 1; // 「模拟表格1」固定保留在首位
   }
   function useSolution(i) {
     const H = st.solHist || []; const h = H[i]; if (!h) return;

@@ -1,6 +1,6 @@
 const fs=require('fs'); const O=JSON.parse(fs.readFileSync('official.json'));
 const data={source:O.source,airports:O.airports,pairings:O.pairings,training:O.training,trainingKind:O.trainingKind,sim:O.sim,control:O.control,standby:O.standby,leave:O.leave,notes:O.notes};
-const js=`/* 正式班表（原样）：由用户提供的演示中队正式班表（Excel）离线转换，人员已化名（员工号 → 化名，见 lite-roster.js）。
+const js=`/* 模拟表格1：由用户提供的演示中队正式班表（Excel）离线转换，人员已化名（员工号 → 化名，见 lite-roster.js）。
  * 源表区间 09-01..10-21；本演示为 30 日网格，取 09-01..09-30 依次映射为第 1–30 日（日历标签仍按演示月显示）。
  * 航段：航线/航班号/置位(随)/当日首段起飞–末段落地 时刻均取自源表；源表无逐段时刻，中间各段按航距比例在该时段内切分（推算）。
  * 机号：源表未提供，以 REG-<任务号> 占位。仅本中队人员出现在源表中，外中队搭档的座位留空（即“未满员”）。
@@ -21,7 +21,7 @@ const js=`/* 正式班表（原样）：由用户提供的演示中队正式班�
     st.solN = 1; st.solIdx = 0;
     return st;
   }
-  const api = { OFFICIAL_ROSTER, build, NAME: '正式班表（原样）' };
+  const api = { OFFICIAL_ROSTER, build, NAME: '模拟表格1' };
   if (typeof module === "object" && module.exports) module.exports = api; else root.RosterOfficial = api;
 })(typeof self !== "undefined" ? self : this);
 `;
