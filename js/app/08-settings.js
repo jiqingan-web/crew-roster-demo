@@ -6,12 +6,12 @@
     const cats = ['NONE', 'LHASA', 'HIGH', 'PLATEAU', 'ZBCF', 'J1', 'US'];
     $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>排班参数</h3>
       ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
-      ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
+      ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('softRest48H', '144h内连续休息软目标', '小时')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
       <h3 style="margin-top:14px">高强度模式</h3>
       <label class="flex"><input type="checkbox" id="hiMode" ${S.highIntensity ? 'checked' : ''}> 高强度模式：允许把工时集中到机长线（J3+/教员），普通模式软目标 ≤70–75h</label>
       ${num('hiTargetH', '高强度·机长线软目标', '小时（默认85，须 ≤ 硬上限）')}
-      <div class="note">仅调整软目标；121.487 月100h、7日飞行执勤期 60h、月飞行执勤期 210h、144h内48h休息、121.495(b)第5日、公司上限照常硬卡。&gt;80h 者在校验中列为软提示「高强度」。</div>
+      <div class="note">仅调整软目标；121.487 月100h、7日飞行执勤期 60h、月飞行执勤期 210h、<strong>144h内连续48h休息仍为硬底</strong>、121.495(b)第5日、公司上限照常硬卡。另设「144h内连续休息软目标」（默认60h）：自动排班偏好更松的连续休息，避免卡在48h边缘；未达标仅软提示。&gt;80h 者在校验中列为软提示「高强度」。</div>
       <div style="margin:6px 0"><button class="btn sm" id="dlyChk">延误鲁棒性检查（+30/+60 分钟/段）</button> <span id="dlyOut" class="mut"></span></div>
       <h3 style="margin-top:14px">路演演示</h3>
       <label class="flex"><input type="checkbox" id="demoAnom" ${S.demoAnomalies ? 'checked' : ''}> 自动填人后植入【演示异常】（默认关；开启时至多 1 项座位硬违规）</label>
@@ -26,7 +26,7 @@
         <button class="btn sm" id="stressAuth" type="button">仅·资质稀缺</button>
       </div>
       <div id="stressOut" class="note" style="margin-top:6px">尚未跑过压力回测。</div>
-      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司运行手册与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日（执飞或主备份；仅置位的日子不计）后第5日不得执飞（第5日置位合规，软提示尽量避免）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
+      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司运行手册与 CCAR-121.487，可改）。另强制：<strong>144h内连续48h休息</strong>（硬底不变）、连续4个值勤日（执飞或主备份；仅置位的日子不计）后第5日不得执飞（第5日置位合规，软提示尽量避免）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。软目标：144h内连续休息默认偏好<strong>≥60h</strong>（可调），自动排班避免卡死在硬底边缘，未达标仅软提示「48h休息偏紧」。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <h3 style="margin-top:16px">飞行执勤期限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>

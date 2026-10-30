@@ -169,6 +169,8 @@
     return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, releaseMin: 30, honorPrefs: true,
       standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.45, softTargetMin: 40, softTargetMax: 60,
+      // 硬规则仍为 144h 内连续 48h；软目标偏好更松的连续休息（默认 60h），避免卡在 48h 边缘
+      softRest48H: 60,
       opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
       // 飞行值勤期（FDP）限制：默认值参考 CCAR-121 部（非扩编机组 表A），可按公司规定修改
       fdpTable: defaultFdpTable(), fdpAugmented: false, fdpAugLimitH: 16, fdpRiskHigh: 60, fdpRiskMed: 120, minTurnMin: 35, minOvernightRestH: 10,
@@ -192,6 +194,7 @@
       if (S.demoAnomalies == null) S.demoAnomalies = false;
       if (S.demoHoles == null) S.demoHoles = 4;
       if (S.highIntensity == null) S.highIntensity = false; if (S.hiTargetH == null) S.hiTargetH = 85;
+      if (S.softRest48H == null) S.softRest48H = 60; // 软目标；硬底仍 48h
       if (S.maxOffCapt != null && S.maxOffCapt <= 4) S.maxOffCapt = 999; // 取消机长类每日休息上限
     }
     return S;
@@ -1325,9 +1328,9 @@
     if (extraPairing) fdpDays(extraPairing, st).forEach(dy => { if (dy.date >= 1 && dy.date <= DAYS) a[dy.date] += dy.planFdp; });
     return a;
   }
-  // 在 [t0 - 144h, t0) 内是否存在连续 ≥48h 的无值勤空隙（t<0 视为已休息）
-  function has48hRestBefore(intervals, t0) {
-    const W = 144 * 60, need = 48 * 60; const ws = t0 - W; // 无上月履历时 t<0 区间视为已休息（演示月可排满月初；窗口外不计入值勤）
+  // 在 [t0 - 144h, t0) 内是否存在连续 ≥needMin 的无值勤空隙（t<0 视为已休息）
+  function hasContinuousRestBefore(intervals, t0, needMin) {
+    const W = 144 * 60, need = needMin; const ws = t0 - W; // 无上月履历时 t<0 区间视为已休息（演示月可排满月初；窗口外不计入值勤）
     const clipped = [];
     intervals.forEach(([a, b]) => { const x = Math.max(a, ws), y = Math.min(b, t0); if (y > x) clipped.push([x, y]); });
     clipped.sort((a, b) => a[0] - b[0]);
@@ -1338,6 +1341,8 @@
     for (const [a, b] of merged) { if (a - cursor >= need) return true; cursor = Math.max(cursor, b); }
     return t0 - cursor >= need;
   }
+  // 硬规则：144h 内连续 48h 休息（法规底线不变）
+  function has48hRestBefore(intervals, t0) { return hasContinuousRestBefore(intervals, t0, 48 * 60); }
   function ftlCheckPerson(p, pr, st, idx, opt) {
     opt = opt || {}; const rs = [];
     const already = (idx.sched[p.id] || []).includes(pr);
@@ -1443,11 +1448,24 @@
     for (let i = 1; i < ds.length; i++) { let n = 0; for (let d = ds[i - 1][1] + 1; d < ds[i][0]; d++) if (!ex.has(d)) n++; g.push(n); }
     return g;
   }
-  // 实飞记录校准（2026-06/07）：休 3–4 天为主，休 2 天偶有（约 2 次/两月），休 1 天应避免；≥5 天轻罚
-  const gapCostOne = g => g <= 0 ? 1.4 : g === 1 ? 1.0 : g === 2 ? 0.4 : (g === 3 || g === 4) ? 0 : g === 5 ? 0.25 : 0.5 + 0.1 * (g - 6);
+  // 实飞记录校准：休 3–4 天最佳；2 日休更不鼓励（偏松，避免卡 48h 边缘）；休 1 天应避免；≥5 天轻罚
+  const gapCostOne = g => g <= 0 ? 1.6 : g === 1 ? 1.3 : g === 2 ? 0.9 : (g === 3 || g === 4) ? 0 : g === 5 ? 0.2 : 0.45 + 0.1 * (g - 6);
   const gapCost = (p, list, st) => restGaps(p, list, st).reduce((s, g) => s + gapCostOne(g), 0);
 
-  // 节奏增量：加入 pr 后的休息间隔代价变化 + 飞行块长度偏好（3 天最佳）
+  // 软目标：加入 pr 后，报到前 144h 内连续休息达不到 softRest48H（默认 60h）则偏紧（硬底 48h 另由 FTL 强制）
+  function softRest48Tight(q, pr, st, idx) {
+    const softH = st.settings && st.settings.softRest48H;
+    if (!(softH > 48)) return false;
+    const softNeed = softH * 60;
+    const iv = [];
+    (idx.sched[q.id] || []).forEach(o => {
+      if (o === pr || (pr && o.id === pr.id)) return;
+      dutyIvs(o, st).forEach(v => iv.push(v));
+    });
+    ((st.standby || {})[q.id] || []).forEach(d => { if (d >= 1 && d <= DAYS) iv.push([(d - 1) * DAY, d * DAY]); });
+    return !hasContinuousRestBefore(iv, report(pr, st), softNeed);
+  }
+  // 节奏增量：加入 pr 后的休息间隔代价变化 + 飞行块长度偏好（3 天最佳）+ 48h 软目标偏紧罚分
   function rhythmDelta(q, pr, st, idx) {
     const sc = idx.sched[q.id] || [];
     let d = gapCost(q, sc.concat([pr]), st) - gapCost(q, sc, st);
@@ -1455,6 +1473,7 @@
     let lo = pr.start, hi = pr.start + pr.ndays - 1; while (days.has(lo - 1)) lo--; while (days.has(hi + 1)) hi++;
     const len = hi - lo + 1;
     d += len === 3 ? -0.45 : len === 2 ? -0.1 : len === 4 ? 0.35 : len >= 5 ? 1.2 : 0.2;
+    if (softRest48Tight(q, pr, st, idx)) d += 0.55;
     return d;
   }
   // 新机长任 C 需教员陪飞 → C 位工时软顶较低；任观察员(T)不需教员，按普通软顶
@@ -3137,6 +3156,28 @@
         const t0 = (d - 1) * DAY; const iv = pilotDutyIntervals(p, st, idx).filter(x => !(x[2] === 'S' && x[3] === 'SB' + d));
         if (!has48hRestBefore(iv, t0)) addFtl('144h内48h休息', `${p.name} ${d}日主备份前144h内无连续48h休息`, null, p.id);
       });
+      // 软：硬 48h 已过但未达 softRest48H（默认 60h）→ 偏紧提示，不升硬
+      const softH = +(S.softRest48H != null ? S.softRest48H : 60);
+      if (softH > 48) {
+        const softNeed = softH * 60;
+        const softLabel = `48h休息偏紧（建议≥${softH}h）`;
+        (sched || []).forEach(pr => {
+          const iv = [];
+          sched.forEach(o => { if (o === pr || o.id === pr.id) return; dutyIvs(o, st).forEach(v => iv.push(v)); });
+          ((st.standby || {})[p.id] || []).forEach(d => { if (d >= 1 && d <= DAYS) iv.push([(d - 1) * DAY, d * DAY]); });
+          const t0 = report(pr, st);
+          if (hasContinuousRestBefore(iv, t0, 48 * 60) && !hasContinuousRestBefore(iv, t0, softNeed)) {
+            ded.push({ type: '48h休息偏紧', level: 'soft', msg: `${pr.id} ${p.name}：${softLabel}`, pairing: pr.id, pilot: p.id });
+          }
+        });
+        ((st.standby || {})[p.id] || []).forEach(d => {
+          const t0 = (d - 1) * DAY;
+          const iv = pilotDutyIntervals(p, st, idx).filter(x => !(x[2] === 'S' && x[3] === 'SB' + d));
+          if (hasContinuousRestBefore(iv, t0, 48 * 60) && !hasContinuousRestBefore(iv, t0, softNeed)) {
+            ded.push({ type: '48h休息偏紧', level: 'soft', msg: `${p.name} ${d}日主备份：${softLabel}`, pilot: p.id });
+          }
+        });
+      }
     });
     return ded;
   }
@@ -4381,5 +4422,5 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignSimulator, reserveHold, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
-    crewIssue, personCheck, ftlCheckPerson, has48hRestBefore, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
 });
