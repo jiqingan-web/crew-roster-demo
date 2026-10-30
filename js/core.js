@@ -1415,6 +1415,7 @@
     const lv = dt.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
     const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.join(',') + '日)');
     const trd = dt.filter(d => ((st.training || {})[p.id] || []).includes(d)); if (trd.length) rs.push('培训日冲突(' + trd.join(',') + '日)');
+    const ctd = dt.filter(d => ((st.control || {})[p.id] || []).includes(d)); if (ctd.length) rs.push('控班日冲突(' + ctd.join(',') + '日)');
     const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d) || ((st.simHold || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.join(',') + '日)');
     if (!opt.ignorePrefs) { const pf = dt.filter(d => (p.prefs || []).includes(d)); if (pf.length) rs.push('意向休息日(' + pf.join(',') + '日)'); }
     if (!opt.ignorePrefs && !opt.skipFtl) { const d5 = day5Deadheads(p, st, idx, opt.excludeId, idx.sched[p.id].includes(pr) ? null : pr).filter(x => x.pr === pr); if (d5.length) rs.push('第5日置位(尽量避免,D' + d5.map(x => x.d).join(',') + ')'); }
@@ -1453,6 +1454,7 @@
   const gapCost = (p, list, st) => restGaps(p, list, st).reduce((s, g) => s + gapCostOne(g), 0);
 
   // 软目标：加入 pr 后，报到前 144h 内连续休息达不到 softRest48H（默认 60h）则偏紧（硬底 48h 另由 FTL 强制）
+  // 仅计飞行执勤 + 备份(Standby) 区间；培训/中队控班非 FDP，不纳入 soft 60h 压力
   function softRest48Tight(q, pr, st, idx) {
     const softH = st.settings && st.settings.softRest48H;
     if (!(softH > 48)) return false;
@@ -1474,6 +1476,19 @@
     const len = hi - lo + 1;
     d += len === 3 ? -0.45 : len === 2 ? -0.1 : len === 4 ? 0.35 : len >= 5 ? 1.2 : 0.2;
     if (softRest48Tight(q, pr, st, idx)) d += 0.55;
+    // 培训/控班夹在两飞之间：2 日空档可接受，减轻 gap-2 软罚（不按裸休逼松）
+    const tr = (st.training || {})[q.id] || [];
+    const ctl = (st.control || {})[q.id] || [];
+    if (tr.length || ctl.length) {
+      const filled = new Set([...tr, ...ctl]);
+      const ds = sc.concat([pr]).map(x => pDays(x, st)).sort((a, b) => a[0] - b[0]);
+      const ex = new Set([...(q.leave || []), ...(q.prefs || [])]);
+      for (let i = 1; i < ds.length; i++) {
+        const gapDays = [];
+        for (let day = ds[i - 1][1] + 1; day < ds[i][0]; day++) if (!ex.has(day)) gapDays.push(day);
+        if (gapDays.length === 2 && gapDays.some(day => filled.has(day))) d -= 0.5;
+      }
+    }
     return d;
   }
   // 新机长任 C 需教员陪飞 → C 位工时软顶较低；任观察员(T)不需教员，按普通软顶
@@ -1498,10 +1513,10 @@
   const STAGE_LABEL = { init: '准备', fill: '组合航段', refill: '补位重排', phase: '工时均衡', swap: '互换优化', repairFtl: 'FTL 修复', repairCrewIssues: '机组搭配修复',
     bandBalance: '工时带调整', liftFoBand: '副驾工时提升', bandPull: '工时带拉齐', fairConcentrate: '公平调整', refillAfterConcentrate: '公平后补洞',
     fillBandHoles: '补洞', spreadInstrT: '教员观察位分摊', rhythmRepair: '节奏优化(3飞3–4休)', swapNewCaptHoles: '新机长缺口互换', topUpNewCapt: '新机长补班',
-    assignStandby: '备份编排', assignTraining: '培训', assignSimulator: '模拟机', summarize: '汇总校验' };
+    assignStandby: '备份编排', assignTraining: '培训', assignControl: '中队控班', assignSimulator: '模拟机', summarize: '汇总校验' };
   // 阶段实测耗时序列（Node，单轮；scripts 重测后更新）
-  const STAGE_SEQ_MAIN = [["init",14],["fill",3796],["refill",263],["phase",7624],["swap",2294],["bandPull",9734],["liftFoBand",60],["repairFtl",37],["refill",537],["repairFtl",10],["repairCrewIssues",3],["bandBalance",36],["liftFoBand",25],["bandPull",2686],["fairConcentrate",1040],["repairCrewIssues",1],["repairFtl",10],["refillAfterConcentrate",2131],["repairCrewIssues",2],["repairFtl",11],["fairConcentrate",387],["repairCrewIssues",2],["repairFtl",10],["fairConcentrate",134],["bandBalance",0],["fillBandHoles",1616],["repairCrewIssues",2],["repairFtl",11],["spreadInstrT",2],["repairFtl",11],["rhythmRepair",550],["repairFtl",11],["swapNewCaptHoles",15],["topUpNewCapt",550],["fairConcentrate",444],["swapNewCaptHoles",11],["fillBandHoles",1422],["repairCrewIssues",2],["repairFtl",12],["assignStandby",47],["assignTraining",6],["assignSimulator",8],["summarize",53]];
-  const STAGE_SEQ_LITE = [["init",8],["fill",502],["refill",7],["phase",508],["swap",59],["bandPull",29],["liftFoBand",1],["repairFtl",5],["refill",0],["repairFtl",4],["repairCrewIssues",1],["bandBalance",0],["liftFoBand",0],["bandPull",7],["fairConcentrate",0],["repairCrewIssues",0],["repairFtl",5],["refillAfterConcentrate",3],["repairCrewIssues",0],["repairFtl",5],["fairConcentrate",0],["repairCrewIssues",0],["repairFtl",2],["fairConcentrate",0],["bandBalance",1],["fillBandHoles",1],["repairCrewIssues",0],["repairFtl",2],["spreadInstrT",1],["repairFtl",1],["rhythmRepair",24],["repairFtl",2],["swapNewCaptHoles",1],["topUpNewCapt",0],["fairConcentrate",0],["swapNewCaptHoles",0],["fillBandHoles",0],["repairCrewIssues",1],["repairFtl",1],["assignStandby",7],["assignTraining",2],["assignSimulator",3],["summarize",12]];
+  const STAGE_SEQ_MAIN = [["init",14],["fill",3796],["refill",263],["phase",7624],["swap",2294],["bandPull",9734],["liftFoBand",60],["repairFtl",37],["refill",537],["repairFtl",10],["repairCrewIssues",3],["bandBalance",36],["liftFoBand",25],["bandPull",2686],["fairConcentrate",1040],["repairCrewIssues",1],["repairFtl",10],["refillAfterConcentrate",2131],["repairCrewIssues",2],["repairFtl",11],["fairConcentrate",387],["repairCrewIssues",2],["repairFtl",10],["fairConcentrate",134],["bandBalance",0],["fillBandHoles",1616],["repairCrewIssues",2],["repairFtl",11],["spreadInstrT",2],["repairFtl",11],["rhythmRepair",550],["repairFtl",11],["swapNewCaptHoles",15],["topUpNewCapt",550],["fairConcentrate",444],["swapNewCaptHoles",11],["fillBandHoles",1422],["repairCrewIssues",2],["repairFtl",12],["assignStandby",47],["assignTraining",6],["assignControl",4],["assignSimulator",8],["summarize",53]];
+  const STAGE_SEQ_LITE = [["init",8],["fill",502],["refill",7],["phase",508],["swap",59],["bandPull",29],["liftFoBand",1],["repairFtl",5],["refill",0],["repairFtl",4],["repairCrewIssues",1],["bandBalance",0],["liftFoBand",0],["bandPull",7],["fairConcentrate",0],["repairCrewIssues",0],["repairFtl",5],["refillAfterConcentrate",3],["repairCrewIssues",0],["repairFtl",5],["fairConcentrate",0],["repairCrewIssues",0],["repairFtl",2],["fairConcentrate",0],["bandBalance",1],["fillBandHoles",1],["repairCrewIssues",0],["repairFtl",2],["spreadInstrT",1],["repairFtl",1],["rhythmRepair",24],["repairFtl",2],["swapNewCaptHoles",1],["topUpNewCapt",0],["fairConcentrate",0],["swapNewCaptHoles",0],["fillBandHoles",0],["repairCrewIssues",1],["repairFtl",1],["assignStandby",7],["assignTraining",2],["assignControl",2],["assignSimulator",3],["summarize",12]];
   function makeProgress(cb, K, seq) {
     // seq：[[阶段键, 实测 ms], ...] 按出现顺序；权重取实测耗时，运行中按已完成部分的实际速度重标定（ETA）
     seq = (seq || []).filter(x => x[0] !== 'init' && x[0] !== 'done');
@@ -1538,8 +1553,8 @@
       const crews = st.pairings.map(p => Object.assign({}, p.crew));
       const d = prev.length ? Math.min(...prev.map(pc => crewDiff(crews, pc))) : 1;
       const sc = solutionScore(s) + (d < minDiff ? 1e7 : 0);
-      if (!best || sc < best.sc) best = { sc, crews, sb: JSON.stringify(st.standby || null), tr: JSON.stringify(st.training || null), sim: JSON.stringify(st.sim || null), seed: sd, diff: d }; }
-    st.pairings.forEach((p, i) => p.crew = best.crews[i]); st.standby = JSON.parse(best.sb); st.training = JSON.parse(best.tr); st.sim = JSON.parse(best.sim);
+      if (!best || sc < best.sc) best = { sc, crews, sb: JSON.stringify(st.standby || null), tr: JSON.stringify(st.training || null), tk: JSON.stringify(st.trainingKind || null), ctrl: JSON.stringify(st.control || null), sim: JSON.stringify(st.sim || null), seed: sd, diff: d }; }
+    st.pairings.forEach((p, i) => p.crew = best.crews[i]); st.standby = JSON.parse(best.sb); st.training = JSON.parse(best.tr); st.trainingKind = JSON.parse(best.tk); st.control = JSON.parse(best.ctrl); st.sim = JSON.parse(best.sim);
     return { seed: best.seed, diff: best.diff, tries };
   }
 
@@ -1643,6 +1658,7 @@
     }
     st.pairings.forEach((p, i) => p.crew = best.crew[i]); st.standby = JSON.parse(best.sb);
     assignTraining(st);
+    assignControl(st);
     assignSimulator(st);
     if (!opts.noSwap) { swapBalance(st, { ms: st.pairings.length > 800 ? 1500 : 3000 }); }
     clearHardSeats(st);
@@ -1652,7 +1668,7 @@
   }
   function autoFillOnce(st, opts) {
     opts = opts || {}; const nz = opts.noise; const S = st.settings; const keep = !!opts.keepExisting;
-    if (!keep) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; st.training = null; st.sim = null; /* st.simHold 保留：用户提前占位 */ }
+    if (!keep) { st.pairings.forEach(p => p.crew = { C: null, F: null, T: null }); st.standby = null; st.training = null; st.trainingKind = null; st.control = null; st.sim = null; /* st.simHold 保留：用户提前占位 */ }
     mergeSimHolds(st); // 填人前落回提前占位，personCheck 才能禁飞
     // 外站驻点长块：先固定 新机长 + 教员 带飞对（整块同组），再由求解器补其余
     if (!keep) st.pairings.filter(p => p.fixedPair).forEach((pr, i) => {
@@ -2012,6 +2028,8 @@
     assignStandby(st);
     progStage('assignTraining');
     assignTraining(st);
+    progStage('assignControl');
+    assignControl(st);
     progStage('assignSimulator');
     assignSimulator(st);
     progStage('summarize');
@@ -2641,6 +2659,7 @@
     st.pilots.forEach(p => { const a = Array(DAYS + 2).fill('');
       (p.prefs || []).forEach(d => a[d] = 'P'); (p.leave || []).forEach(d => a[d] = 'L');
       ((st.training || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'N'; });
+      ((st.control || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'K'; });
       ((st.sim || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'M'; });
       ((st.simHold || {})[p.id] || []).forEach(d => { if (!a[d] || a[d] === 'P') a[d] = 'M'; });
       (sb[p.id] || []).forEach(d => { if (!a[d]) a[d] = 'S'; });
@@ -2940,11 +2959,18 @@
     st.pilots.forEach(p => st.standby[p.id].sort((a, b) => a - b));
   }
 
+  // ---------- 培训种类（确定性：工号+日哈希，非随机 fluff） ----------
+  const TRAIN_KINDS = ['飞技复训', '理论学习', '紧急程序', 'CRM', '通导复训'];
+  function pickTrainingKind(pid, d) {
+    let h = 0; const s = String(pid); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return TRAIN_KINDS[Math.abs(h * 7 + d * 131) % TRAIN_KINDS.length];
+  }
   // ---------- 培训(飞技)：出勤人员每月约 1–2 个非连续培训日（与模拟机分列） ----------
   function assignTraining(st) {
     const idx = buildIndex(st);
     st.training = {};
-    st.pilots.forEach(p => { st.training[p.id] = []; });
+    st.trainingKind = {};
+    st.pilots.forEach(p => { st.training[p.id] = []; st.trainingKind[p.id] = {}; });
     const ds = dayStatus(st, idx);
     const rnd = rng(20261117);
     st.pilots.forEach(p => {
@@ -2964,12 +2990,63 @@
         const j = Math.floor(rnd() * cands.length);
         const d = cands.splice(j, 1)[0];
         st.training[p.id].push(d);
+        st.trainingKind[p.id][d] = pickTrainingKind(p.id, d);
         ds[p.id][d] = 'N';
         // 避免连续两天培训
         for (let k = cands.length - 1; k >= 0; k--) if (Math.abs(cands[k] - d) <= 1) cands.splice(k, 1);
       }
       st.training[p.id].sort((a, b) => a - b);
     });
+  }
+
+  // ---------- 中队控班：稀疏真实占位（非哈希伪装）；仅硬冲突检查，不施 softRest48H ----------
+  function assignControl(st) {
+    const idx = buildIndex(st);
+    st.control = {};
+    st.pilots.forEach(p => { st.control[p.id] = []; });
+    const ds = dayStatus(st, idx);
+    const active = st.pilots.filter(p => !(p.health && p.health.noFly) && (idx.hours[p.id] || 0) >= 0.5);
+    if (!active.length) return;
+    // 约 8–12% 出勤者各 1 天/月；且全日最多 1 人控班（贴近实操稀疏）
+    const wantPeople = Math.max(1, Math.min(active.length, Math.round(active.length * 0.1)));
+    const bySquad = {};
+    active.forEach(p => { const sq = p.squad || '_'; (bySquad[sq] = bySquad[sq] || []).push(p); });
+    const squadKeys = Object.keys(bySquad).sort();
+    const picked = [];
+    // 按中队轮转挑人，确定性排序
+    let si = 0;
+    while (picked.length < wantPeople && Object.values(bySquad).some(a => a.length)) {
+      const sq = squadKeys[si % squadKeys.length]; si++;
+      const pool = bySquad[sq];
+      if (!pool || !pool.length) continue;
+      pool.sort((a, b) => String(a.id).localeCompare(String(b.id)));
+      const p = pool.shift();
+      picked.push(p);
+    }
+    const dayUsed = {}; // d -> pid
+    picked.forEach((p, pi) => {
+      const free = [];
+      for (let d = 1; d <= DAYS; d++) if (ds[p.id][d] === '') free.push(d);
+      if (!free.length) return;
+      // 确定性挑一天：避开已有控班日；偏好月中
+      free.sort((a, b) => {
+        const ua = dayUsed[a] ? 1 : 0, ub = dayUsed[b] ? 1 : 0;
+        if (ua !== ub) return ua - ub;
+        const da = Math.abs(a - 15), db = Math.abs(b - 15);
+        if (da !== db) return da - db;
+        return a - b;
+      });
+      // 用工号哈希在同代价候选中稳定偏移
+      let h = 0; const s = String(p.id); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+      const top = free.filter(d => !dayUsed[d]);
+      const pool = top.length ? top : free;
+      const d = pool[Math.abs(h + pi * 17) % pool.length];
+      if (dayUsed[d]) return; // 全日至多 1 人
+      st.control[p.id].push(d);
+      dayUsed[d] = p.id;
+      ds[p.id][d] = 'K';
+    });
+    st.pilots.forEach(p => st.control[p.id].sort((a, b) => a - b));
   }
 
   // ---------- 模拟机：约 5% 人员每月一块连续 2–4 日；非执勤期；软约束邻接 ≥24h ----------
@@ -3030,6 +3107,8 @@
     st.simHold[pid].sort((a, b) => a - b);
     if (st.standby && st.standby[pid]) st.standby[pid] = st.standby[pid].filter(d => !free.includes(d));
     if (st.training && st.training[pid]) st.training[pid] = st.training[pid].filter(d => !free.includes(d));
+    if (st.trainingKind && st.trainingKind[pid]) free.forEach(d => { delete st.trainingKind[pid][d]; });
+    if (st.control && st.control[pid]) st.control[pid] = st.control[pid].filter(d => !free.includes(d));
     const cons = free.every((d, i) => i === 0 || d === free[i - 1] + 1);
     const asSimBlock = cons && free.length >= 2 && free.length <= 4;
     return { ok: true, days: free, skipped: fly, asSimBlock, label: asSimBlock ? '模拟机占位' : '提前占位' };
@@ -3156,7 +3235,7 @@
         const t0 = (d - 1) * DAY; const iv = pilotDutyIntervals(p, st, idx).filter(x => !(x[2] === 'S' && x[3] === 'SB' + d));
         if (!has48hRestBefore(iv, t0)) addFtl('144h内48h休息', `${p.name} ${d}日主备份前144h内无连续48h休息`, null, p.id);
       });
-      // 软：硬 48h 已过但未达 softRest48H（默认 60h）→ 偏紧提示，不升硬
+      // 软：硬 48h 已过但未达 softRest48H（默认 60h）→ 偏紧提示，不升硬；仅飞行+备份，培训/控班不施 soft 60h
       const softH = +(S.softRest48H != null ? S.softRest48H : 60);
       if (softH > 48) {
         const softNeed = softH * 60;
@@ -3550,6 +3629,11 @@
     p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
     p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
     if (st.standby && st.standby[pilotId]) st.standby[pilotId] = st.standby[pilotId].filter(d => !p.leave.includes(d));
+    if (st.training && st.training[pilotId]) {
+      st.training[pilotId] = st.training[pilotId].filter(d => !p.leave.includes(d));
+      if (st.trainingKind && st.trainingKind[pilotId]) p.leave.forEach(d => { delete st.trainingKind[pilotId][d]; });
+    }
+    if (st.control && st.control[pilotId]) st.control[pilotId] = st.control[pilotId].filter(d => !p.leave.includes(d));
     const affected = st.pairings.filter(pr => Object.values(pr.crew).includes(pilotId) && daysTouched(pr, st).some(d => days.includes(d)));
     const changes = [], unresolved = [];
     for (const pr of affected) {
@@ -3972,7 +4056,7 @@
     st.pilots.forEach(p => { let n = 0; for (let d = 1; d <= DAYS; d++) if (ds0[p.id][d] === 'D') n++; beforeDuty[p.id] = n; });
 
     const w = st; // mutate then restore if building plan only — apply moves on working copy via JSON
-    const work = JSON.parse(JSON.stringify({ pilots: st.pilots, pairings: st.pairings, settings: st.settings, standby: st.standby || {}, training: st.training || {}, sim: st.sim || {}, simHold: st.simHold || {}, fills: st.fills || [], lite: st.lite, sample: st.sample }));
+    const work = JSON.parse(JSON.stringify({ pilots: st.pilots, pairings: st.pairings, settings: st.settings, standby: st.standby || {}, training: st.training || {}, trainingKind: st.trainingKind || {}, control: st.control || {}, sim: st.sim || {}, simHold: st.simHold || {}, fills: st.fills || [], lite: st.lite, sample: st.sample }));
     // re-link: use work as mutable state sharing pilot objects from clone
     const planMoves = [];
     const touched = new Set();
@@ -4210,7 +4294,11 @@
     if ((p.leave || []).includes(d)) return '休假';
     if (((st.simHold || {})[p.id] || []).includes(d)) return '提前占位';
     if (((st.sim || {})[p.id] || []).includes(d)) return '模拟机';
-    if (((st.training || {})[p.id] || []).includes(d)) return '培训';
+    if (((st.training || {})[p.id] || []).includes(d)) {
+      const k = ((st.trainingKind || {})[p.id] || {})[d];
+      return k || '培训';
+    }
+    if (((st.control || {})[p.id] || []).includes(d)) return '中队控班';
     if (((st.standby || {})[p.id] || []).includes(d)) return '备份';
     const fly = (idx.sched[p.id] || []).filter(pr => daysTouched(pr, st).includes(d));
     if (fly.length) return '飞行';
@@ -4273,7 +4361,7 @@
   }
   function clearCrewForStress(st) {
     st.pairings.forEach(p => { p.crew = { C: null, F: null, T: null }; delete p.demoHole; delete p.demoAnomaly; delete p.demoAnomalyNote; });
-    st.standby = null; st.training = null; st.sim = null;
+    st.standby = null; st.training = null; st.trainingKind = null; st.control = null; st.sim = null;
     st.demoHolesApplied = false; st.demoHoles = [];
     st.demoAnomaliesApplied = false; st.demoAnomalies = [];
   }
@@ -4421,6 +4509,6 @@
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignSimulator, reserveHold, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
 });

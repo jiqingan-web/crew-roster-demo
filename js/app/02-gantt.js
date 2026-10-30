@@ -27,7 +27,7 @@
     let h = `${demoFillBanner()}${exportBarHtml('<span class="mut">人员视图可导出班表/月历</span>')}
       <div class="toolbar"><input id="gq" placeholder="搜索 姓名/工号/级别/拼音首字母" value="${esc(ui.gq)}"> <select id="gg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.gg ? 'selected' : ''}>${g}</option>`).join('')}</select> <select id="gsq" title="中队">${squadOptions(ui.gsq)}</select>
       <div class="legend"><span><i style="background:#1d5fa8"></i>机长位(机)</span><span><i style="background:#14766a"></i>副驾驶位(副)</span><span><i style="background:#5a4a9a"></i>观察员</span>
-      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#1a3a5c;border:1px solid #5aa0e6"></i>培训</span><span><i style="background:#2a2f6b;border:1px solid #8a8ff0"></i>模拟机训练</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>可能抓飞(备份)</span><span><i style="background:#3a3f46;border:1px dashed #9aa4b0"></i>空班</span><span><b class="dh">(随)</b>置位乘机</span><span><i style="background:#3d3a20;border:1px dashed #c9b458"></i>中队控班</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>病假/年假</span><span><i style="background:repeating-linear-gradient(45deg,#2d6b6b,#2d6b6b 3px,transparent 3px,transparent 6px)"></i>疗养</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
+      <span><i style="background:repeating-linear-gradient(45deg,#2c6a52,#2c6a52 3px,transparent 3px,transparent 6px)"></i>意向休息日</span><span><i style="background:#1a3a5c;border:1px solid #5aa0e6"></i>培训(飞技/理论/紧急/CRM/通导)</span><span><i style="background:#2a2f6b;border:1px solid #8a8ff0"></i>模拟机训练</span><span><i style="background:#6b4a12;border:1px solid #e6a23c"></i>可能抓飞(备份)</span><span><i style="background:#3a3f46;border:1px dashed #9aa4b0"></i>空班</span><span><b class="dh">(随)</b>置位乘机</span><span><i style="background:#3d3a20;border:1px dashed #c9b458"></i>中队控班</span><span><i style="background:repeating-linear-gradient(45deg,#8a3346,#8a3346 3px,transparent 3px,transparent 6px)"></i>病假/年假</span><span><i style="background:repeating-linear-gradient(45deg,#2d6b6b,#2d6b6b 3px,transparent 3px,transparent 6px)"></i>疗养</span><span class="red">红字=特殊机场</span><span><b class="rbadge r-high">⚠</b>执勤余量&lt;${st.settings.fdpRiskHigh}分 <b class="rbadge r-med">◔</b>&lt;${st.settings.fdpRiskMed}分 <b class="rbadge r-over">⛔</b>超限</span><span><span class="fbadge">补位</span>已补位任务</span><span><span class="demotag">演示异常</span>路演用例</span><span>点击任务条可调整机组</span></div>
       <span class="mut" style="margin-left:auto">${ps.length} 名飞行员 · 2026年11月</span></div>
       ${ui.hl ? `<div class="hlbar ${ui.hl.ok ? 'ok' : ''}">${ui.hl.ok ? '✔ 已更新并合规' : '已高亮刚应用的调配'}（${ui.hl.pilots.size} 人 · 任务 ${[...ui.hl.pairings].join('、')}）<button class="btn sm" id="hlUndo">↶ 撤销</button><button class="btn sm" id="hlClr">清除高亮</button></div>` : ''}
       <div class="gbox"><div class="gwrap z-${lvl}" style="--cw:${cw}px;--rh:${rh}px;--nw:${nw}px"><div class="gt" style="width:${nw + cw * C.DAYS}px"><div class="ghead"><div class="gcell0"><b>${lvl === 'tiny' || lvl === 'small' ? '飞行员' : '员工号 / 姓名 / 级别'}</b><span style="margin-left:auto">${lvl === 'full' || lvl === 'mid' ? '本月小时' : 'h'}</span></div>`;
@@ -40,11 +40,22 @@
       h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点击：为此人临时请假 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
       const trd = (st.training || {})[p.id] || [];
+      const trk = (st.trainingKind || {})[p.id] || {};
+      const ctd = (st.control || {})[p.id] || [];
       const simd = (st.sim || {})[p.id] || [];
       const holdd = (st.simHold || {})[p.id] || [];
       const lbl = s => cw >= 30 && rh >= 18 ? `<span>${s}</span>` : '';
+      const trShort = k => ({ '飞技复训': '飞技', '理论学习': '理论', '紧急程序': '紧急', 'CRM': 'CRM', '通导复训': '通导' }[k] || '培训');
       const busy = new Set(); (idx.sched[p.id] || []).forEach(pr => { for (let k = 0; k < pr.ndays; k++) busy.add(pr.start + k); });
-      for (let d = 1; d <= C.DAYS; d++) { const nk = nonFlyKind(p, d); const isHold = holdd.includes(d); h += (p.leave || []).includes(d) ? `<div class="lv lv-${nk.lv}" title="${nk.lvName}">${lbl(nk.lvName)}</div>` : simd.includes(d) ? `<div class="tr sim" title="${isHold ? '提前占位/模拟机占位（禁飞，自动排班不覆盖）' : '模拟机训练'}">${lbl(isHold ? '提前占位' : '模拟机')}</div>` : trd.includes(d) ? `<div class="tr" title="培训(飞技)">${lbl('培训')}</div>` : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>' : sbd.includes(d) ? `<div class="sb" title="可能抓飞人员（备份 / Standby）">${lbl('抓飞')}</div>` : (!busy.has(d) && nk.idle) ? `<div class="idle ${nk.idle === '中队控班' ? 'ctl' : ''}" title="${nk.idle}">${lbl(nk.idle === '中队控班' ? '控班' : '空班')}</div>` : '<div></div>'; }
+      for (let d = 1; d <= C.DAYS; d++) { const nk = nonFlyKind(p, d); const isHold = holdd.includes(d); const kind = trk[d]; const isCtl = ctd.includes(d);
+        h += (p.leave || []).includes(d) ? `<div class="lv lv-${nk.lv}" title="${nk.lvName}">${lbl(nk.lvName)}</div>`
+          : simd.includes(d) ? `<div class="tr sim" title="${isHold ? '提前占位/模拟机占位（禁飞，自动排班不覆盖）' : '模拟机训练'}">${lbl(isHold ? '提前占位' : '模拟机')}</div>`
+          : trd.includes(d) ? `<div class="tr" title="${kind || '培训'}">${lbl(trShort(kind))}</div>`
+          : (p.prefs || []).includes(d) ? '<div class="pref" title="意向休息日"></div>'
+          : sbd.includes(d) ? `<div class="sb" title="可能抓飞人员（备份 / Standby）">${lbl('抓飞')}</div>`
+          : isCtl ? `<div class="idle ctl" title="中队控班">${lbl('控班')}</div>`
+          : (!busy.has(d)) ? `<div class="idle" title="空班">${lbl('空班')}</div>`
+          : '<div></div>'; }
       h += '</div>';
       for (const pr of idx.sched[p.id]) {
         const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id);
@@ -137,13 +148,14 @@
   }
 
 
-// 非飞展示：请假子类/空班/控班仍用确定性标签；模拟机与培训以 st.sim / st.training 为准（不再哈希伪装）
+// 非飞展示：请假子类用确定性标签；培训/控班/模拟机以 st.training / st.control / st.sim 为准（不再哈希伪装控班）
 function nonFlyKind(p, d) {
   let hsh = 0; const s = p.id; for (let i = 0; i < s.length; i++) hsh = (hsh * 31 + s.charCodeAt(i)) | 0; hsh = Math.abs(hsh);
   const lvKinds = [['rest', '疗养'], ['al', '年假'], ['sick', '病假(航医)']]; const lk = lvKinds[hsh % 3];
-  const x = Math.abs((hsh * 7 + d * 131) % 100);
   const isHold = (((typeof st !== 'undefined' && st && st.simHold) || {})[p.id] || []).includes(d);
   const isSim = (((typeof st !== 'undefined' && st && st.sim) || {})[p.id] || []).includes(d);
   const isTr = (((typeof st !== 'undefined' && st && st.training) || {})[p.id] || []).includes(d);
-  return { lv: lk[0], lvName: lk[1], tr: isHold ? '提前占位/模拟机占位' : (isSim ? '模拟机训练' : (isTr ? '培训(飞技)' : '')), idle: x < 4 ? '空班' : x < 6 ? '中队控班' : '' };
+  const kind = isTr ? (((typeof st !== 'undefined' && st && st.trainingKind) || {})[p.id] || {})[d] : '';
+  const isCtl = (((typeof st !== 'undefined' && st && st.control) || {})[p.id] || []).includes(d);
+  return { lv: lk[0], lvName: lk[1], tr: isHold ? '提前占位/模拟机占位' : (isSim ? '模拟机训练' : (kind || (isTr ? '培训' : ''))), idle: isCtl ? '中队控班' : '空班' };
 }

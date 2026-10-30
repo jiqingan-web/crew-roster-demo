@@ -52,10 +52,13 @@
         segs(pr).forEach((g, j) => { const codes = [g.ls[0].from, ...g.ls.map(l => l.to)];
           put(ws, r, L, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(j ? pr.id.replace(/^PR/, '') : pr.id + (slot === 'T' ? '[观]' : ''), codes, `${g.ls.some(l => l.dh) ? '(随)' : ''}${C.fmtT(g.ls[0].dep)}-${C.fmtT(g.ls[g.ls.length - 1].arr)}`), COL[slot] || COL.C, nt); }); });
       const sb = (st.standby || {})[p.id] || [], tr = (st.training || {})[p.id] || [], sim = (st.sim || {})[p.id] || [];
+      const trk = (st.trainingKind || {})[p.id] || {}, ctl = (st.control || {})[p.id] || [];
+      const trShort = k => ({ '飞技复训': '飞技', '理论学习': '理论', '紧急程序': '紧急', 'CRM': 'CRM', '通导复训': '通导' }[k] || '培训');
       for (let d = 1; d <= D; d++) { const s0 = (d - 1) * SLOTS, s1 = s0 + SLOTS - 1;
         if ((p.leave || []).includes(d)) put(ws, r, L, taken, s0, s1, '请假', COL.lv, '请假/休假', '7A2E3B');
         else if (sim.includes(d)) put(ws, r, L, taken, s0, s1, '模拟机', COL.sim, '模拟机训练（非执勤期）');
-        else if (tr.includes(d)) put(ws, r, L, taken, s0, s1, '培训', COL.tr, '培训(飞技)');
+        else if (tr.includes(d)) put(ws, r, L, taken, s0, s1, trShort(trk[d]), COL.tr, trk[d] || '培训');
+        else if (ctl.includes(d)) put(ws, r, L, taken, s0, s1, '控班', '3d3a20', '中队控班');
         else if (sb.includes(d)) put(ws, r, L, taken, s0, s1, '备份', COL.sb, '备份（Standby）');
         else if ((p.prefs || []).includes(d)) put(ws, r, L, taken, s0, s1, '意向休', COL.pref, '意向休息日', '2E6B45'); }
       for (let k = 0; k < D * SLOTS; k++) if (!taken[k]) { const c = ws.getCell(r, L + k + 1); c.border = { left: k % SLOTS ? undefined : { style: 'thin', color: { argb: 'FF8A9BB5' } }, bottom: thin }; if (dow(Math.floor(k / SLOTS) + 1) % 6 === 0) c.fill = fill('FFF6EF'); } });
@@ -71,7 +74,7 @@
     const sum = C.summarize(st); let r = 1; const hdr = (t) => { const c = wl.getCell(r, 1); c.value = t; c.font = { bold: true, size: 12 }; r++; };
     hdr('方案信息'); [['方案', opt.plan || '当前方案'], ['导出范围', opt.label || '全部人员'], ['人数', pilots.length], ['任务数', prs.length], ['满员率', (sum.coverage != null ? (sum.coverage * (sum.coverage <= 1 ? 100 : 1)).toFixed(1) + '%' : '')], ['硬违规', sum.hard], ['导出时间', new Date().toLocaleString('zh-CN')], ['时间格', '每日 8 格 × 3 小时；色块 = 报到(首段前 ' + rep + ' 分) → 退场(末段后 ' + rel + ' 分)']].forEach(x => { wl.getCell(r, 1).value = x[0]; wl.getCell(r, 2).value = x[1]; wl.getCell(r, 1).font = { bold: true }; r++; });
     r++; hdr('图例');
-    [['机长/左座', COL.C, 'FFFFFF'], ['副驾驶', COL.F, 'FFFFFF'], ['观察员', COL.T, 'FFFFFF'], ['培训', COL.tr, 'FFFFFF'], ['模拟机', COL.sim, 'FFFFFF'], ['备份', COL.sb, 'FFFFFF'], ['意向休息', COL.pref, '2E6B45'], ['请假', COL.lv, '7A2E3B'], ['★/红字 = 特殊机场', 'FFFFFF', 'C0392B']].forEach(x => { const c = wl.getCell(r, 1); c.value = x[0]; c.fill = fill(x[1]); c.font = { color: { argb: 'FF' + x[2] }, bold: true }; c.border = B; r++; });
+    [['机长/左座', COL.C, 'FFFFFF'], ['副驾驶', COL.F, 'FFFFFF'], ['观察员', COL.T, 'FFFFFF'], ['培训(飞技/理论/紧急/CRM/通导)', COL.tr, 'FFFFFF'], ['模拟机', COL.sim, 'FFFFFF'], ['备份', COL.sb, 'FFFFFF'], ['中队控班', '3d3a20', 'FFFFFF'], ['意向休息', COL.pref, '2E6B45'], ['请假', COL.lv, '7A2E3B'], ['★/红字 = 特殊机场', 'FFFFFF', 'C0392B']].forEach(x => { const c = wl.getCell(r, 1); c.value = x[0]; c.fill = fill(x[1]); c.font = { color: { argb: 'FF' + x[2] }, bold: true }; c.border = B; r++; });
     wl.getCell(r, 1).value = '色块内文字：任务号 + 当日机场单字简称链 + 首段起飞-末段落地；悬停批注查看完整机组/航班/城市/飞行执勤期'; r += 2;
     hdr('机场简称'); Object.keys(AB).forEach(code => { wl.getCell(r, 1).value = AB[code]; wl.getCell(r, 2).value = C.apName(code, st); wl.getCell(r, 3).value = code; if (C.isSpecial(code, st)) wl.getCell(r, 2).font = { color: { argb: 'FFC0392B' }, bold: true }; r++; });
     r++; hdr('人员统计'); const hr0 = r; ['员工号', '姓名', '级别', '本月小时', '值勤天数', '任务数', '备份天', '培训天', '模拟机天'].forEach((h, k) => { const c = wl.getCell(r, k + 1); c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill(COL.hd); c.border = B; }); r++;
