@@ -249,52 +249,6 @@ main, header, footer { position: relative; z-index: 1; }
 }
 .diff-card.is-before li { color: var(--ink-2); font-weight: 400; }
 
-
-/* before / after shots */
-.ba-shots {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin: 0 0 28px;
-}
-.ba-shot {
-  margin: 0;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  overflow: hidden;
-  text-align: left;
-}
-.ba-shot.is-new { border-color: rgba(0, 212, 255, 0.4); }
-.ba-shot .shot-chrome { border-bottom: 1px solid var(--line); }
-.ba-shot img {
-  display: block;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 16 / 11;
-  object-fit: cover;
-  object-position: top left;
-  background: #0a101c;
-}
-.ba-shot.is-new img { object-position: top center; }
-.ba-shot figcaption {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px 14px;
-  font-size: 14px;
-  color: var(--ink-2);
-  border-top: 1px solid var(--line);
-}
-.shot-badge.muted {
-  color: var(--mut);
-  border-color: var(--line-hi);
-}
-@media (max-width: 640px) {
-  .ba-shots { grid-template-columns: 1fr; gap: 12px; margin-bottom: 20px; }
-  .ba-shot img { aspect-ratio: 4 / 3; }
-}
-
 /* loop */
 .loop-track {
   list-style: none; margin: 0; padding: 0;
