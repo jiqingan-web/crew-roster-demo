@@ -26,7 +26,7 @@
       <div class="cw-acts"><button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="okpis">${kpiCard('◎', '满员率', (sum.coverage * 100).toFixed(1) + '%', `${st.pairings.length} 个任务 · ${sum.full === sum.total ? '全部已覆盖' : '缺员 ' + (sum.total - sum.full)}`, sum.coverage >= 0.99 ? 'okc' : 'warnc')}
         ${kpiCard('⚠', '硬性违规', hardN, `软性 ${softN} · 提示 ${infoN}`, hardN ? 'red' : 'okc')}
-        ${kpiCard('◷', '需关注风险', riskN || '—', riskN ? 'FDP 中/高风险任务' : 'FDP 余量均充足')}
+        ${kpiCard('◷', '需关注风险', riskN || '—', riskN ? '飞行执勤期中/高风险任务' : '飞行执勤期余量均充足')}
         ${kpiCard('♙', '可排人员平均工时', avg.toFixed(1) + 'h', `${sum.all.min.toFixed(1)}–${sum.all.max.toFixed(1)}h · 基尼 ${sum.all.gini.toFixed(3)}`)}</div>
       <div class="dstrip">${Array.from({ length: C.DAYS }, (_, i) => i + 1).map(k => `<button class="dchip ${k === d ? 'cur' : ''} ${['六', '日'].includes(wdOf(k)) ? 'we' : ''}" data-day="${k}"><b>${String(k).padStart(2, '0')}</b><small>周${wdOf(k)}</small><small>${D[k].prs.length} 任务</small>${D[k].issue ? `<i class="ddot" title="${D[k].issue} 项需处理"></i>` : ''}</button>`).join('')}</div>`;
     let items = D[d].prs; const sbs = Object.entries(st.standby || {}).filter(([, ds]) => (ds || []).includes(d)).map(([id]) => m[id]).filter(Boolean);
@@ -47,12 +47,12 @@
           <div class="tc-r">${routeHtml(ls)}</div>
           <div class="tc-m">D${k}/${pr.ndays} · ${ls.length} 段 · ${(ls.reduce((a, l) => a + l.arr - l.dep, 0) / 60).toFixed(1)}h · ${pr.ac} · ${hm(ls[0].dep)}–${hm(ls[ls.length - 1].arr)}</div>
           <div class="tc-c">${chips}</div>
-          <div class="tc-f">${dy ? `<span class="rdot r-${dy.planRisk}"></span>FDP ${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)} · 余 ${dy.planBuffer} 分` : 'FDP —'}</div></div>`;
+          <div class="tc-f">${dy ? `<span class="rdot r-${dy.planRisk}"></span>飞行执勤期 ${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)} · 余 ${dy.planBuffer} 分` : '飞行执勤期 —'}</div></div>`;
       }
       h += '</div>';
     }
     h += `<div class="tcol side"><div class="sbox"><div class="tcol-h">当日备份 <span class="pillc">${sbs.length} 人</span></div>${sbs.length ? `<div class="tc-c">${sbs.map(p => `<span class="cchip">${esc(p.name)}<small>${esc(p.rank)}</small></span>`).join('')}</div>` : '<div class="tempty">当日没有备份</div>'}<div class="mut sm">备份被调用后，该日备份数量会减少；应用方案前会重新校验。</div></div>
-      <div class="sbox"><div class="tcol-h">需要关注 <span class="pillc">${att.length}</span></div>${att.length ? att.map(({ pr, stt }) => `<div class="attn" data-card="${pr.id}"><span class="badge ${stt[1]}">${stt[0]}</span><b>${pr.id}</b><span class="mut">${esc((V[pr.id] || [stt[0] === '缺员' ? '缺 ' + ['C', 'F', 'T'].filter(s => !pr.crew[s]).map(s => C.SLOT_NAME[s]).join('/') : 'FDP 余量偏紧'])[0]).slice(0, 60)}</span></div>`).join('') : '<div class="tempty">当日没有需要关注的任务</div>'}</div></div></div></div>`;
+      <div class="sbox"><div class="tcol-h">需要关注 <span class="pillc">${att.length}</span></div>${att.length ? att.map(({ pr, stt }) => `<div class="attn" data-card="${pr.id}"><span class="badge ${stt[1]}">${stt[0]}</span><b>${pr.id}</b><span class="mut">${esc((V[pr.id] || [stt[0] === '缺员' ? '缺 ' + ['C', 'F', 'T'].filter(s => !pr.crew[s]).map(s => C.SLOT_NAME[s]).join('/') : '飞行执勤期余量偏紧'])[0]).slice(0, 60)}</span></div>`).join('') : '<div class="tempty">当日没有需要关注的任务</div>'}</div></div></div></div>`;
     $('#main').innerHTML = h;
     document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { ui.tday = +b.dataset.day; rTasks(); });
     $('#needOnly').onclick = () => { ui.needOnly = !ui.needOnly; rTasks(); };
@@ -73,12 +73,12 @@
     const spNotes = [...new Set(pr.legs.flatMap(l => [l.from, l.to]).filter(c => C.isSpecial(c, st)))].map(c => `${esc(C.apName(c, st))}(${c})：${esc(C.CAT_DESC[C.apCat(c, st)] || '特殊机场')}`);
     const head = `<div class="drw-h"><div><h3>${pr.id}${fillBadge(pr.id)}${demoTag(pr)}</h3><div class="mut">${cityChain}</div></div><button class="btn drw-x" id="drwX" title="关闭">✕</button></div>`;
     const tfBar = ['C', 'F', 'T'].filter(s => pr.crew[s] && m[pr.crew[s]]).map(s => `<button class="btn sm drwTf" data-tf="${pr.crew[s]}" title="转给同级空闲人员">同级换班 · ${C.SLOT_NAME[s] || s} ${esc(m[pr.crew[s]].name)}</button>`).join(' ');
-    const view = `<div class="drw-b"><div class="drwtf" style="margin-bottom:8px">${tfBar}</div><div class="dtiles">${tile('日期', dateOf(pr.start) + (pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''))}${tile('天数', pr.ndays + ' 天')}${tile('飞行小时', C.pairingHours(pr).toFixed(1) + 'h')}${tile('机型', esc(pr.ac))}${tile('FDP 余量', minBuf == null ? '—' : fmtBuf(minBuf), bufCls, '各值勤日 (限制 − 计划FDP) 的最小值')}${tile('规则', rule, sp.length ? 'red' : '', sp.map(c => C.apName(c, st)).join('、'))}</div>
+    const view = `<div class="drw-b"><div class="drwtf" style="margin-bottom:8px">${tfBar}</div><div class="dtiles">${tile('日期', dateOf(pr.start) + (pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''))}${tile('天数', pr.ndays + ' 天')}${tile('飞行小时', C.pairingHours(pr).toFixed(1) + 'h')}${tile('机型', esc(pr.ac))}${tile('飞行执勤期余量', minBuf == null ? '—' : fmtBuf(minBuf), bufCls, '各值勤日 (限制 − 计划飞行执勤期) 的最小值')}${tile('规则', rule, sp.length ? 'red' : '', sp.map(c => C.apName(c, st)).join('、'))}</div>
       <h4>机组</h4>${['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; return `<div class="drow ${p ? '' : 'vac'}"><span class="seat s-${s}">${({ C: '机长', F: '副驾驶', T: '观察员' })[s]}</span>${p ? `<b>${esc(p.name)}</b>${pill(p.rank)}<span class="hrs">${(idx.hours[p.id] || 0).toFixed(1)}h</span>` : '<b class="red">空缺</b><span class="mut">待补位 · 点「调整机组」选择候选人</span>'}</div>`; }).join('')}
       <h4>航段</h4><table class="dtab"><tr><th>日</th><th>航班</th><th>航段</th><th>计划</th><th>机型/机号</th></tr>${pr.legs.map(l => `<tr><td>D${l.d}</td><td>${esc(C.fltLabel(l))}</td><td>${apHtml(l.from)} → ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}–${C.fmtT(l.arr)}</td><td>${esc(l.ac || pr.ac)}<span class="mut"> ${esc(l.reg || '')}</span></td></tr>`).join('')}</table>
       ${spNotes.length ? `<div class="note red">特殊机场：${spNotes.join('；')}，执行左右座均需持有该机场授权</div>` : ''}
-      <h4>FDP</h4><table class="dtab"><tr><th>值勤日</th><th>FDP / 限制</th><th>余量</th><th>风险</th></tr>${fd.map(dy => `<tr><td>D${dy.d} · ${dateOf(dy.date)}</td><td>${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)}</td><td>${fmtBuf(dy.planBuffer)}</td><td><span class="rbadge rb-${RK[dy.planRisk][1]}">${RK[dy.planRisk][0]}</span></td></tr>`).join('')}</table>
-      <div class="mut sm">FDP = 首段前报到 ${st.settings.reportMin || 60} 分 → 末段落地（计划时刻）；限制按规则表（报到时刻 × 航段数）。</div></div>
+      <h4>飞行执勤期</h4><table class="dtab"><tr><th>值勤日</th><th>飞行执勤期 / 限制</th><th>余量</th><th>风险</th></tr>${fd.map(dy => `<tr><td>D${dy.d} · ${dateOf(dy.date)}</td><td>${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)}</td><td>${fmtBuf(dy.planBuffer)}</td><td><span class="rbadge rb-${RK[dy.planRisk][1]}">${RK[dy.planRisk][0]}</span></td></tr>`).join('')}</table>
+      <div class="mut sm">飞行执勤期 = 首段前报到 ${st.settings.reportMin || 60} 分 → 末段落地（计划时刻）；限制按规则表（报到时刻 × 航段数）。</div></div>
       <div class="drw-f"><button class="btn" id="drwC">关闭</button><button class="btn primary" id="drwE">⚙ 调整机组</button></div>`;
     let dw = $('#drawer'); if (!dw) { dw = document.createElement('div'); dw.id = 'drawer'; document.body.appendChild(dw); }
     dw.innerHTML = `<div class="drw-mask"></div><aside class="drw">${head}${view}</aside>`; dw.classList.remove('hidden');

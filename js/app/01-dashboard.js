@@ -76,7 +76,7 @@
       <div class="briefbtns"><button class="btn sm" id="btnBriefCopy">复制今日简报</button><button class="btn sm prim" id="btnBriefExport">导出 txt</button></div></div>
       <div class="opskpi">
         <div class="okpi"><div class="olab">未满员任务</div><div class="oval">${m.day.unfilled}</div><div class="omut">${m.day.unfilledIds && m.day.unfilledIds.length ? esc(m.day.unfilledIds.join('、')) : '无'}</div></div>
-        <div class="okpi"><div class="olab">高 FDP 风险</div><div class="oval">${m.day.fdpHigh}</div><div class="omut">含超限；中风险计 ${m.day.fdpRisk}</div></div>
+        <div class="okpi"><div class="olab">高 飞行执勤期风险</div><div class="oval">${m.day.fdpHigh}</div><div class="omut">含超限；中风险计 ${m.day.fdpRisk}</div></div>
         <div class="okpi"><div class="olab">待补位空洞</div><div class="oval">${m.day.pendingFills}</div><div class="omut">未满员/演示预留空洞</div></div>
         <div class="okpi"><div class="olab">备份缺口</div><div class="oval">${m.day.standbyGap}</div><div class="omut">当日备份 ${m.day.standby} · 请假 ${m.day.leave}</div></div>
       </div></div>`;
@@ -237,7 +237,7 @@
 
     h += `<div class="panel"><h3>风险驱动 · 延误/不正常运行韧性</h3>
       <div class="opskpi">
-        <div class="okpi"><div class="olab">FDP 余量均值</div><div class="oval">${margStats.mean.toFixed(0)}<small>分</small></div><div class="omut">σ ${margStats.std.toFixed(0)} · 最小 ${margStats.min}</div></div>
+        <div class="okpi"><div class="olab">飞行执勤期余量均值</div><div class="oval">${margStats.mean.toFixed(0)}<small>分</small></div><div class="omut">σ ${margStats.std.toFixed(0)} · 最小 ${margStats.min}</div></div>
         <div class="okpi"><div class="olab">低余量值勤日</div><div class="oval">${(fdp.cnt.high || 0) + (fdp.cnt.over || 0)}</div><div class="omut">高+超限</div></div>
         <div class="okpi"><div class="olab">晚→早连飞</div><div class="oval">${lateEarly}</div><div class="omut">人·次</div></div>
         <div class="okpi"><div class="olab">过站&lt;50分</div><div class="oval">${quickTurn}</div></div>
@@ -247,7 +247,7 @@
         <div><div class="olab">每日请假/意向休息人数</div>${spark(dailyOff, '#a78bfa')}<div class="omut">max ${Math.max(...dailyOff)}</div></div>
         <div><div class="olab">每日备份人数</div>${spark(dailySb, '#e6a23c')}<div class="omut">设定 ${st.settings.standbyPerDay}/天</div></div>
         <div><div class="olab">每日未满员任务</div>${spark(dailyHoles, '#ff5a6a')}<div class="omut">max ${Math.max(...dailyHoles)}</div></div>
-        <div><div class="olab">FDP 风险结构</div>${CH.bars([
+        <div><div class="olab">飞行执勤期风险结构</div>${CH.bars([
           { label: '超限', value: fdp.cnt.over || 0, color: '#ff5a6a' },
           { label: '高', value: fdp.cnt.high || 0, color: '#ff8a5a' },
           { label: '中', value: fdp.cnt.med || 0, color: '#e6a23c' },

@@ -11,7 +11,7 @@
       <h3 style="margin-top:14px">高强度模式</h3>
       <label class="flex"><input type="checkbox" id="hiMode" ${S.highIntensity ? 'checked' : ''}> 高强度模式：允许把工时集中到机长线（J3+/教员），普通模式软目标 ≤70–75h</label>
       ${num('hiTargetH', '高强度·机长线软目标', '小时（默认85，须 ≤ 硬上限）')}
-      <div class="note">仅调整软目标；121.487 月100h、7日FDP 60h、月FDP 210h、144h内48h休息、121.495(b)第5日、公司上限照常硬卡。&gt;80h 者在校验中列为软提示「高强度」。</div>
+      <div class="note">仅调整软目标；121.487 月100h、7日飞行执勤期 60h、月飞行执勤期 210h、144h内48h休息、121.495(b)第5日、公司上限照常硬卡。&gt;80h 者在校验中列为软提示「高强度」。</div>
       <div style="margin:6px 0"><button class="btn sm" id="dlyChk">延误鲁棒性检查（+30/+60 分钟/段）</button> <span id="dlyOut" class="mut"></span></div>
       <h3 style="margin-top:14px">路演演示</h3>
       <label class="flex"><input type="checkbox" id="demoAnom" ${S.demoAnomalies ? 'checked' : ''}> 自动填人后植入【演示异常】（默认关；开启时至多 1 项座位硬违规）</label>
@@ -29,12 +29,12 @@
       <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司运行手册与 CCAR-121.487，可改）。另强制：144h内连续48h休息、连续4个值勤日（执飞或主备份；仅置位的日子不计）后第5日不得执飞（第5日置位合规，软提示尽量避免）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
-      <h3 style="margin-top:16px">飞行值勤期（FDP）限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>
+      <h3 style="margin-top:16px">飞行执勤期限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>
       <table class="fdpt"><tr><th>报到时间（本地）</th>${C.LEG_COLS.map(c => `<th>${c}</th>`).join('')}</tr>${S.fdpTable.map((r, ri) => `<tr><td>${r.label}</td>${r.lim.map((v, ci) => `<td><input type="number" step="0.5" class="fdpin" data-r="${ri}" data-c="${ci}" value="${v}"> h</td>`).join('')}</tr>`).join('')}</table>
-      <div class="note">FDP = 当日首段计划起飞前报到（${S.reportMin} 分钟）至末段落地（挡轮挡）；按报到时刻与当日航段数查表。</div>
+      <div class="note">飞行执勤期 = 当日首段计划起飞前报到（${S.reportMin} 分钟）至末段落地（挡轮挡）；按报到时刻与当日航段数查表。</div>
       <div class="note" style="margin-top:6px">三人制运行：不启用扩编机组 / 表C（公司手册 3.6.3 表C留白；用户拍板关闭）。</div>
       ${num('fdpRiskHigh', '高风险：延误余量 <', '分钟')}${num('fdpRiskMed', '中风险：延误余量 <', '分钟')}${num('minTurnMin', '延误推算最短过站', '分钟')}${num('minOvernightRestH', '任务内过夜最低休息', '小时')}
-      <div style="margin-top:6px"><button class="btn sm" id="fdpReset">恢复默认 FDP 表</button></div>
+      <div style="margin-top:6px"><button class="btn sm" id="fdpReset">恢复默认 飞行执勤期表</button></div>
       <div style="margin-top:12px"><button class="btn primary" id="saveS">保存设置并重新校验</button></div></div>
       <div class="panel"><h3>机场与特殊机场类别</h3><div class="note">类别：${cats.map(c => c + '=' + (C.CAT_DESC[c] || '')).join('；')}。需授权类别：${C.AUTH_CATS.join('/')}</div>
       <div class="scroll"><table><tr><th>ICAO</th><th>名称</th><th>类别</th></tr>${Object.keys(aps).map(c => `<tr><td>${c}</td><td class="${aps[c][3] ? 'red' : ''}">${aps[c][0]}</td><td><select data-cat="${c}" ${c === 'ZUUU' ? 'disabled' : ''}>${cats.map(k => `<option value="${k}" ${(aps[c][3] || 'NONE') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></td></tr>`).join('')}</table></div></div></div>`;
@@ -47,7 +47,7 @@
     };
     $('#dlyChk').onclick = () => { const r = C.delayRobustness(st, [30, 60]);
       $('#dlyOut').innerHTML = [30, 60].map(m => `+${m}min：新增硬超限 <b class="${r[m].newHard ? 'red' : ''}">${r[m].newHard}</b> 项（${r[m].pilots} 人 / ${r[m].pairings} 任务）${Object.entries(r[m].byType).map(([k, v]) => k + '×' + v).join('，')}`).join('；'); };
-    $('#fdpReset').onclick = () => { S.fdpTable = C.defaultFdpTable(); rSettings(); toast('已恢复默认 FDP 表（尚未保存）'); };
+    $('#fdpReset').onclick = () => { S.fdpTable = C.defaultFdpTable(); rSettings(); toast('已恢复默认 飞行执勤期表（尚未保存）'); };
     const fmtStressTable = (rep) => {
       if (!rep || !rep.rows || !rep.rows.length) return '无结果';
       const base = rep.rows.find(r => r.key === 'baseline') || rep.rows[0];

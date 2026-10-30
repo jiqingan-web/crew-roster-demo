@@ -19,7 +19,7 @@
     const wb = new ExcelJS.Workbook(); wb.creator = '机组智能排班助手'; wb.created = new Date();
     const nm = id => id && pm[id] ? pm[id].name : '空缺';
     const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, pm)} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
-    const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} FDP ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
+    const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} 飞行执勤期 ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
     const noteOf = pr => `${pr.id} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
     const rich = (head, codes, tail) => { const r = [{ text: head + ' ', font: { color: { argb: 'FFFFFFFF' }, bold: true, size: 9 } }];
       codes.forEach((c, i) => { if (i) r.push({ text: '-', font: { color: { argb: 'FFFFFFFF' }, size: 9 } }); const sp = C.isSpecial(c, st); r.push({ text: AB[c] + (sp ? '★' : ''), font: { color: { argb: sp ? 'FFFFC2C2' : 'FFFFFFFF' }, bold: sp, size: 9 } }); });
@@ -72,7 +72,7 @@
     hdr('方案信息'); [['方案', opt.plan || '当前方案'], ['导出范围', opt.label || '全部人员'], ['人数', pilots.length], ['任务数', prs.length], ['满员率', (sum.coverage != null ? (sum.coverage * (sum.coverage <= 1 ? 100 : 1)).toFixed(1) + '%' : '')], ['硬违规', sum.hard], ['导出时间', new Date().toLocaleString('zh-CN')], ['时间格', '每日 8 格 × 3 小时；色块 = 报到(首段前 ' + rep + ' 分) → 退场(末段后 ' + rel + ' 分)']].forEach(x => { wl.getCell(r, 1).value = x[0]; wl.getCell(r, 2).value = x[1]; wl.getCell(r, 1).font = { bold: true }; r++; });
     r++; hdr('图例');
     [['机长/左座', COL.C, 'FFFFFF'], ['副驾驶', COL.F, 'FFFFFF'], ['观察员', COL.T, 'FFFFFF'], ['培训', COL.tr, 'FFFFFF'], ['模拟机', COL.sim, 'FFFFFF'], ['备份', COL.sb, 'FFFFFF'], ['意向休息', COL.pref, '2E6B45'], ['请假', COL.lv, '7A2E3B'], ['★/红字 = 特殊机场', 'FFFFFF', 'C0392B']].forEach(x => { const c = wl.getCell(r, 1); c.value = x[0]; c.fill = fill(x[1]); c.font = { color: { argb: 'FF' + x[2] }, bold: true }; c.border = B; r++; });
-    wl.getCell(r, 1).value = '色块内文字：任务号 + 当日机场单字简称链 + 首段起飞-末段落地；悬停批注查看完整机组/航班/城市/FDP'; r += 2;
+    wl.getCell(r, 1).value = '色块内文字：任务号 + 当日机场单字简称链 + 首段起飞-末段落地；悬停批注查看完整机组/航班/城市/飞行执勤期'; r += 2;
     hdr('机场简称'); Object.keys(AB).forEach(code => { wl.getCell(r, 1).value = AB[code]; wl.getCell(r, 2).value = C.apName(code, st); wl.getCell(r, 3).value = code; if (C.isSpecial(code, st)) wl.getCell(r, 2).font = { color: { argb: 'FFC0392B' }, bold: true }; r++; });
     r++; hdr('人员统计'); const hr0 = r; ['员工号', '姓名', '级别', '本月小时', '值勤天数', '任务数', '备份天', '培训天', '模拟机天'].forEach((h, k) => { const c = wl.getCell(r, k + 1); c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill(COL.hd); c.border = B; }); r++;
     pilots.forEach(p => { const dd = new Set(); (idx.sched[p.id] || []).forEach(pr => pr.legs.forEach(l => dd.add(Math.floor(l.dep / C.DAY) + 1)));

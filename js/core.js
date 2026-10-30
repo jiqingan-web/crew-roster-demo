@@ -1268,7 +1268,7 @@
         source: '公司机型操作与搭配规定', example: '机长A 任机长位时须有 TL/TB/TC 同组。' },
       { id: 'CR-21', cat: '模拟机', kind: '软+硬', status: '生效', legacyId: 'simulator_scheduling',
         title: '模拟机块编排', params: '约5%人员/月 · 连续2–4日 · 非执勤期 · 邻接≥24h（软）',
-        desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入FDP/连续值勤日链；与相邻飞行或培训尽量保留≥24小时间隔。',
+        desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入飞行执勤期/连续值勤日链；与相邻飞行或培训尽量保留≥24小时间隔。',
         source: '排班助手编排策略（非手册条文抄录）', example: '本月约二十分之一飞行员安排一块3日模拟机，前后不贴飞行日。' },
       { id: 'CR-22', cat: '帮扶', kind: '硬', status: anyBangfu ? `生效（${nBangfu} 人）` : '生效（暂无标记）', legacyId: 'bangfu_one_per_crew',
         title: '同航班至多一名帮扶对象', params: 'pilot.bangfu；同任务 C+F+T 机组 ≤1 名',
@@ -3094,7 +3094,7 @@
       }
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${pr.id} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
-      fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${pr.id} D${dy.d} 计划 FDP ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
+      fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${pr.id} D${dy.d} 计划飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
         if (dy.fltOver > 0) add('日飞行时间超限', 'hard', `${pr.id} D${dy.d} 计划飞行时间 ${fmtH(dy.planFlt)} > 表A限制 ${fmtH(dy.fltLimit)}（CCAR-121.483(a)）`, pr);
         if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${pr.id} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
       const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
@@ -3404,7 +3404,7 @@
       `中队编制 ${m.nPilots} 人 · 本月机号 ${m.nAircraft} · 任务 ${m.nPairings} 组 · 轮挡 ${m.blockHours}h`,
       `饱和度 ${m.satPct}% · 韧性度 ${m.resiliPct}% · 四象限「${m.zoneLabel}」——${m.zoneHint}`,
       `今日运营：未满员 ${m.day.unfilled} · 高/中/超限执勤 ${m.day.fdpRisk} · 待补位空洞 ${m.day.pendingFills} · 备份缺口 ${m.day.standbyGap}`,
-      `月度：未满员 ${m.unfilled} · FDP风险日 ${m.fdpRiskDays} · 备份缺口 ${m.standbyLeft} 人日 · 请假 ${m.leavePersonDays} 人日`,
+      `月度：未满员 ${m.unfilled} · 飞行执勤期风险日 ${m.fdpRiskDays} · 备份缺口 ${m.standbyLeft} 人日 · 请假 ${m.leavePersonDays} 人日`,
       `公式：饱和度=已排飞行小时/Σ个人硬上限；韧性度=剩余可排小时/Σ个人硬上限（演示口径）`
     ];
     return lines.join('\n');
@@ -3792,8 +3792,8 @@
     const reasons = [];
     if (needSplit && !splits.length) reasons.push(`风险日无从合适站点拆分`);
     if (ex && !splits.some(j => pr0.legs[j].from === 'ZUUU')) reasons.push(`D${ex.d} 超限前无从成都出发的航段，基地换组不可用；已尝试异地预防/拆分（若上方无卡片则填人失败），或需 DH 新机组至 ${apName(ex.legs[0].leg.from, st)} / 调整航段`);
-    if (ex) reasons.push(`D${ex.d} 预计 FDP ${fmtH(ex.fdp)} 超过限制 ${fmtH(ex.limit)}（${ex.legs.length} 段，报到 ${fmtT(ex.start)}），超 ${ex.exceed} 分钟，自 ${ex.exLeg.leg.flt} ${apName(ex.exLeg.leg.from, st)}-${apName(ex.exLeg.leg.to, st)} 起`);
-    else if (riskDay && riskDay.buffer < riskHigh) reasons.push(`D${riskDay.d} 预计 FDP ${fmtH(riskDay.fdp)} / 限制 ${fmtH(riskDay.limit)}，余量仅 ${riskDay.buffer} 分钟（高风险），建议预防性换组或压缩航段`);
+    if (ex) reasons.push(`D${ex.d} 预计 飞行执勤期 ${fmtH(ex.fdp)} 超过限制 ${fmtH(ex.limit)}（${ex.legs.length} 段，报到 ${fmtT(ex.start)}），超 ${ex.exceed} 分钟，自 ${ex.exLeg.leg.flt} ${apName(ex.exLeg.leg.from, st)}-${apName(ex.exLeg.leg.to, st)} 起`);
+    else if (riskDay && riskDay.buffer < riskHigh) reasons.push(`D${riskDay.d} 预计 飞行执勤期 ${fmtH(riskDay.fdp)} / 限制 ${fmtH(riskDay.limit)}，余量仅 ${riskDay.buffer} 分钟（高风险），建议预防性换组或压缩航段`);
     dn0.forEach(x => reasons.push(x.overnight ? `D${x.d} 过夜休息仅 ${fmtH(x.restAfter)}，少于 ${st.settings.minOvernightRestH || 10}h（差 ${x.short} 分钟）：可延后次日报到或换组` : `${idx0.pm[x.pilot].name} 下一任务 ${x.next} 前休息仅 ${fmtH(x.gap)}（差 ${x.short} 分钟）`));
     if (!reasons.length) reasons.push('当前未超限且无下游休息压缩；可人工评估是否预防性调整');
     const man = { key: 'manual', name: ex ? '取消/调整超限航段（人工处理）' : '人工处理', desc: '由运控协调：取消或延后航段、摆渡机组、申请延长等', steps: [{ pairing: prId, type: 'manual', block: { rules: reasons, top: [] } }], people: [], giniB: before.all.gini, giniA: before.all.gini, giniD: 0, sbLeft: [], unresolved: 1, hard: before.hard, bp: [], prefN: 0, rhy: 0, score: 5000, state: null, manual: true, fdpAfter: ex ? 1 : 0, restAfterV: dn0.length, sig: 'manual' };

@@ -137,7 +137,7 @@
     const unf = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length;
     let h = `<div class="toolbar"><select id="tf">${['全部', '未满员', '已满员', '有违规', '特殊机场', '执勤高/中风险'].map(g => `<option ${g === ui.tf ? 'selected' : ''}>${g}</option>`).join('')}</select><input id="tq" placeholder="航班号/机场/任务号" value="${esc(ui.tq)}">
       <span class="mut">共 ${st.pairings.length} 个任务，已满员 ${st.pairings.length - unf}，未满员 <b class="${unf ? 'red' : 'okc'}">${unf}</b>；显示 ${ps.length}</span></div>
-      <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>执勤风险（每日 FDP / 限制 · 余量）</th><th>状态</th><th></th></tr>`;
+      <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>执勤风险（每日 飞行执勤期 / 限制 · 余量）</th><th>状态</th><th></th></tr>`;
     for (const pr of ps) {
       const full = pr.crew.C && pr.crew.F && pr.crew.T; const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
       h += `<tr><td><b>${pr.id}</b>${fillBadge(pr.id)}${demoTag(pr)}</td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>

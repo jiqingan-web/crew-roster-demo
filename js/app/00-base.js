@@ -347,6 +347,6 @@
     if (!S.highIntensity) { if (b) b.remove(); return; }
     if (!b) { b = document.createElement('div'); b.id = 'hiBanner'; b.className = 'hibanner'; const m = document.getElementById('main'); if (m) m.before(b); }
     const hx = C.buildIndex(st).hours; const n = st.pilots.filter(p => hx[p.id] > 80).length;
-    b.innerHTML = `⚠ 高强度模式已开启：机长线（J3+/TL/TB/TC）软目标上调至 <b>${S.hiTargetH || 85}h</b>；硬规则不变（月100h、7日FDP 60h、月FDP 210h、144h内48h休息、121.495(b)第5日、公司上限）。当前 &gt;80h：<b>${n}</b> 人。<a href="#" id="hiOff">在设置中关闭</a>`;
+    b.innerHTML = `⚠ 高强度模式已开启：机长线（J3+/TL/TB/TC）软目标上调至 <b>${S.hiTargetH || 85}h</b>；硬规则不变（月100h、7日飞行执勤期 60h、月飞行执勤期 210h、144h内48h休息、121.495(b)第5日、公司上限）。当前 &gt;80h：<b>${n}</b> 人。<a href="#" id="hiOff">在设置中关闭</a>`;
     const o = document.getElementById('hiOff'); if (o) o.onclick = e => { e.preventDefault(); const t = document.querySelector('[data-tab="settings"]'); if (t) t.click(); };
   }
