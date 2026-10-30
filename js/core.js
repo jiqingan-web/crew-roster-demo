@@ -138,6 +138,7 @@
 
   function blockMin(a, b) {
     const A = AIRPORTS[a], B = AIRPORTS[b];
+    if (!A || !B || A[1] == null || B[1] == null) return 90; // 未识别机场（如正式班表中的源表简称）：按 90 分钟占位
     const R = 6371, toR = Math.PI / 180;
     const d = 2 * R * Math.asin(Math.sqrt(Math.sin((B[1] - A[1]) * toR / 2) ** 2 + Math.cos(A[1] * toR) * Math.cos(B[1] * toR) * Math.sin((B[2] - A[2]) * toR / 2) ** 2));
     return Math.round((d * 1.1 / 12.5 + 28) / 5) * 5;

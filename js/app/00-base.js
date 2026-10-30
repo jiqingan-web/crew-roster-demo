@@ -47,9 +47,10 @@
         const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 17 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
           || !s.sampleSchema || s.sampleSchema < 17;
-        if (isSampleish && stale) {
+        const offStale = LITE && isSampleish && window.RosterOfficial && s.official !== 1;
+        if (isSampleish && (stale || offStale)) {
           reset(false);
-          toast('示例数据已升级（整月演示补全 + 导出），已自动重置');
+          toast(offStale && !stale ? '已载入「正式班表（原样）」为默认方案（可在方案切换处切到自动填人方案）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
           return;
         }
         st = s;
@@ -62,7 +63,12 @@
     reset(false);
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
-  function reset(r) { st = LITE ? C.generateLiteSample() : C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
+  function reset(r) { st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
+  // 正式班表（原样）：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
+  function loadOfficial() {
+    st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample() : st); st.solHist = []; st.solN = 0;
+    pushSolution(C.summarize(st), { seed: '正式', name: window.RosterOfficial.NAME }); return st;
+  }
   // ---------------- 人员变更：统一失效 + 全局重算（增/删/改 级别·授权·中队·健康） ----------------
   // 所有视图都在渲染时从 st.pilots 现算；这里清掉各页按旧人员算好的候选/方案缓存，重建派生数据并持久化
   function pilotsChanged(reason) {
@@ -313,26 +319,26 @@
     const H = st.solHist = st.solHist || []; st.solN = (st.solN || 0) + 1;
     const crews = st.pairings.map(p => Object.assign({}, p.crew));
     const diff = H.length ? C.crewDiff(crews, H[H.length - 1].crews) : null;
-    H.push({ n: st.solN, seed: info.seed != null ? info.seed : null, crews, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
+    H.push({ n: st.solN, name: info.name || null, seed: info.seed != null ? info.seed : null, crews, control: st.control || null, trainingKind: st.trainingKind || null, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
       demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() });
-    while (H.length > 5) H.shift(); st.solIdx = H.length - 1;
+    while (H.length > 5) { const k = H.findIndex(x => !x.name); H.splice(k < 0 ? 0 : k, 1); } st.solIdx = H.length - 1; // 「正式班表（原样）」固定保留在首位
   }
   function useSolution(i) {
     const H = st.solHist || []; const h = H[i]; if (!h) return;
     st.pairings.forEach((p, k) => { p.crew = Object.assign({}, h.crews[k]); delete p.demoHole; }); const dh = new Set(h.demoHoles || []);
     st.pairings.forEach(p => { if (dh.has(p.id)) p.demoHole = true; });
-    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; st.solIdx = i; refresh(); toast(`已切换到方案 #${h.n}（seed ${h.seed}）`);
+    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; if (h.control !== undefined) st.control = h.control; if (h.trainingKind !== undefined) st.trainingKind = h.trainingKind; st.solIdx = i; refresh(); toast(h.name ? `已切换到「${h.name}」` : `已切换到方案 #${h.n}（seed ${h.seed}）`);
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];
-    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="上一套">◀ 上一套</button><b>方案 #${h.n}</b><small>seed ${h.seed}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="下一套">下一套 ▶</button></span>`;
+    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="上一套">◀ 上一套</button><b>${h.name ? esc(h.name) : '方案 #' + h.n}</b><small>${h.name ? '源表逐格载入' : 'seed ' + h.seed}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="下一套">下一套 ▶</button></span>`;
   }
   function solCompareHtml() {
     const H = st.solHist || []; if (!H.length) return '';
     const cur = st.solIdx != null ? st.solIdx : H.length - 1; const pc = x => (x * 100).toFixed(1) + '%';
     return `<div class="panel"><h3>方案对比 <small>每次「一键自动填人」生成新种子方案；保留最近 ${H.length}/5 套 · 差异 = 与上一套相比换人的岗位比例</small></h3>
       <table><tr><th>方案</th><th>seed</th><th>满员率</th><th>空洞</th><th>硬违规(非空洞)</th><th>工时区间</th><th>标准差</th><th>基尼</th><th>休3–4天占比</th><th>意向满足</th><th>与上一套差异</th><th></th></tr>${H.map((h, i) => { const k = h.kpi;
-        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>#${h.n}</b></td><td class="mut">${h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>`;
+        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>${h.name ? esc(h.name) : '#' + h.n}</b></td><td class="mut">${h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>`;
   }
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-sol]'); if (b && !b.disabled) useSolution(+b.dataset.sol); });
   function renderKpis() {

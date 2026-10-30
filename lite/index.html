@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Demo</title>
 <meta name="robots" content="noindex,nofollow,noarchive,nosnippet">
-<link rel="stylesheet" href="../css/style.css?v=650">
+<link rel="stylesheet" href="../css/style.css?v=651">
 </head>
 <body>
 <header class="topbar">
@@ -16,6 +16,7 @@
       <button id="btnIssues" class="btn warn" type="button" title="定位缺人与硬性违规">⚠ 定位问题<span id="issueBadge" class="ibadge hidden">0</span></button>
       <div id="issuePanel" class="issue-panel hidden" role="dialog" aria-label="问题列表"></div>
     </div>
+    <button id="btnOfficial" class="btn" title="按用户提供的正式班表原样载入（方案列表第一套）">📋 正式班表（原样）</button>
     <button id="btnAuto" class="btn primary">⚡ 一键自动填人</button>
     <button id="btnClear" class="btn">清空排班</button>
     <button id="btnReset" class="btn danger">重置示例数据</button>
@@ -49,25 +50,26 @@
 <div id="toast" class="toast hidden"></div>
 <script src="../js/vendor/jszip.min.js"></script>
 <script src="../js/vendor/exceljs.min.js"></script>
-<script src="../js/xlsx-gantt.js?v=650"></script>
-<script src="../js/leg-import.js?v=650"></script>
+<script src="../js/xlsx-gantt.js?v=651"></script>
+<script src="../js/leg-import.js?v=651"></script>
 <script src="../js/sample-data.js"></script>
-<script src="../js/pinyin-initials.js?v=650"></script>
-<script src="../js/lite-roster.js?v=650"></script>
-<script src="../js/rules-config.js?v=650"></script>
-<script src="../js/core.js?v=650"></script>
-<script src="../js/charts.js?v=650"></script>
+<script src="../js/pinyin-initials.js?v=651"></script>
+<script src="../js/lite-roster.js?v=651"></script>
+<script src="../js/official-roster.js?v=651"></script>
+<script src="../js/rules-config.js?v=651"></script>
+<script src="../js/core.js?v=651"></script>
+<script src="../js/charts.js?v=651"></script>
 <script>window.ROSTER_LITE = true;</script>
-<script src="../js/app/00-base.js?v=650"></script>
-<script src="../js/app/01-dashboard.js?v=650"></script>
-<script src="../js/app/02-gantt.js?v=650"></script>
-<script src="../js/app/03-editor.js?v=650"></script>
-<script src="../js/app/04-taskview.js?v=650"></script>
-<script src="../js/app/05-ops.js?v=650"></script>
-<script src="../js/app/06-roster.js?v=650"></script>
-<script src="../js/app/07-export.js?v=650"></script>
-<script src="../js/app/08-settings.js?v=650"></script>
-<script src="../js/app/09-main.js?v=650"></script>
-<script src="../js/app/10-qwen.js?v=650"></script>
+<script src="../js/app/00-base.js?v=651"></script>
+<script src="../js/app/01-dashboard.js?v=651"></script>
+<script src="../js/app/02-gantt.js?v=651"></script>
+<script src="../js/app/03-editor.js?v=651"></script>
+<script src="../js/app/04-taskview.js?v=651"></script>
+<script src="../js/app/05-ops.js?v=651"></script>
+<script src="../js/app/06-roster.js?v=651"></script>
+<script src="../js/app/07-export.js?v=651"></script>
+<script src="../js/app/08-settings.js?v=651"></script>
+<script src="../js/app/09-main.js?v=651"></script>
+<script src="../js/app/10-qwen.js?v=651"></script>
 </body>
 </html>
