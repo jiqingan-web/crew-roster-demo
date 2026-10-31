@@ -169,7 +169,7 @@
   function defaultSettings() {
     return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, releaseMin: 30, honorPrefs: true,
-      standbyPerDay: 1, maxStandbyPerPilot: 1, gapWeight: 0.45, softTargetMin: 40, softTargetMax: 60,
+      standbyPerDay: 2, maxStandbyPerPilot: 2, gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 硬规则仍为 144h 内连续 48h；软目标偏好更松的连续休息（默认 60h），避免卡在 48h 边缘
       softRest48H: 60,
       opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
@@ -186,7 +186,7 @@
   function migrateSettings(S) {
     if (S && S.testerAirports) { S.bpTesterAirports = S.testerAirports; delete S.testerAirports; }
     // 旧版备份参数（连续空闲插备份 + 每日 2+3 人池）→ 每日 1 人、每人每月至多 1 天
-    if (S && ('standbyCapt' in S || 'standbyFO' in S || 'maxFreeRun' in S)) { delete S.standbyCapt; delete S.standbyFO; delete S.maxFreeRun; S.standbyPerDay = 1; S.maxStandbyPerPilot = 1; }
+    if (S && ('standbyCapt' in S || 'standbyFO' in S || 'maxFreeRun' in S)) { delete S.standbyCapt; delete S.standbyFO; delete S.maxFreeRun; if (S.standbyPerDay == null) S.standbyPerDay = 2; if (S.maxStandbyPerPilot == null) S.maxStandbyPerPilot = 2; }
     // 取消 30–70h 目标范围；月上限默认对齐公司/法规 100h；三人制禁用扩编
     if (S) {
       delete S.minHours; delete S.maxHours; if (!S.fdpTable) S.fdpTable = defaultFdpTable();
@@ -196,6 +196,8 @@
       if (S.demoHoles == null) S.demoHoles = 4;
       if (S.highIntensity == null) S.highIntensity = false; if (S.hiTargetH == null) S.hiTargetH = 85;
       if (S.softRest48H == null) S.softRest48H = 60; // 软目标；硬底仍 48h
+      if (S.softTargetMin === 40 && S.softTargetMax === 60) { S.softTargetMin = 45; S.softTargetMax = 65; }
+      if (S.standbyPerDay === 1 && S.maxStandbyPerPilot === 1) { S.standbyPerDay = 2; S.maxStandbyPerPilot = 2; }
       if (S.maxOffCapt != null && S.maxOffCapt <= 4) S.maxOffCapt = 999; // 取消机长类每日休息上限
     }
     return S;
@@ -499,13 +501,13 @@
       { medExamExpiry: '2026-11-20', bpNote: '须携带血压记录本' }
     ];
     H.forEach((h, k) => { pilots[hi[k]].health = Object.assign(defaultHealth(), h); });
-    // 任务量：人均 ~12.3 值勤日；拉萨占比高的机号后置
+    // 任务量：人均 ~13 值勤日（按正式表中位）；拉萨占比高的机号后置
     const all = buildPairingsFromWeek(r, { maxPairings: 1800 }).filter(p => p.ac !== 'C909');
     const byReg = {}; all.forEach(p => { const g = p.legs[0].reg; (byReg[g] = byReg[g] || []).push(p); });
     const spShare = g => { let a = 0, b = 0; byReg[g].forEach(p => { a += p.ndays; if (p.legs.some(l => isSpecial(l.from) || isSpecial(l.to))) b += p.ndays; }); return b / Math.max(1, a); };
     const regs = Object.keys(byReg).sort((x, y) => (spShare(x) > 0.6) - (spShare(y) > 0.6) || x.localeCompare(y));
     const RESV = opt.reserves === false ? [0, 0] : (opt.reserves || LITE_RESERVES); // 候补按 ~90% 出勤折算进需求，保持余量约 20–30%
-    const want = Math.round((pilots.length + 0.9 * (RESV[0] + RESV[1])) * (opt.dutyDays || 12.3) / 3 * (opt.load || 1));
+    const want = Math.round((pilots.length + 0.9 * (RESV[0] + RESV[1])) * (opt.dutyDays || 13) / 3 * (opt.load || 1));
     const chosen = []; let pd = 0;
     for (const g of regs) {
       for (const p of byReg[g].sort((a, b) => a.start - b.start || (a.dutySlot || 0) - (b.dutySlot || 0))) {
@@ -846,7 +848,7 @@
     function hashReg(s) { let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0; return h; }
     (meta.sampleRegsAirbus || []).forEach(reg => addReg(reg, donorsAb));
     (meta.sampleRegsC909 || []).forEach(reg => addReg(reg, donorsC9));
-    // 演示补全：不伪造 FR24 空窗日；整月按完整日模板·同星期循环铺满（非实飞）。工时靠排班集中到人均飞 40–60h。
+    // 演示补全：不伪造 FR24 空窗日；整月按完整日模板·同星期循环铺满（非实飞）。工时靠排班集中到人均飞约 45–65h（按正式表校准）。
     const synthRegSet = new Set();
     const byReg = {};
     const srcByWd = {}; // weekday -> [src,...] 有序去重
@@ -1088,6 +1090,28 @@
   // 岗位显示名：TL 等教员带飞新机长时坐副驾驶位 → 「副驾驶位(教员)」
   const slotLabel = (pr, s, pm) => SLOT_NAME[s] + (s === 'F' && pr.crew.F && pm && pm[pr.crew.F] && isInstr(pm[pr.crew.F].rank) ? '(教员)' : '');
   function pairingHours(p) { return p.legs.reduce((s, l) => s + (l.dh ? 0 : l.arr - l.dep), 0) / 60; } // (随)置位不计飞行小时
+  // ---------- 外中队座位：正式班表中外中队负责的空座，不当本中队空洞 ----------
+  function isOuterSlot(pr, s) { return !!(pr && pr.outerSlots && pr.outerSlots[s]); }
+  function slotTaken(pr, s) { return !!(pr && (pr.crew[s] || isOuterSlot(pr, s))); }
+  function pairingFull(pr) { return !!(pr && slotTaken(pr, 'C') && slotTaken(pr, 'F') && slotTaken(pr, 'T')); }
+  function openSlots(pr) { return ['C', 'F', 'T'].filter(s => !slotTaken(pr, s)); }
+  function markOuterSlots(pr) {
+    const o = {}; ['C', 'F', 'T'].forEach(s => { if (!pr.crew[s]) o[s] = true; });
+    if (Object.keys(o).length) pr.outerSlots = o; else delete pr.outerSlots;
+    return pr;
+  }
+  // 清掉误填进「外中队负责」座位的本中队/候补人员（自动填人多轮补洞可能写入）
+  function enforceOuterSlots(st) {
+    let n = 0;
+    (st.pairings || []).forEach(pr => {
+      if (!pr.outerSlots) return;
+      ['C', 'F', 'T'].forEach(s => {
+        if (pr.outerSlots[s] && pr.crew[s]) { pr.crew[s] = null; n++; }
+      });
+    });
+    return n;
+  }
+
   // 按值勤日拆分的值勤区间 [报到, 退场]（外站驻点休息日/过夜不计值勤）
   function dutyIvs(p, st) { const rep = (st && st.settings.reportMin) || 60, rel = (st && st.settings.releaseMin) || 30; const by = new Map();
     p.legs.forEach(l => { const x = by.get(l.d); if (!x) by.set(l.d, [l.dep - rep, l.arr + rel]); else { x[0] = Math.min(x[0], l.dep - rep); x[1] = Math.max(x[1], l.arr + rel); } });
@@ -1500,7 +1524,7 @@
     return personCheck(q, pr, st, idx, { ignorePrefs: true, slot })[0];
   }
   // 软工时带（实飞校准：月值勤 12–14 天 × 2 段/日 ≈ 4–4.5h → 典型 45–64h；硬顶仍为法规 100h）
-  const SOFT_MAX = 70, SOFT_AIM = 63; let SOFT_NEW = 36; let HI = 0;
+  const SOFT_MAX = 72, SOFT_AIM = 56; let SOFT_NEW = 36; let HI = 0;
   // 高强度模式：机长线(J3+/TL/TB/TC)软顶=HI、目标=HI-7；其余仍 70/63
   const capLine = p => !!p && lhasaRankOK(p.rank);
   const SM = p => (HI && capLine(p)) ? HI : SOFT_MAX; const SA = p => (HI && capLine(p)) ? HI - 7 : SOFT_AIM; // 轻量版教员/新机长比例高，autoFill 内放宽
@@ -1603,7 +1627,7 @@
   }
   function applyTransfer(st, prId, fromId, toId, note) { const pv = swapPreview(st, fromId, toId, [prId], []); if (!pv.ok) return pv; applySwap(st, pv, note || '同级转让'); return pv; }
   function swapFillHoles(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 4000; const log = [];
-    for (const P of st.pairings) { for (const s of ['C', 'F', 'T']) { if (P.crew[s] || Date.now() - t0 > budget) continue;
+    for (const P of st.pairings) { for (const s of ['C', 'F', 'T']) { if (slotTaken(P, s) || Date.now() - t0 > budget) continue;
       const cs = candidates(st, P, s).filter(c => !c.ok && slotRankOK(s, c.p.rank) && c.reasons.length <= 3).sort((a, b) => a.reasons.length - b.reasons.length).slice(0, 30);
       let done = false;
       for (const cx of cs) { if (done || Date.now() - t0 > budget) break; const x = cx.p; const idx = buildIndex(st);
@@ -1664,6 +1688,7 @@
     if (!opts.noSwap) { swapBalance(st, { ms: st.pairings.length > 800 ? 1500 : 3000 }); }
     clearHardSeats(st);
     if (!opts.noSwap) { swapFillHoles(st, { ms: 4000 }); clearHardSeats(st); }
+    enforceOuterSlots(st);
     const out = summarize(st); out.attempt = best.k + 1; return out;
     } finally { if (PROG) PROG.done(); PROG = null; FDP_PLAN_CACHE = null; SOFT_NEW = softNew0; HI = 0; }
   }
@@ -1681,8 +1706,8 @@
     const target = {}; const totalH = st.pairings.reduce((s, p) => s + pairingHours(p), 0) * 3;
     const activeN = Math.max(1, st.pilots.filter(p => !(p.health && p.health.noFly)).length);
     const availMean = totalH / activeN;
-    // 运力约 27h/人：以 ~65% 公平主班吃满 40–60h，其余为跨职级均匀的闲置后备（不拿某一级当残差）
-    const softT = Math.max(42, Math.min(58, 48));
+    // 运力集中：主班目标贴近正式表中位 ~55h（软带 45–65）；其余为跨职级均匀闲置后备
+    const softT = Math.max(48, Math.min(58, (S.softTargetMin != null && S.softTargetMax != null) ? (S.softTargetMin + S.softTargetMax) / 2 : 55));
     const big = st.pairings.length > 700;
     const concentrate = availMean < 42;
     st.pilots.forEach(p => target[p.id] = softT * shareFor(p));
@@ -1708,7 +1733,7 @@
     // 非主班软目标极低：局部改善/交换不会把他们当「最缺工时」来喂
     st.pilots.forEach(p => { if (!primary[p.id]) target[p.id] = Math.max(4, 8 * shareFor(p)); });
     const ratio = id => idx.hours[id] / target[id];
-    const assign = (pr, s, id) => { const old = pr.crew[s]; const h = pairingHours(pr);
+    const assign = (pr, s, id) => { if (id && isOuterSlot(pr, s)) return; const old = pr.crew[s]; const h = pairingHours(pr);
       if (old) { idx.sched[old] = idx.sched[old].filter(x => x !== pr); idx.hours[old] -= h; }
       pr.crew[s] = id; if (id) { idx.sched[id].push(pr); idx.hours[id] += h; } };
     const pilots = st.pilots;
@@ -1719,12 +1744,34 @@
     const gw = (S.gapWeight == null ? 0.35 : S.gapWeight) * (concentrate ? 1.6 : 1);
     function fillOne(pr, ignorePrefs, primaryOnly) {
       const gdc = {}; const gd = p => gdc[p.id] != null ? gdc[p.id] : (gdc[p.id] = gw * (gapCost(p, idx.sched[p.id].concat([pr]), st) - gapCost(p, idx.sched[p.id], st)));
-      const free = s => !pr.crew[s];
+      const free = s => !slotTaken(pr, s);
       const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs, slot, skipFtl: big })[0];
       const instrL = pilots.filter(x => isInstr(x.rank)); const instrBusy = instrL.filter(x => idx.hours[x.id] > SM(x) - 8).length / Math.max(1, instrL.length);
       const cur = { C: pr.crew.C && idx.pm[pr.crew.C], F: pr.crew.F && idx.pm[pr.crew.F], T: pr.crew.T && idx.pm[pr.crew.T] };
       const inCrew = id => Object.values(pr.crew).includes(id);
       const pool = primaryOnly ? pilots.filter(p => primary[p.id]) : pilots;
+      // 外中队座位已占位：只补本中队空座，不组合虚拟外中队机组
+      if (pr.outerSlots && openSlots(pr).length) {
+        const sortR0 = arr => arr.sort((a, b) => ratio(a.id) - ratio(b.id));
+        let filled = false;
+        for (const s of openSlots(pr)) {
+          let cand;
+          if (s === 'C') cand = sortR0(pool.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C')));
+          else if (s === 'F') cand = sortR0(pool.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')));
+          else {
+            const needInstr = pr.crew.C && idx.pm[pr.crew.C] && isNew(idx.pm[pr.crew.C].rank);
+            cand = sortR0(pool.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank))));
+          }
+          const pick = cand[0];
+          if (!pick) continue;
+          const crewTry = ['C', 'F', 'T'].map(k => k === s ? pick : (pr.crew[k] && idx.pm[pr.crew[k]]));
+          // 仅当本地座位齐套时才做完整搭配检查；仍有外中队空座则只做单人硬冲突
+          if (openSlots(pr).length === 1 && crewTry.every(Boolean) && crewIssue(pr, crewTry, st)) continue;
+          assign(pr, s, pick.id); filled = true;
+        }
+        return pairingFull(pr) || filled;
+      }
+      if (!openSlots(pr).length) return true;
       const sortR = arr => arr.sort((a, b) => ratio(a.id) - ratio(b.id));
       const CAPN = primaryOnly ? (big ? 14 : 18) : (big ? 8 : 12);
       const FON = primaryOnly ? (big ? 12 : 16) : (big ? 6 : 10);
@@ -1801,11 +1848,11 @@
     let n = 0;
     // 主班优先；集中模式下主填+放宽意向均不开放后备，避免工时被摊薄到 ~23h
     progStage('fill', '组合航段 0/' + order.length);
-    for (const pr of order) { if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
+    for (const pr of order) { if (pairingFull(pr)) continue;
       if (!fillOne(pr, !S.honorPrefs, true)) fillOne(pr, !S.honorPrefs, false);
       n++; progBeat('组合航段 ' + n + '/' + order.length); if (opts.onProgress) opts.onProgress(n / order.length * 0.55); }
     progStage('refill');
-    for (const pr of order) { if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
+    for (const pr of order) { if (pairingFull(pr)) continue;
       pr.crew = { C: pr.pin ? pr.pin.C : null, F: pr.pin ? pr.pin.F : null, T: null }; // 固定带飞对保留
       Object.keys(idx.sched).forEach(id => { idx.sched[id] = idx.sched[id].filter(x => x !== pr); });
       if (pr.pin) [pr.pin.C, pr.pin.F].forEach(id => { if (id && idx.sched[id]) idx.sched[id].push(pr); });
@@ -1883,14 +1930,14 @@
         } }
       if (!sw) break; }
     // 释放“三”位上非必要的机长类人员（换成副驾驶），为空缺任务腾出机长
-    if (st.pairings.some(pr => !(pr.crew.C && pr.crew.F && pr.crew.T))) {
+    if (st.pairings.some(pr => !pairingFull(pr))) {
       for (const pr of st.pairings) { const t = pr.crew.T && idx.pm[pr.crew.T]; if (!t || !isCaptClass(t.rank)) continue;
         const fos = pilots.filter(q => isFO(q.rank) && !Object.values(pr.crew).includes(q.id)).sort((a, b) => ratio(a.id) - ratio(b.id));
         for (const q of fos) { if (!personCheck(q, pr, st, idx, { ignorePrefs: !S.honorPrefs, slot: 'T' })[0]) continue;
           if (crewIssue(pr, [idx.pm[pr.crew.C], idx.pm[pr.crew.F], q], st)) continue; assign(pr, 'T', q.id); break; } }
     }
     // 均衡后再次尝试补齐剩余空缺
-    for (const pr of order) if (!(pr.crew.C && pr.crew.F && pr.crew.T)) {
+    for (const pr of order) if (!pairingFull(pr)) {
       if (!fillOne(pr, !S.honorPrefs, true)) {
         if (!fillOne(pr, true, true)) fillOne(pr, true, false); // 最后才开放后备，保覆盖
       }
@@ -1909,13 +1956,13 @@
     progStage('refill');
     (function refill() {
       const idx = buildIndex(st);
-      const order = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
+      const order = st.pairings.filter(pr => !pairingFull(pr));
       const sortR = arr => arr.sort((a, b) => (primary[b.id] ? 1 : 0) - (primary[a.id] ? 1 : 0)
         || (idx.hours[a.id] < 40 ? 0 : 1) - (idx.hours[b.id] < 40 ? 0 : 1)
         || (idx.hours[a.id] < (SM(a) - 10) ? 0 : 1) - (idx.hours[b.id] < (SM(b) - 10) ? 0 : 1)
         || idx.hours[a.id] - idx.hours[b.id]);
       for (const pr of order) {
-        const free = s => !pr.crew[s];
+        const free = s => !slotTaken(pr, s);
         const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
         const inCrew = id => Object.values(pr.crew).includes(id);
         if (free('C')) {
@@ -1962,13 +2009,13 @@
         return band(a) - band(b) || idx.hours[a.id] - idx.hours[b.id];
       });
       for (const pr of st.pairings) {
-        if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
+        if (pairingFull(pr)) continue;
         const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
         const inCrew = id => Object.values(pr.crew).includes(id);
-        const put = (slot, p) => { pr.crew[slot] = p.id; idx.sched[p.id].push(pr); idx.hours[p.id] += pairingHours(pr); };
-        if (!pr.crew.C) { const c = sortR(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C')))[0]; if (c) put('C', c); }
-        if (!pr.crew.F) { const f = sortR(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')))[0]; if (f) put('F', f); }
-        if (!pr.crew.T && pr.crew.C && pr.crew.F) {
+        const put = (slot, p) => { if (isOuterSlot(pr, slot)) return; pr.crew[slot] = p.id; idx.sched[p.id].push(pr); idx.hours[p.id] += pairingHours(pr); };
+        if (!slotTaken(pr, 'C')) { const c = sortR(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && ok(p, 'C')))[0]; if (c) put('C', c); }
+        if (!slotTaken(pr, 'F')) { const f = sortR(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')))[0]; if (f) put('F', f); }
+        if (!slotTaken(pr, 'T') && pr.crew.C && pr.crew.F) {
           const needInstr = isNew(idx.pm[pr.crew.C].rank);
           const t = sortR(st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank))))[0];
           if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) put('T', t); }
@@ -2025,6 +2072,8 @@
     progStage('trainingPairs');
     stickTrainingPairs(st);
     repairCrewIssues(st); repairFtl(st); // 均衡/带飞调整后复核搭配矩阵与 FTL
+    progStage('enforceOuter');
+    enforceOuterSlots(st);
     progStage('assignStandby');
     assignStandby(st);
     progStage('assignTraining');
@@ -2033,6 +2082,8 @@
     assignControl(st);
     progStage('assignSimulator');
     assignSimulator(st);
+    progStage('enforceOuter');
+    enforceOuterSlots(st);
     progStage('summarize');
     return summarize(st);
   }
@@ -2041,18 +2092,18 @@
     const idx = buildIndex(st);
     const sortR = arr => arr.sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
     for (const pr of st.pairings) {
-      if (pr.crew.C && pr.crew.F && pr.crew.T) continue;
+      if (pairingFull(pr)) continue;
       const ok = (p, slot) => personCheck(p, pr, st, idx, { ignorePrefs: true, slot })[0];
       const inCrew = id => Object.values(pr.crew).includes(id);
-      const put = (slot, p) => { pr.crew[slot] = p.id; (idx.sched[p.id] = idx.sched[p.id] || []).push(pr); idx.hours[p.id] += pairingHours(pr); };
+      const put = (slot, p) => { if (isOuterSlot(pr, slot)) return; pr.crew[slot] = p.id; (idx.sched[p.id] = idx.sched[p.id] || []).push(pr); idx.hours[p.id] += pairingHours(pr); };
       const pick = (pool) => {
         const band = pool.filter(p => idx.hours[p.id] >= 12 && idx.hours[p.id] < (SM(p) - 2));
         const use = band.length ? band : pool.filter(p => idx.hours[p.id] < (SM(p) - 2));
         return sortR(use)[0];
       };
-      if (!pr.crew.C) { const c = pick(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C'))); if (c) put('C', c); }
-      if (!pr.crew.F) { const f = pick(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'))); if (f) put('F', f); }
-      if (!pr.crew.T && pr.crew.C && pr.crew.F) {
+      if (!slotTaken(pr, 'C')) { const c = pick(st.pilots.filter(p => isCaptClass(p.rank) && !inCrew(p.id) && (!isNew(p.rank) || idx.hours[p.id] + pairingHours(pr) <= softCapOf(p)) && ok(p, 'C'))); if (c) put('C', c); }
+      if (!slotTaken(pr, 'F')) { const f = pick(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'))); if (f) put('F', f); }
+      if (!slotTaken(pr, 'T') && pr.crew.C && pr.crew.F) {
         const needInstr = isNew(idx.pm[pr.crew.C].rank);
         const pool = st.pilots.filter(p => !inCrew(p.id) && (!needInstr || isInstr(p.rank)) && idx.hours[p.id] < SM(p) + 6);
         const band = p => { const h = idx.hours[p.id]; return h >= 12 && h < SM(p) - 2 ? 0 : h < 12 ? 1 : 2; };
@@ -2211,7 +2262,7 @@
     }
     for (let pass = 0; pass < 2; pass++) {
       idx = buildIndex(st);
-      for (const pr of st.pairings.filter(x => x.crew.C && x.crew.F && !x.crew.T && isNew((idx.pm[x.crew.C] || {}).rank))) {
+      for (const pr of st.pairings.filter(x => x.crew.C && x.crew.F && !slotTaken(x, 'T') && isNew((idx.pm[x.crew.C] || {}).rank))) {
         const c0 = idx.pm[pr.crew.C], f = idx.pm[pr.crew.F];
         // A：教员进 T
         const instrs = st.pilots.filter(q => isInstr(q.rank) && q !== c0 && q !== f).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
@@ -2626,7 +2677,7 @@
   function repairUnfilled(st, strict) {
     for (const pr of st.pairings) {
       for (const slot of ['C', 'F', 'T']) {
-        if (pr.crew[slot]) continue;
+        if (slotTaken(pr, slot)) continue;
         const okc = candidates(st, pr, slot).filter(c => c.ok && !c.warn && !(slot === 'C' && isNew(c.p.rank) && c.hours + pairingHours(pr) > SOFT_NEW + 4));
         okc.sort((a, b) => {
           const as = (a.hours > 0.5 && a.hours < 55) ? 0 : (a.hours < 0.5 ? 2 : 1);
@@ -2679,7 +2730,7 @@
     const rk = id => id && pm[id] ? pm[id].rank : '';
     let h0 = hardN(), fixed = 0, kept = 0;
     // a) 外站驻点长块：整块固定 新机长 + TL（必要时腾挪二人邻近任务并补人；不增加硬违规/空缺才接受）
-    const holesN = () => st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length;
+    const holesN = () => st.pairings.filter(p => !pairingFull(p)).length;
     for (const pr of st.pairings.filter(p => p.fixedPair)) {
       const cs = Object.values(pr.crew);
       if (isNew(rk(pr.crew.C)) && isInstr(rk(pr.crew.F))) { fixed++; continue; }
@@ -2977,7 +3028,7 @@
     st.pilots.forEach(p => {
       if (p.health && p.health.noFly) return;
       if ((idx.hours[p.id] || 0) < 0.5) return; // 闲置后备保持休息，不用培训填满甘特
-      const want = 1 + (rnd() < 0.55 ? 1 : 0); // 约 1–2 天
+      const want = 1 + (rnd() < 0.75 ? 1 : 0) + (rnd() < 0.15 ? 1 : 0); // 约 1–3 天，均值贴近正式表培训密度
       const runs = freeRuns(ds[p.id]).filter(([a, b]) => b - a >= 1);
       const cands = [];
       runs.forEach(([a, b]) => {
@@ -3186,7 +3237,7 @@
     const ds = dayStatus(st, idx);
     const rnd = rng(20261119);
     const pool = st.pilots.filter(p => !(p.health && p.health.noFly) && (idx.hours[p.id] || 0) >= 0.5);
-    const nPick = Math.max(1, Math.round(pool.length * 0.05)); // ~5% 人员每月一块
+    const nPick = Math.max(1, Math.round(pool.length * 0.22)); // ~22%：贴近正式表模拟机密度（约 25 人×2–4 日）
     const order = pool.slice();
     for (let i = order.length - 1; i > 0; i--) { const j = Math.floor(rnd() * (i + 1)); const t = order[i]; order[i] = order[j]; order[j] = t; }
     let assigned = 0;
@@ -3218,7 +3269,7 @@
     const add = (type, level, msg, pr, pid) => out.push({ type, level, msg, pairing: pr && pr.id, pilot: pid });
     for (const pr of st.pairings) {
       const crew = ['C', 'F', 'T'].map(s => pr.crew[s] && idx.pm[pr.crew[s]]);
-      if (crew.some(x => !x)) add('未满员', 'hard', `${pr.id} 缺 ${['C', 'F', 'T'].filter((s, i) => !crew[i]).map(s => SLOT_NAME[s]).join('/')}`, pr);
+      const miss = openSlots(pr); if (miss.length) add('未满员', 'hard', `${pr.id} 缺 ${miss.map(s => SLOT_NAME[s]).join('/')}`, pr);
       ['C', 'F', 'T'].forEach((s, i) => { const p = crew[i]; if (!p) return;
         if (!slotRankOK(s, p.rank, s === 'F' && pr.crew.C && idx.pm[pr.crew.C] ? idx.pm[pr.crew.C].rank : null)) add('岗位级别不符', 'hard', `${pr.id} ${SLOT_NAME[s]}位 ${p.name}(${p.rank}) 级别不符`, pr, p.id);
         const [ok, rs] = personCheck(p, pr, st, idx, { ignorePrefs: true, skipFtl: true, slot: s });
@@ -3328,7 +3379,7 @@
         prefTotal: (p.prefs || []).length, prefOK: (p.prefs || []).filter(d => !touched.has(d)).length }; });
     const groups = {}; GROUPS.forEach(g => { const xs = per.filter(x => x.group === g);
       groups[g] = { hours: stats(xs.map(x => x.hours)), overnights: stats(xs.map(x => x.overnights)), special: stats(xs.map(x => x.special)), night: stats(xs.map(x => x.night)) }; });
-    const full = st.pairings.filter(p => p.crew.C && p.crew.F && p.crew.T).length;
+    const full = st.pairings.filter(pairingFull).length;
     const byType = {}; v.forEach(x => { byType[x.type] = byType[x.type] || { level: x.level, n: 0 }; byType[x.type].n++; });
     const prefT = per.reduce((s, x) => s + x.prefTotal, 0), prefOK = per.reduce((s, x) => s + x.prefOK, 0);
     const allG = per.flatMap(x => x.gaps); const gapDist = { '0-1': 0, '2': 0, '3': 0, '4': 0, '5+': 0 };
@@ -3381,6 +3432,7 @@
   }
   // 单个空位诊断：全员阻断原因分布 + 分类
   function holeDiagnosis(st, pr, slot) {
+    if (isOuterSlot(pr, slot)) return { cls: '外中队负责', why: '正式班表中该座位由外中队担任，不计入本中队空洞', rankOK: 0, total: 0, dist: {}, intrinsic: [] };
     const cs = candidates(st, pr, slot); const ok = cs.filter(c => c.ok && !c.crewWarn).length; const okWarn = cs.filter(c => c.ok && c.crewWarn); const intrAll = pairingIntrinsic(pr, st); const intr = intrAll.filter(x => !x.soft && !x.nonBlocking);
     const dist = {}; let rankOK = 0, qualOK = 0;
     cs.forEach(c => { if (c.ok || !slotRankOK(slot, c.p.rank)) return; const k = new Set(c.reasons.map(reasonClass)); k.forEach(x => dist[x] = (dist[x] || 0) + 1); });
@@ -3532,7 +3584,7 @@
       giniB: +before.all.gini.toFixed(4), giniA: +after.all.gini.toFixed(4), giniD: +(after.all.gini - before.all.gini).toFixed(4),
       coverageB: before.coverage, coverageA: after.coverage,
       otherHoles, hours, rest, sbDays,
-      stillOpen: !(pr.crew.C && pr.crew.F && pr.crew.T)
+      stillOpen: !pairingFull(pr)
     };
   }
 
@@ -3595,7 +3647,7 @@
       const h = idx.hours[p.id] || 0; const cap = pilotHardCap(p, st);
       assigned += h; capacityTotal += cap; remain += Math.max(0, cap - h); if (h > cap + 1e-9) overN++;
     });
-    const unfilled = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T));
+    const unfilled = st.pairings.filter(p => !pairingFull(p));
     const risk = fdpRiskSummary(st);
     const highRiskDays = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over' || r.risk === 'med');
     const hiOnly = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over');
@@ -3608,7 +3660,7 @@
     // 当日（默认取高风险最多的一天或 15 日）
     const byDate = {}; highRiskDays.forEach(r => { byDate[r.date] = (byDate[r.date] || 0) + 1; });
     let focusDate = 15; let best = -1; Object.keys(byDate).forEach(d => { if (byDate[d] > best) { best = byDate[d]; focusDate = +d; } });
-    const dayUnfilledList = st.pairings.filter(p => daysTouched(p, st).includes(focusDate) && !(p.crew.C && p.crew.F && p.crew.T));
+    const dayUnfilledList = st.pairings.filter(p => daysTouched(p, st).includes(focusDate) && !pairingFull(p));
     const dayUnfilled = dayUnfilledList.length;
     const dayRisk = highRiskDays.filter(r => r.date === focusDate).length;
     const dayHiRisk = hiOnly.filter(r => r.date === focusDate).length;
@@ -3619,7 +3671,7 @@
     // 待补位：焦点日未满员 + 演示空洞（仍空）
     const demoOpen = (st.demoHoles || []).filter(h => {
       const pr = st.pairings.find(p => p.id === h.pairingId);
-      return pr && daysTouched(pr, st).includes(focusDate) && !(pr.crew.C && pr.crew.F && pr.crew.T);
+      return pr && daysTouched(pr, st).includes(focusDate) && !pairingFull(pr);
     }).length;
     const dayPending = Math.max(dayUnfilled, demoOpen);
     // 飞机利用率
@@ -4031,20 +4083,20 @@
     (snap.pairings || []).forEach(p => { if (by[p.id]) by[p.id].crew = Object.assign({}, p.crew); });
     if (snap.standby) st.standby = JSON.parse(JSON.stringify(snap.standby));
   }
-  function countHoles(st) { return st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length; }
+  function countHoles(st) { return st.pairings.filter(p => !pairingFull(p)).length; }
   function hardBeyondUnfilled(st) { return validate(st).filter(x => x.level === 'hard' && x.type !== '未满员').length; }
   function problemScore(st) { return countHoles(st) * 10 + hardBeyondUnfilled(st); }
 
   function listHoles(st) {
     const out = [];
-    st.pairings.forEach(pr => ['C', 'F', 'T'].forEach(slot => { if (!pr.crew[slot]) out.push({ pairingId: pr.id, slot }); }));
+    st.pairings.forEach(pr => openSlots(pr).forEach(slot => out.push({ pairingId: pr.id, slot })));
     return out;
   }
 
   // BFS：为 (pr,slot) 找一条换人链。节点=人员占用；边=从其他任务挪人并回填。
   function findSwapChain(st, pairingId, slot, maxDepth) {
     maxDepth = maxDepth == null ? 4 : maxDepth;
-    const pr0 = prOf(st, pairingId); if (!pr0 || pr0.crew[slot]) return null;
+    const pr0 = prOf(st, pairingId); if (!pr0 || slotTaken(pr0, slot)) return null;
     // depth 0: direct candidate
     const direct = candidates(st, pr0, slot).filter(c => c.ok && !c.crewWarn)
       .sort((a, b) => a.hours - b.hours);
@@ -4213,13 +4265,13 @@
     if (st.demoHolesApplied) return st.demoHoles || [];
     const target = Math.max(0, Math.min(8, opt.count != null ? opt.count : (st.settings && st.settings.demoHoles != null ? st.settings.demoHoles : 4)));
     if (!target) { st.demoHolesApplied = true; st.demoHoles = []; return []; }
-    const already = st.pairings.filter(pr => !(pr.crew.C && pr.crew.F && pr.crew.T)).length;
+    const already = st.pairings.filter(pr => !pairingFull(pr)).length;
     // 优先保证足够的「易补」空洞供现场手填；总数控制在约 3–5（已有难填缺员时略多一点也可）
     const want = Math.max(0, Math.max(target - already, Math.min(3, target, 6 - already))); // 总数尽量 ≤6
     if (!want) { st.demoHolesApplied = true; st.demoHoles = []; return []; }
     const idx = buildIndex(st);
     // 易补：已满员、≤2 天、无特殊机场、非 A321；优先清空副驾位（备员多）
-    const easy = st.pairings.filter(pr => pr.crew.C && pr.crew.F && pr.crew.T
+    const easy = st.pairings.filter(pr => pairingFull(pr) && pr.crew.C && pr.crew.F && pr.crew.T
       && pr.ndays <= 2 && pr.ac !== 'A321' && !specialAirportsOf(pr, st).length)
       .sort((a, b) => a.ndays - b.ndays || a.start - b.start || a.id.localeCompare(b.id));
     const out = [];
@@ -4560,6 +4612,6 @@
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
 });

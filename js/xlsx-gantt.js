@@ -64,7 +64,7 @@
     // ---- 任务甘特 ----
     const pids = new Set(pilots.map(p => p.id)); const prs = st.pairings.filter(pr => !opt.pilotIds || ['C', 'F', 'T'].some(s => pids.has(pr.crew[s])));
     const wt = wb.addWorksheet('任务甘特'); const L2 = grid(wt, '任务甘特（按任务）', ['任务', '天数', '机型', '机组'], [8, 5, 6, 22]);
-    prs.forEach((pr, i) => { const r = 3 + i; wt.getRow(r).height = 26; const full = pr.crew.C && pr.crew.F && pr.crew.T;
+    prs.forEach((pr, i) => { const r = 3 + i; wt.getRow(r).height = 26; const full = (typeof RosterCore !== 'undefined' && RosterCore.pairingFull) ? RosterCore.pairingFull(pr) : (pr.crew.C && pr.crew.F && pr.crew.T);
       [pr.id, pr.ndays, pr.ac, ['C', 'F', 'T'].map(s => nm(pr.crew[s])).join('/')].forEach((v, k) => { const c = wt.getCell(r, k + 1); c.value = v; c.border = B; c.alignment = { vertical: 'middle' }; if (!full) c.font = { color: { argb: 'FFC0392B' }, bold: k === 0 }; });
       const taken = []; segs(pr).forEach(g => put(wt, r, L2, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(pr.id, [g.ls[0].from, ...g.ls.map(l => l.to)], ''), full ? COL.C : 'C0392B', noteOf(pr))); });
     // ---- 图例与统计 ----

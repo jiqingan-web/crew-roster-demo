@@ -46,7 +46,7 @@
       ${fdpReportPanel()}
       <div class="panel"><h3>问题明细 <small>${s.violations.length} 条（含软性与提醒）</small></h3><div class="scroll" style="max-height:300px"><table><tr><th>级别</th><th>类型</th><th>说明</th><th></th></tr>
       ${s.violations.slice().sort((a, b) => ['hard', 'soft', 'info'].indexOf(a.level) - ['hard', 'soft', 'info'].indexOf(b.level)).map(v => `<tr class="${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><td class="${v.level === 'hard' ? 'red' : 'warnc'}">${{ hard: '硬性', soft: '软性', info: '提醒' }[v.level]}</td><td>${v.type}</td><td>${esc(v.msg)}</td><td>${v.pairing ? '<span class="mut">定位 →</span>' : ''}</td></tr>`).join('') || '<tr><td colspan=4 class="okc">无</td></tr>'}</table></div></div>`;
-    const needFix = (s.hard > 0) || st.pairings.some(pr => !(pr.crew.C && pr.crew.F && pr.crew.T));
+    const needFix = (s.hard > 0) || st.pairings.some(pr => !C.pairingFull(pr));
     h = `<div class="panel" id="autoFixBox"><h3>一键自动纠错 <small>空洞/硬违规 · 直接补位 + 换人链（深度≤4）· 可撤销</small></h3>
       <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn primary" id="btnAutoFix" ${needFix ? '' : 'disabled'}>🔧 生成纠错方案</button>

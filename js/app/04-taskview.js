@@ -5,7 +5,7 @@
   const SLOTS = [['早班', 0, 9], ['上午', 9, 12], ['下午', 12, 17], ['晚间', 17, 24]];
   const hm = m => C.fmtT(m);
   function legsOnDay(pr, d) { return pr.legs.filter(l => Math.floor(l.dep / 1440) + 1 === d); }
-  function prStatus(pr, V, rk) { const full = pr.crew.C && pr.crew.F && pr.crew.T;
+  function prStatus(pr, V, rk) { const full = C.pairingFull(pr);
     if (!full) return ['缺员', 'b-hole']; if (V[pr.id]) return ['违规', 'b-viol']; if (rk && ['over', 'high', 'med'].includes(rk)) return ['风险', 'b-risk']; return ['正常', 'b-ok']; }
   function routeHtml(ls) { if (!ls.length) return ''; return [ls[0].from].concat(ls.map(l => l.to)).map(apHtml).join(' → '); }
   function dayIndex() { // 每日：任务、问题
@@ -109,9 +109,9 @@
     const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx); const N = st.pilots.length;
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
     const V = violByPairing(); const onDay = d => st.pairings.filter(pr => pr.start <= d && pr.start + pr.ndays - 1 >= d);
-    const cov = days.map(d => { const a = onDay(d); return a.length ? a.filter(p => p.crew.C && p.crew.F && p.crew.T).length / a.length * 100 : 100; });
+    const cov = days.map(d => { const a = onDay(d); return a.length ? a.filter(p => C.pairingFull(p)).length / a.length * 100 : 100; });
     const vio = days.map(d => onDay(d).filter(p => V[p.id]).length);
-    const holes = days.map(d => onDay(d).filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length);
+    const holes = days.map(d => onDay(d).filter(p => !C.pairingFull(p)).length);
     const duty = days.map(d => st.pilots.filter(p => ds[p.id][d] === 'D').length);
     const sb = days.map(d => Object.values(st.standby || {}).filter(x => (x || []).includes(d)).length);
     const tasks = days.map(d => st.pairings.filter(pr => pr.legs.some(l => Math.floor(l.dep / 1440) + 1 === d)).length);

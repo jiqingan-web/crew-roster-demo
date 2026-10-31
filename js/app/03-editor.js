@@ -38,12 +38,23 @@
     const drawSlots = () => {
       let s = '';
       for (const slot of ['C', 'F', 'T']) {
+        const outer = C.isOuterSlot(pr, slot) && !draft[slot];
         const cs = C.candidates(st, pr, slot); const cur = draft[slot];
         const okAll = cs.filter(c => c.ok || c.p.id === cur || c.p.id === orig[slot]);
         slotCache[slot] = okAll;
         const ok = okAll.filter(c => c.p.id === cur || C.pilotMatches(c.p, slotQ[slot]));
         const bad = cs.filter(c => !c.ok && c.p.id !== cur && c.p.id !== orig[slot] && C.slotRankOK(slot, c.p.rank, draft.C && pm()[draft.C] ? pm()[draft.C].rank : null));
         const changed = (draft[slot] || null) !== (orig[slot] || null);
+        if (outer) {
+          s += `<div class="slotbox outerbox">
+            <div class="slot-h"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位')}</b>
+              <span class="outer-slot">外中队负责</span>
+              <span class="mut">不计入本中队空洞 · 自动填人/候补不占用</span>
+            </div>
+            <div class="mut" style="padding:6px 0">正式班表中该座位由外中队人员担任（本中队表留空）。</div>
+          </div>`;
+          continue;
+        }
         s += `<div class="slotbox ${changed ? 'pending' : ''}">
             <div class="slot-h"><b>${slot === 'T' ? '观察员' : (C.SLOT_NAME[slot] + '位' + (slot === 'F' && draft.F && pm()[draft.F] && C.INSTR.includes(pm()[draft.F].rank) ? '（教员带飞）' : ''))}</b>
               <input class="candq" data-q="${slot}" placeholder="搜索姓名/工号/级别/中队/拼音" value="${esc(slotQ[slot] || '')}">
@@ -63,7 +74,8 @@
       pr.crew.C = draft.C; pr.crew.F = draft.F; pr.crew.T = draft.T;
       const crew = ['C', 'F', 'T'].map(x => draft[x] && pm()[draft[x]]); const iss = C.crewIssue(pr, crew, st);
       pr.crew.C = bak.C; pr.crew.F = bak.F; pr.crew.T = bak.T;
-      $('#crewChk').innerHTML = crew.every(Boolean) ? (iss ? `<span class="red">✖ ${esc(iss)}</span>` : '<span class="okc">✔ 机组组合满足全部航段座位搭配、特殊机场及新机长带飞规则</span>') : '<span class="warnc">机组未满员</span>';
+      const covered = ['C', 'F', 'T'].every(s => draft[s] || C.isOuterSlot(pr, s));
+      $('#crewChk').innerHTML = covered ? (crew.every(Boolean) ? (iss ? `<span class="red">✖ ${esc(iss)}</span>` : '<span class="okc">✔ 机组组合满足全部航段座位搭配、特殊机场及新机长带飞规则</span>') : '<span class="okc">✔ 本中队座位已齐（其余外中队负责）</span>') : '<span class="warnc">机组未满员</span>';
       $('#editDiff').innerHTML = diffHtml();
       const btn = $('#mConfirm'); btn.disabled = !dirty();
       document.querySelectorAll('#slots select').forEach(sel => sel.onchange = () => {
@@ -113,7 +125,7 @@
       // 先刷新摘要再判定合规，便于去掉 viol、点亮绿灯
       sum = C.summarize(st);
       const okNow = crewComplianceOk(pr);
-      const light = okNow ? ' <span class="okc">● 合规</span>' : (pr.crew.C && pr.crew.F && pr.crew.T ? ' <span class="warnc">● 仍有问题</span>' : ' <span class="warnc">● 未满员</span>');
+      const light = okNow ? ' <span class="okc">● 合规</span>' : (C.pairingFull(pr) ? ' <span class="warnc">● 仍有问题</span>' : ' <span class="warnc">● 未满员</span>');
       commitHighlight({
         pairings: [pr.id], pilots, days: C.daysTouched(pr, st), ok: okNow,
         toast: `✔ 已更新：${esc(pr.id)} ${parts.map(esc).join('；')}${light} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
@@ -128,18 +140,18 @@
   function rTaskList() {
     const m = pm(); const V = violByPairing();
     let ps = st.pairings.slice();
-    if (ui.tf === '未满员') ps = ps.filter(p => !(p.crew.C && p.crew.F && p.crew.T));
-    if (ui.tf === '已满员') ps = ps.filter(p => p.crew.C && p.crew.F && p.crew.T);
+    if (ui.tf === '未满员') ps = ps.filter(p => !C.pairingFull(p));
+    if (ui.tf === '已满员') ps = ps.filter(p => C.pairingFull(p));
     if (ui.tf === '有违规') ps = ps.filter(p => V[p.id]);
     if (ui.tf === '特殊机场') ps = ps.filter(p => C.specialAirportsOf(p, st).length);
     if (ui.tf === '执勤高/中风险') ps = ps.filter(p => ['over', 'high', 'med'].includes(C.pairingRisk(p, st).risk));
     if (ui.tq) ps = ps.filter(p => JSON.stringify(p.legs).includes(ui.tq) || p.id.includes(ui.tq) || p.legs.some(l => C.apName(l.to, st).includes(ui.tq)));
-    const unf = st.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length;
+    const unf = st.pairings.filter(p => !C.pairingFull(p)).length;
     let h = `<div class="toolbar"><select id="tf">${['全部', '未满员', '已满员', '有违规', '特殊机场', '执勤高/中风险'].map(g => `<option ${g === ui.tf ? 'selected' : ''}>${g}</option>`).join('')}</select><input id="tq" placeholder="航班号/机场/任务号" value="${esc(ui.tq)}">
       <span class="mut">共 ${st.pairings.length} 个任务，已满员 ${st.pairings.length - unf}，未满员 <b class="${unf ? 'red' : 'okc'}">${unf}</b>；显示 ${ps.length}</span></div>
       <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>执勤风险（每日 飞行执勤期 / 限制 · 余量）</th><th>状态</th><th></th></tr>`;
     for (const pr of ps) {
-      const full = pr.crew.C && pr.crew.F && pr.crew.T; const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
+      const full = C.pairingFull(pr); const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
       h += `<tr><td><b>${pr.id}</b>${fillBadge(pr.id)}${demoTag(pr)}</td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
         <td>${dayChains(pr).map(c => c.html).join('<br>')}</td><td>${crewTxt(pr, m)}</td>
         <td class="fdpc">${C.fdpDays(pr, st).map(dy => `<div><span class="rdot r-${dy.planRisk}"></span>D${dy.d} ${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)} · <span class="${{ over: 'red', high: 'red', med: 'warnc', low: 'mut' }[dy.planRisk]}">余 ${dy.planBuffer} 分</span>${dy.planRestShort ? ` <span class="mut" title="计划过夜休息偏短">夜休 ${C.fmtH(dy.planRest)}</span>` : ''}</div>`).join('')}</td>

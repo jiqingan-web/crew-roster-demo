@@ -44,8 +44,8 @@ if (ranked.length) {
 L.push('月工时最高5人：' + ranked.slice(0, 5).map(x => `${x.name}(${x.rank})${x.hours.toFixed(1)}h`).join('、'));
 L.push('月工时最低5人：' + ranked.slice(-5).reverse().map(x => `${x.name}(${x.rank})${x.hours.toFixed(1)}h`).join('、'));
 }
-const holes = st.pairings.filter(p =>!(p.crew.C && p.crew.F && p.crew.T)).slice(0, 10);
-if (holes.length) L.push('未满员任务 Top10：' + holes.map(p => `${p.id}(缺${['C', 'F', 'T'].filter(k =>!p.crew[k]).join('/')})`).join('、'));
+const holes = st.pairings.filter(p => !C.pairingFull(p)).slice(0, 10);
+if (holes.length) L.push('未满员任务 Top10：' + holes.map(p => `${p.id}(缺${['C', 'F', 'T'].filter(k => !C.slotTaken(p, k)).join('/')})`).join('、'));
 return L.join('\n');
 } catch (e) { return '（排班数据摘要生成失败：' + String(e && e.message || e) + '）';}
 }

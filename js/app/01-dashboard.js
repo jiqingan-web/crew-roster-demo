@@ -213,7 +213,7 @@
     };
     const dailyOff = Array.from({ length: C.DAYS }, (_, i) => st.pilots.filter(p => (p.leave || []).includes(i + 1) || (p.prefs || []).includes(i + 1)).length);
     const dailySb = Array.from({ length: C.DAYS }, (_, i) => st.pilots.filter(p => ((st.standby || {})[p.id] || []).includes(i + 1)).length);
-    const dailyHoles = Array.from({ length: C.DAYS }, (_, i) => st.pairings.filter(pr => C.daysTouched(pr, st).includes(i + 1) && !(pr.crew.C && pr.crew.F && pr.crew.T)).length);
+    const dailyHoles = Array.from({ length: C.DAYS }, (_, i) => st.pairings.filter(pr => C.daysTouched(pr, st).includes(i + 1) && !C.pairingFull(pr)).length);
 
     h += `<div class="panel"><h3>公平性日常监控 <small>工时基尼/标准差 · 值勤日分布 · 周末/夜航/早班占比</small></h3>
       <div class="grid g2">

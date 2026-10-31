@@ -66,7 +66,7 @@
   function reset(r) { st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
   // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
   function loadOfficial() {
-    st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample() : st); st.solHist = []; st.solN = 0;
+    st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample(undefined, { reserves: false }) : st); st.solHist = []; st.solN = 0;
     pushSolution(C.summarize(st), { seed: '正式', name: window.RosterOfficial.NAME }); return st;
   }
   // ---------------- 人员变更：统一失效 + 全局重算（增/删/改 级别·授权·中队·健康） ----------------
@@ -128,7 +128,7 @@
     document.querySelectorAll('.bar.hl').forEach(el => { el.classList.remove('pulse'); void el.offsetWidth; el.classList.add('pulse'); });
   }
   function crewComplianceOk(pr) {
-    if (!(pr.crew.C && pr.crew.F && pr.crew.T)) return false;
+    if (!C.pairingFull(pr)) return false;
     const m = pm();
     const crew = ['C', 'F', 'T'].map(s => m[pr.crew[s]]);
     if (C.crewIssue(pr, crew, st)) return false;
@@ -183,6 +183,13 @@
     const tu = $('#tUndo'); if (tu && opt.undo) tu.onclick = e => { e.preventDefault(); opt.undo(); };
   }
   function nameOf(id) { if (!id) return '空缺'; const p = st.pilots.find(x => x.id === id); return p ? p.name : id; }
+  function outerLbl() { return '<span class="outer-slot" title="外中队负责，不计入本中队空洞">外中队负责</span>'; }
+  function seatTxt(pr, s, m) {
+    m = m || pm();
+    if (pr.crew[s] && m[pr.crew[s]]) return esc(m[pr.crew[s]].name);
+    if (C.isOuterSlot(pr, s)) return outerLbl();
+    return '<span class="warnc">空缺</span>';
+  }
   function recordFillEdit(pr, slot, fromId, toId) {
     if (!toId) return;
     ensureFills();
@@ -308,7 +315,7 @@
   function abHtml(c) { const a = esc(apAbbr(c)); return C.isSpecial(c, st) ? `<span class="red">${a}</span>` : a; }
   function crewShort(pr, m) { return ['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) + (s === 'F' && C.INSTR.includes(m[pr.crew[s]].rank) ? '<sup class="instr">教</sup>' : '') : '<span class="warnc">缺</span>').join('/'); }
   function blkDay(c) { return `${[c.ls[0].from, ...c.ls.map(l => l.to)].map(abHtml).join('-')}${c.ls.some(l => l.dh) ? '<span class="dh">(随)</span>' : ''}<br><span class="mut" style="color:#b9cbe8">${C.fmtT(c.ls[0].dep)}-${C.fmtT(c.ls[c.ls.length - 1].arr)}</span>`; }
-  function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, m)} ${pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) : '<span class="warnc">空缺</span>'}`).join(' / '); }
+  function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, m)} ${seatTxt(pr, s, m)}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 
   // ---------------- 方案历史（最近 5 套）----------------

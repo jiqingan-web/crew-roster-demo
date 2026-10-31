@@ -608,3 +608,8 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 
 /* v=644 stress-backtest: settings #stressOut table spacing */
 #stressOut table.fdpt td, #stressOut table.fdpt th { padding: 4px 6px; }
+
+
+/* 外中队负责座位 */
+.outer-slot { display:inline-block; padding:1px 6px; border-radius:4px; background:#e8f0ff; color:#2a5bd7; font-size:12px; font-weight:600; }
+.outerbox { border:1px dashed #9bb6ef; background:#f7f9ff; }
