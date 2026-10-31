@@ -187,6 +187,20 @@ details summary{cursor:pointer;color:var(--mut)}
 .mgd{width:var(--cw);min-width:var(--cw);border-left:1px solid #182b4d;text-align:center}
 .mgd.we{color:var(--gold)}.mgd.lvday{background:#3a2350}.mgd.lv{background:repeating-linear-gradient(45deg,#4a2230,#4a2230 4px,transparent 4px,transparent 9px)}
 .mgd.pref{background:repeating-linear-gradient(45deg,#1b3a2f,#1b3a2f 4px,transparent 4px,transparent 9px)}.mgd.sb{background:#4a3410}
+.mgd.hold{background:repeating-linear-gradient(135deg,#2a2f6b,#2a2f6b 3px,#454a9a 3px,#454a9a 7px);box-shadow:inset 0 0 0 1px #9aa0ff}
+.mgd.hold-pending{background:repeating-linear-gradient(135deg,rgba(42,47,107,.55),rgba(42,47,107,.55) 3px,rgba 3px,transparent 7px);box-shadow:inset 0 0 0 1px rgba(154,160,255,.45)}
+.mgd.hold.hold-flash{animation:holdFlash .85s ease-in-out 3}
+@keyframes holdFlash{0%,100%{filter:brightness(1);box-shadow:inset 0 0 0 1px #9aa0ff,0 0 0 0 rgba(154,160,255,0)}50%{filter:brightness(1.45);box-shadow:inset 0 0 0 2px #dce0ff,0 0 14px 2px rgba(154,160,255,.9)}}
+.impact-leg .leg-hold{background:repeating-linear-gradient(135deg,#2a2f6b,#2a2f6b 3px,#454a9a 3px,#454a9a 7px);border:1px solid #9aa0ff}
+.lv-hold-bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.btn-hold{font-size:15px;font-weight:700;padding:10px 22px;letter-spacing:.02em;box-shadow:0 0 0 1px rgba(62,166,255,.35),0 4px 14px rgba(62,166,255,.25)}
+.btn-hold:active{transform:translateY(1px)}
+.lv-hold-preview{margin-top:12px}
+.lv-hold-preview.hold-pop{animation:holdPop .55s ease}
+@keyframes holdPop{0%{transform:scale(.985);box-shadow:0 0 0 0 rgba(154,160,255,0)}40%{transform:scale(1.01);box-shadow:0 0 0 3px rgba(154,160,255,.45)}100%{transform:none;box-shadow:none}}
+.gbg div.tr.sim.hold{background:repeating-linear-gradient(135deg,#2a2f6b,#2a2f6b 3px,#3d4290 3px,#3d4290 6px);box-shadow:inset 0 0 0 1px #a8acff}
+.gbg div.tr.sim.hold.hold-flash{animation:holdFlash .85s ease-in-out 3}
+
 .mgbar{position:absolute;top:6px;height:22px;border-radius:4px;background:#174a85;border:1px solid #3a86d6;color:#e9f3ff;padding:0 4px;line-height:20px;overflow:hidden;white-space:nowrap;font-size:10px;font-weight:600;box-sizing:border-box}
 .mgbar.add{background:#0f5a3e;border:2px solid var(--ok);box-shadow:0 0 8px rgba(46,204,143,.6)}
 .mgbar.chg{background:#5a3d0f;border:2px solid var(--warn)}

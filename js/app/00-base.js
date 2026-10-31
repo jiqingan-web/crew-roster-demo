@@ -262,8 +262,7 @@
       h += leaveHist.slice().reverse().map(x => `<tr><td>${esc(x.time)}</td><td colspan="7">${esc(x.label)}</td><td></td></tr>`).join('');
     }
     h += '</table>';
-    if (leaveHist.length) h += `<div class="flex" style="margin-top:8px"><button class="btn" id="fillUndoLast">↶ 撤销最近一次调配（${leaveHist.length}）</button>
-      <span class="mut">撤销将恢复应用前的排班快照（含补位标记）</span></div>`;
+    if (leaveHist.length) h += `<div class="flex" style="margin-top:8px"><button class="btn" id="fillUndoLast">↶ 撤销（${leaveHist.length}）</button></div>`;
     return h;
   }
   function undoToHist(i) {
