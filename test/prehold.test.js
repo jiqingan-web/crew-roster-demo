@@ -44,5 +44,28 @@ chk('personalDayKind', C.personalDayKind(st, p, 5, ix) === '提前占位');
 const r1 = C.reserveHold(st, p.id, [20]);
 chk('1-day hold label', r1.ok && r1.label === '提前占位' && !r1.asSimBlock, r1);
 
+
+// 一键补位：有飞行任务时无需先清空机组
+{
+  const st3 = C.generateLiteSample(20261103);
+  C.autoFill(st3, { attempts: 1, seed: 11 });
+  const idx3 = C.buildIndex(st3);
+  const capt = st3.pilots.filter(x => C.isCaptClass(x.rank) && (idx3.sched[x.id] || []).length)
+    .sort((a, b) => (idx3.sched[b.id] || []).length - (idx3.sched[a.id] || []).length)[0];
+  chk('oneclick has capt with flight', !!capt, capt && capt.id);
+  if (capt) {
+    const pr0 = (idx3.sched[capt.id] || [])[0];
+    const days3 = []; for (let d = pr0.start; d <= pr0.start + pr0.ndays - 1; d++) days3.push(d);
+    const blocked = C.reserveHold(JSON.parse(JSON.stringify(st3)), capt.id, days3);
+    chk('reserveHold blocks full-fly', !blocked.ok && String(blocked.reason || '').includes('飞行任务'), blocked);
+    const r3 = C.holdWithBackfill(st3, capt.id, days3);
+    chk('oneclick ok', r3.ok && r3.vacated, r3 && { ok: r3.ok, vacated: r3.vacated, ch: (r3.changes || []).length, un: (r3.unresolved || []).length, reason: r3.reason });
+    const stillOn = st3.pairings.some(pr => Object.values(pr.crew).includes(capt.id) && C.daysTouched(pr, st3).some(d => days3.includes(d)));
+    chk('oneclick vacated seats', !stillOn);
+    chk('oneclick leave marked', days3.every(d => (capt.leave || []).includes(d)), (capt.leave || []).join(','));
+    chk('oneclick hold written', days3.every(d => ((st3.simHold || {})[capt.id] || []).includes(d)), ((st3.simHold || {})[capt.id] || []).join(','));
+  }
+}
+
 console.log(fail ? 'PREHOLD FAIL ' + fail : 'PREHOLD ALL OK');
 process.exitCode = fail ? 1 : 0;

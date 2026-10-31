@@ -251,7 +251,7 @@
     let h = '<table class="solt"><tr><th>时间</th><th>请假人</th><th>请假日</th><th>任务</th><th>座位</th><th>原成员</th><th>补位人</th><th>来源</th><th></th></tr>';
     if (rows.length) {
       h += rows.map((f, ri) => {
-        const src = f.source === 'hole' ? '空洞换人' : f.source === 'edit' ? '手工换人' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
+        const src = f.source === 'hole' ? '空洞换人' : f.source === 'edit' ? '手工换人' : f.source === 'oneclick' ? '一键补位' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
         return `<tr class="${f.undone ? 'mut' : ''}"><td>${esc(f.time)}</td><td>${esc(f.leavePilotName || '—')}</td><td>${(f.leaveDays || []).join(',') || '—'}</td>
           <td><b>${esc(f.pairingId)}</b>${fillBadge(f.pairingId)}</td><td>${esc(f.slotName || f.slot || '')}</td>
           <td>${esc(f.fromName || '—')}</td><td><b>${esc(f.toName || '—')}</b> ${f.toRank ? pill(f.toRank) : ''}</td>

@@ -3114,6 +3114,56 @@
     const asSimBlock = cons && free.length >= 2 && free.length <= 4;
     return { ok: true, days: free, skipped: fly, asSimBlock, label: asSimBlock ? '模拟机占位' : '提前占位' };
   }
+  // 一键：有飞行任务时先腾座位+请假+自动补位，再写入占位；无需先「清空机组」
+  function holdWithBackfill(st, pid, days) {
+    days = [...new Set((days || []).map(Number).filter(d => d >= 1 && d <= DAYS))].sort((a, b) => a - b);
+    if (!days.length) return { ok: false, reason: '无有效日期' };
+    const p = st.pilots.find(x => x.id === pid);
+    if (!p) return { ok: false, reason: '人员不存在' };
+    const idx0 = buildIndex(st);
+    const fly = days.filter(d => (idx0.sched[pid] || []).some(pr => daysTouched(pr, st).includes(d)));
+    let leaveRes = null;
+    if (fly.length) {
+      leaveRes = applyLeave(st, pid, days);
+      // 仍占座的残留任务强制腾空（无替补时留下空洞，后续可手工补）
+      for (const pr of st.pairings) {
+        if (!Object.values(pr.crew).includes(pid)) continue;
+        if (!daysTouched(pr, st).some(d => days.includes(d))) continue;
+        const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === pid);
+        if (slot) pr.crew[slot] = null;
+      }
+    }
+    let hold = reserveHold(st, pid, days);
+    if (!hold.ok && fly.length) {
+      // 腾座后仍失败则强制写入 hold（请假日禁飞 + 斜纹占位）
+      if (!st.sim) st.sim = {};
+      if (!st.sim[pid]) st.sim[pid] = [];
+      if (!st.simHold) st.simHold = {};
+      if (!st.simHold[pid]) st.simHold[pid] = [];
+      days.forEach(d => {
+        if (!st.sim[pid].includes(d)) st.sim[pid].push(d);
+        if (!st.simHold[pid].includes(d)) st.simHold[pid].push(d);
+      });
+      st.sim[pid].sort((a, b) => a - b);
+      st.simHold[pid].sort((a, b) => a - b);
+      if (st.standby && st.standby[pid]) st.standby[pid] = st.standby[pid].filter(d => !days.includes(d));
+      const cons = days.every((d, i) => i === 0 || d === days[i - 1] + 1);
+      hold = { ok: true, days: days.slice(), skipped: [], asSimBlock: cons && days.length >= 2 && days.length <= 4,
+        label: (cons && days.length >= 2 && days.length <= 4) ? '模拟机占位' : '提前占位', forced: true };
+    }
+    if (!hold.ok) return { ok: false, reason: hold.reason, flyDays: fly, leave: leaveRes, hold };
+    return {
+      ok: true,
+      vacated: fly.length > 0,
+      flyDays: fly,
+      leave: leaveRes,
+      hold,
+      changes: (leaveRes && leaveRes.changes) || [],
+      unresolved: (leaveRes && leaveRes.unresolved) || [],
+      days: hold.days,
+      label: hold.label
+    };
+  }
   function mergeSimHolds(st) {
     if (!st.simHold) st.simHold = {};
     if (!st.sim) st.sim = {};
@@ -4510,6 +4560,6 @@
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, holeRecommend, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
 });

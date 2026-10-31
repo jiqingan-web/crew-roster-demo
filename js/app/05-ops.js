@@ -526,10 +526,19 @@
       </div>
       <div class="note" style="margin-top:8px">任务 ${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''})</a>`).join(' ') || '无'}
         · 请假 ${(p.leave || []).join(',') || '无'} · 意向 ${(p.prefs || []).join(',') || '无'} · 占位 ${holdDaysNow.join(',') || '无'}</div>
-      <div class="lv-hold-bar">
-        <button type="button" class="btn primary btn-hold" id="lvHold" title="写入占位：甘特斜纹标记，一键排班不覆盖">确认占位</button>
-        <span class="mut">占住 ${leaveSel.from}${leaveSel.to !== leaveSel.from ? '–' + leaveSel.to : ''} 日 · 画面斜纹 + 禁飞占位</span>
-      </div>
+      ${(() => {
+        const daysPeek = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) daysPeek.push(d);
+        const flyPeek = daysPeek.filter(d => (idx.sched[p.id] || []).some(pr => C.daysTouched(pr, st).includes(d)));
+        const oneClick = flyPeek.length > 0;
+        return `<div class="lv-hold-bar">
+        <button type="button" class="btn primary btn-hold" id="lvHold" title="${oneClick
+          ? '腾座位 + 请假/占位 + 自动补机长/副驾（无需先清空机组）'
+          : '写入占位：甘特斜纹标记，一键排班不覆盖'}">${oneClick ? '一键补位' : '确认占位'}</button>
+        <span class="mut">${oneClick
+          ? `有飞行 ${flyPeek.join(',')} 日 · 一键腾座/请假/占位/自动补位`
+          : `占住 ${leaveSel.from}${leaveSel.to !== leaveSel.from ? '–' + leaveSel.to : ''} 日 · 画面斜纹 + 禁飞占位`}</span>
+      </div>`;
+      })()}
       <div class="impactbox lv-hold-preview" id="lvHoldPreview">
         <h4>占位预览 <small>紫斜纹 = 已占位 / 将占位 · 自动排班不覆盖</small></h4>
         <div class="impact-leg">
@@ -682,21 +691,54 @@
       if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from;
       const days = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) days.push(d);
       const snap = JSON.stringify(st);
-      const r = C.reserveHold(st, leaveSel.pid, days);
-      if (!r.ok) { toast('占位失败：' + esc(r.reason)); return; }
-      leaveHist.push({ snap, label: `${p.name} ${r.label} ${r.days[0]}${r.days.length > 1 ? '–' + r.days[r.days.length - 1] : ''} 日`, time: new Date().toTimeString().slice(0, 8) });
-      leaveHoldFlash = { pid: leaveSel.pid, days: r.days.slice() };
-      ui.holdFlash = { pid: leaveSel.pid, days: r.days.slice(), t: Date.now() };
-      leaveOpts = null; leaveHoles = null; holePrev = null;
-      refresh();
-      const skip = r.skipped && r.skipped.length ? `（跳过已飞 ${r.skipped.join(',')}）` : '';
-      toast(`✔ 已占位 ${esc(p.name)} ${r.days.join(',')} 日${skip}`, 3200);
-      setTimeout(() => {
-        document.querySelectorAll('#mgHold .mgd.hold, #mgBox .mgd.hold').forEach(el => {
-          el.classList.remove('hold-flash'); void el.offsetWidth; el.classList.add('hold-flash');
+      const idx0 = C.buildIndex(st);
+      const flyNow = days.filter(d => (idx0.sched[leaveSel.pid] || []).some(pr => C.daysTouched(pr, st).includes(d)));
+      const r = flyNow.length ? C.holdWithBackfill(st, leaveSel.pid, days) : C.reserveHold(st, leaveSel.pid, days);
+      if (!r.ok) { toast((flyNow.length ? '一键补位失败：' : '占位失败：') + esc(r.reason || '未知')); return; }
+      const holdDays = (r.hold && r.hold.days) ? r.hold.days : (r.days || days);
+      const labelCore = r.vacated
+        ? `${p.name} 一键补位 ${days[0]}${days.length > 1 ? '–' + days[days.length - 1] : ''} 日`
+        : `${p.name} ${(r.label || (r.hold && r.hold.label) || '提前占位')} ${holdDays[0]}${holdDays.length > 1 ? '–' + holdDays[holdDays.length - 1] : ''} 日`;
+      leaveHist.push({ snap, label: labelCore, time: new Date().toTimeString().slice(0, 8) });
+      // 补位历史：来自 applyLeave 的替换
+      (r.changes || []).forEach(ch => {
+        if (!ch || !ch.to) return;
+        ensureFills();
+        st.fills.push({
+          id: 'FL' + Date.now().toString(36) + Math.floor(Math.random() * 99),
+          time: new Date().toTimeString().slice(0, 8), ts: Date.now(),
+          pairingId: ch.pairing, slot: ch.slot, slotName: C.SLOT_NAME[ch.slot] || ch.slot,
+          leavePilotId: leaveSel.pid, leavePilotName: p.name, leaveDays: days.slice(),
+          fromId: leaveSel.pid, fromName: p.name,
+          toId: ch.to.id, toName: ch.to.name, toRank: ch.to.rank || '',
+          source: 'oneclick', planName: '一键补位', undone: false
         });
-        const box = $('#lvHoldPreview'); if (box) { box.classList.remove('hold-pop'); void box.offsetWidth; box.classList.add('hold-pop'); }
-      }, 40);
+      });
+      leaveHoldFlash = { pid: leaveSel.pid, days: holdDays.slice() };
+      ui.holdFlash = { pid: leaveSel.pid, days: holdDays.slice(), t: Date.now() };
+      leaveOpts = null; leaveHoles = null; holePrev = null;
+      const chN = (r.changes || []).length;
+      const unN = (r.unresolved || []).length;
+      const prIds = [...new Set((r.changes || []).map(c => c.pairing).concat((r.unresolved || []).map(u => u.pairing)).filter(Boolean))];
+      const subIds = [...new Set((r.changes || []).map(c => c.to && c.to.id).filter(Boolean))];
+      if (r.vacated) {
+        sum = C.summarize(st);
+        const tip = `✔ 一键补位：${esc(p.name)} 已腾座/请假/占位 · 补 ${chN} 席${unN ? ' · 未决 ' + unN : ''} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`;
+        commitHighlight({
+          pairings: prIds, pilots: [leaveSel.pid, ...subIds], days, ok: unN === 0,
+          toast: tip, toastMs: 8000, undo: undoLeave
+        });
+      } else {
+        refresh();
+        const skip = r.skipped && r.skipped.length ? `（跳过已飞 ${r.skipped.join(',')}）` : '';
+        toast(`✔ 已占位 ${esc(p.name)} ${holdDays.join(',')} 日${skip}`, 3200);
+        setTimeout(() => {
+          document.querySelectorAll('#mgHold .mgd.hold, #mgBox .mgd.hold').forEach(el => {
+            el.classList.remove('hold-flash'); void el.offsetWidth; el.classList.add('hold-flash');
+          });
+          const box = $('#lvHoldPreview'); if (box) { box.classList.remove('hold-pop'); void box.offsetWidth; box.classList.add('hold-pop'); }
+        }, 40);
+      }
     };
     if ($('#lvUndo')) $('#lvUndo').onclick = undoLeave;
   }
