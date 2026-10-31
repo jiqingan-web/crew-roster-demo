@@ -262,36 +262,98 @@
   }
 
   // ---------------- 请假调配（多方案） ----------------
-  let leaveSel = { pid: null, from: null, to: null }, leaveOpts = null, leaveHover = null, leaveHist = [], leaveView = 'holes', leaveHoles = null, holePrev = null;
+  // 同页三段：①选请假人/日期 → ②受影响航班 → ③选替补；复用 holeRecommend / leaveOptions / applyHoleCand
+  let leaveSel = { pid: null, from: null, to: null }, leaveOpts = null, leaveHover = null, leaveHist = [], leaveView = 'flow', leaveHoles = null, holePrev = null;
+  let lvFltView = 'cards', lvSubView = 'cards';
   const TYPE_TXT = { standby: ['备份', 'sbt'], rest: ['休息人员', 'rst'], chain: ['链式调换', 'cht'], manual: ['人工处理', 'mnt'], split: ['拆分换组', 'spt'] };
   let cardCtx = { hover: 0 };
   function genLeave() { const days = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) days.push(d);
-    leaveHoles = C.holeRecommend(st, leaveSel.pid, days);
+    leaveHoles = C.holeRecommend(st, leaveSel.pid, days, { topK: 5 });
     leaveOpts = C.leaveOptions(st, leaveSel.pid, days); leaveHover = leaveOpts.solutions.findIndex(x => x.recommended); if (leaveHover < 0) leaveHover = 0;
-    cardCtx = { hover: leaveHover, focus: [leaveSel.pid], days }; holePrev = null; }
-  function goLeave(pid, from, to) {
-    leaveSel = { pid, from: from || 1, to: to || from || 1 }; leaveView = 'holes'; holePrev = null;
-    tab = 'leave'; genLeave();
+    cardCtx = { hover: leaveHover, focus: [leaveSel.pid], days }; holePrev = null;
     if (leaveHoles && leaveHoles.holes.length) {
-      const hi = 0; const hs = leaveHoles.holes[hi].candidates;
+      const hi = 0; const hs = leaveHoles.holes[hi].candidates || [];
       let ci = hs.findIndex(c => c.light === 'green'); if (ci < 0) ci = hs.findIndex(c => c.light === 'amber'); if (ci < 0) ci = 0;
-      holePrev = { hi, ci, fromNav: true };
+      if (hs.length) holePrev = { hi, ci };
     }
+  }
+  function goLeave(pid, from, to) {
+    leaveSel = { pid, from: from || 1, to: to || from || 1 }; leaveView = 'flow'; holePrev = null;
+    tab = 'leave'; genLeave();
     render();
-    setTimeout(() => { const e = document.querySelector('#holePrev') || document.querySelector('.holec'); if (e) e.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60);
+    setTimeout(() => { const e = document.querySelector('#lvStep3') || document.querySelector('#lvStep2'); if (e) e.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 60);
   }
   function miniGantt(sol, ctx) {
     ctx = ctx || cardCtx; const m = pm(); const ws = sol && sol.state ? sol.state : st; const idxA = C.buildIndex(ws), idxB = C.buildIndex(st);
     const ids = [...(ctx.focus || []), ...(sol ? sol.people.map(x => x.id) : [])]; const chg = new Set(sol ? sol.steps.flatMap(x => [x.pairing, x.chain && x.chain.pairing]).filter(Boolean) : []);
-    const days = ctx.days || []; const cw = 34, nw = 150;
+    const days = ctx.days || []; const cw = 36, nw = 178;
     let h = `<div class="mg" style="--cw:${cw}px"><div class="mgrow mghead"><div class="mgn">人员</div>${Array.from({ length: C.DAYS }, (_, i) => `<div class="mgd ${days.includes(i + 1) ? 'lvday' : ''} ${[0, 6].includes(dow(i + 1)) ? 'we' : ''}">${i + 1}</div>`).join('')}</div>`;
-    for (const id of [...new Set(ids)]) { const p = ws.pilots.find(x => x.id === id); const sb = (ws.standby || {})[id] || [];
-      h += `<div class="mgrow"><div class="mgn">${esc(p.name)} ${pill(p.rank)}<span class="mut">${idxB.hours[id].toFixed(0)}→${idxA.hours[id].toFixed(0)}h</span></div>`;
-      for (let d = 1; d <= C.DAYS; d++) h += `<div class="mgd ${(p.leave || []).includes(d) ? 'lv' : (p.prefs || []).includes(d) ? 'pref' : sb.includes(d) ? 'sb' : ''}"></div>`;
-      const cur = idxA.sched[id], old = idxB.sched[id];
+    for (const id of [...new Set(ids)]) { const p = ws.pilots.find(x => x.id === id); if (!p) continue; const sb = (ws.standby || {})[id] || [];
+      const hb = (idxB.hours[id] || 0), ha = (idxA.hours[id] || 0);
+      h += `<div class="mgrow"><div class="mgn">${esc(p.name)} ${pill(p.rank)}<span class="hrs">${hb.toFixed(0)}→<b>${ha.toFixed(0)}</b>h</span></div>`;
+      for (let d = 1; d <= C.DAYS; d++) h += `<div class="mgd ${(p.leave || []).includes(d) ? 'lv' : (p.prefs || []).includes(d) ? 'pref' : sb.includes(d) ? 'sb' : ''} ${days.includes(d) ? 'lvday' : ''} ${[0, 6].includes(dow(d)) ? 'we' : ''}"></div>`;
+      const cur = idxA.sched[id] || [], old = idxB.sched[id] || [];
       old.filter(o => !cur.some(c => c.id === o.id)).forEach(pr => h += `<div class="mgbar gone" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${pr.id} 移出</div>`);
       cur.forEach(pr => { const isNew = !old.some(o => o.id === pr.id); h += `<div class="mgbar ${isNew ? 'add' : chg.has(pr.id) ? 'chg' : ''}" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${pr.id}${isNew ? ' 新增' : ''}</div>`; });
       h += '</div>'; }
+    return h + '</div>';
+  }
+  function holeSolForGantt(hh, c) {
+    if (!leaveHoles || !hh || !c) return null;
+    const w = JSON.parse(JSON.stringify(st));
+    const pid = leaveHoles.pilot.id; const days = leaveHoles.days.slice();
+    const p = w.pilots.find(x => x.id === pid); if (!p) return null;
+    p.leave = [...new Set([...(p.leave || []), ...days])].sort((a, b) => a - b);
+    p.prefs = (p.prefs || []).filter(d => !p.leave.includes(d));
+    if (w.standby && w.standby[pid]) w.standby[pid] = w.standby[pid].filter(d => !days.includes(d));
+    const pr = w.pairings.find(x => x.id === hh.id); if (!pr) return null;
+    const fromSlot = ['C', 'F', 'T'].find(s => pr.crew[s] === pid) || hh.slot;
+    pr.crew[fromSlot] = c.id;
+    if (w.standby && w.standby[c.id]) w.standby[c.id] = w.standby[c.id].filter(d => !C.daysTouched(pr, w).includes(d));
+    const idxB = C.buildIndex(st), idxA = C.buildIndex(w);
+    const people = [pid, c.id].map(id => {
+      const q = w.pilots.find(x => x.id === id);
+      return { id, name: q.name, rank: q.rank, hb: idxB.hours[id] || 0, ha: idxA.hours[id] || 0 };
+    });
+    return { state: w, people, steps: [{ pairing: hh.id, slot: hh.slot, from: pid, to: c.id, type: c.fromStandby ? 'standby' : 'rest' }] };
+  }
+  function candOneLiner(c) {
+    if (!c) return '';
+    if (c.light === 'red') return (c.reasons && c.reasons[0]) ? c.reasons[0] : '存在硬性冲突，不可直接补位';
+    const parts = [];
+    if (c.fromStandby) parts.push(`备份日（${(c.standbyDays || []).join(',') || '—'}）可直接补位`);
+    else parts.push('可直接补位，无链式换人');
+    if (c.prefHit && c.prefHit.length) parts.push(`将占意向休息 ${c.prefHit.join(',')} 日`);
+    else parts.push('不占意向休息');
+    if (c.overHard) parts.push('工时将超月上限');
+    else if (c.hoursBefore != null) parts.push(`工时 ${c.hoursBefore}→${c.hoursAfter}h`);
+    if (c.light === 'amber' && c.warn) parts.push(c.warn);
+    else if (c.light === 'amber' && c.reasons && c.reasons[0]) parts.push(c.reasons[0]);
+    return parts.slice(0, 3).join('，') + '。';
+  }
+  function candTags(c) {
+    const tags = [];
+    const lightLab = c.light === 'green' ? '合规灯 绿' : c.light === 'amber' ? '合规灯 黄' : '合规灯 红';
+    tags.push(`<span class="tag ${c.light === 'green' ? 'ok' : c.light === 'amber' ? 'warn' : 'bad'}">${lightLab}</span>`);
+    if (c.fromStandby) tags.push('<span class="tag">备份日可释放</span>');
+    else tags.push('<span class="tag ok">无链式换人</span>');
+    if (c.prefHit && c.prefHit.length) tags.push(`<span class="tag warn">占意向休息</span>`);
+    else tags.push('<span class="tag ok">不占意向休息</span>');
+    if (c.overHard) tags.push('<span class="tag warn">将超月上限</span>');
+    return tags.join('');
+  }
+  function leaveProgressHtml(phase) {
+    // phase: 1 select, 2 flights, 3 subs
+    const items = [
+      { n: '①', t: '选请假人 / 日期', s: phase > 1 ? 'done' : 'current', sub: phase > 1 ? '已完成' : '当前步骤' },
+      { n: '②', t: '受影响航班', s: phase > 2 ? 'done' : phase === 2 ? 'current' : '', sub: phase > 2 ? '已完成' : phase === 2 ? '当前步骤' : '待进行' },
+      { n: '③', t: '选替补 · 确认', s: phase === 3 ? 'current' : phase > 3 ? 'done' : '', sub: phase === 3 ? '当前步骤' : '待进行' }
+    ];
+    let h = '<div class="lv-progress">';
+    items.forEach((it, i) => {
+      if (i) h += `<div class="lv-conn ${phase > i ? 'on' : ''}"></div>`;
+      h += `<div class="lv-step ${it.s}"><div class="lv-num">${it.n}</div><div class="lv-lab"><b>${it.t}</b><small>${it.sub}</small></div></div>`;
+    });
     return h + '</div>';
   }
   function dutyExportCtx(o) {
@@ -360,7 +422,6 @@
     };
     const base = `备选方案_${ctx.pairingId || (ctx.leave && ctx.leave.pilotId) || '方案'}${ctx.reg ? '_' + ctx.reg : ''}${dateStr ? '_' + dateStr.replace('/', '-') : ''}_方案${letter}`;
     dl(base + '.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
-    // CSV summary
     const rows = [['字段', '值'],
       ['方案', `方案${letter} · ${sol.name}`], ['推荐', sol.recommended ? '是' : '否'], ['评分', sol.score],
       ['任务', ctx.pairingId || ''], ['机号', ctx.reg || ''], ['日期', dateStr],
@@ -389,7 +450,7 @@
     const m = {}; (sol.state || st).pilots.forEach(p => m[p.id] = p); const nm = id => id && m[id] ? `${esc(m[id].name)} <span class="mut">${m[id].rank}</span>` : '<span class="red">空缺</span>';
     const t = sol.manual || sol.unresolved ? TYPE_TXT.manual : null;
     return `<div class="solc ${sol.recommended ? 'rec' : ''} ${i === cardCtx.hover ? 'sel' : ''} ${sol.unresolved ? 'bad' : ''}" data-i="${i}">
-      <div class="solh"><b>方案 ${String.fromCharCode(65 + i)} · ${esc(sol.name)}</b>${sol.recommended ? '<span class="rtag">推荐</span>' : ''}${t ? `<span class="ttag ${t[1]}">${t[0]}</span>` : ''}<span class="score" title="综合评分（越低越好）：未解决×1000、新增硬违规×500、超月上限×200、占意向休息×25、节奏扰动×4、基尼增量×2000、链式层级×6、涉及人数×2、调用备份−5；执勤方案另加：仍超执勤×800、休息不足×300">评分 ${sol.score}</span></div>
+      <div class="solh"><b>方案 ${String.fromCharCode(65 + i)} · ${esc(sol.name)}</b>${sol.recommended ? '<span class="rtag">推荐</span>' : ''}${t ? `<span class="ttag ${t[1]}">${t[0]}</span>` : ''}<span class="score" title="综合评分（越低越好）">评分 ${sol.score}</span></div>
       <div class="note">${esc(sol.desc)}</div>
       <table class="solt"><tr><th>任务</th><th>调整</th></tr>${sol.steps.map(x => x.type === 'split' ? `<tr><td>${x.pairing}</td><td><span class="ttag spt">${x.whole ? '整组替换' : '拆分'}</span> ${x.whole ? '' : `原机组飞至 ${esc(C.apName(x.station, st))} 下机；`}自 ${C.fmtT(x.time)} ${esc(C.apName(x.station, st))} 起 ${x.legsB} 段由新机组执行${x.whole ? '' : `（新任务 ${x.newPairing}）`}</td></tr>` : `<tr><td>${x.pairing}${x.slot ? `<br><span class="mut">${C.SLOT_NAME[x.slot]}位</span>` : ''}</td><td>
         ${x.from ? `<span class="diff-del">${esc(m[x.from] ? m[x.from].name : x.from)}</span> → ` : ''}${x.why ? `<span class="mut">（${x.why}）</span>` : ''}${x.type === 'manual' ? '<span class="red">待人工</span>' : nm(x.to)} <span class="ttag ${TYPE_TXT[x.type][1]}">${TYPE_TXT[x.type][0]}</span>${x.prefWarn ? ` <span class="warnc">占${x.prefWarn}</span>` : ''}
@@ -406,12 +467,12 @@
       <div class="solbtns"><button class="btn sm solext" data-i="${i}" title="下载此方案 JSON/CSV，不修改当前排班">导出此方案</button>
         <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${!sol.state || (sol.unresolved && !sol.steps.some(x => x.to)) ? 'disabled' : ''}>${!sol.state ? '需运控人工处理' : sol.unresolved ? '确定（空缺待人工）' : '确定应用'}</button></div></div>`;
   }
-  // 通用：方案卡片交互（悬停预览、点选、应用）。label(sol) 生成历史说明
   function bindCards(sols, label, after, expCtx) {
+    const paintMg = sol => { const html = miniGantt(sol); const a = $('#mgBoxAdv'), b = $('#mgBox'); if (a) a.innerHTML = html; else if (b) b.innerHTML = html; };
     document.querySelectorAll('.solc').forEach(c => { const i = +c.dataset.i;
-      c.onmouseenter = () => { $('#mgBox').innerHTML = miniGantt(sols[i]); document.querySelectorAll('.solc').forEach(x => x.classList.toggle('hov', x === c)); };
-      c.onmouseleave = () => { $('#mgBox').innerHTML = miniGantt(sols[cardCtx.hover]); c.classList.remove('hov'); };
-      c.onclick = e => { if (e.target.closest('.solapply, .solext')) return; cardCtx.hover = i; document.querySelectorAll('.solc').forEach(x => x.classList.toggle('sel', x === c)); $('#mgBox').innerHTML = miniGantt(sols[i]); }; });
+      c.onmouseenter = () => { paintMg(sols[i]); document.querySelectorAll('.solc').forEach(x => x.classList.toggle('hov', x === c)); };
+      c.onmouseleave = () => { paintMg(sols[cardCtx.hover]); c.classList.remove('hov'); };
+      c.onclick = e => { if (e.target.closest('.solapply, .solext')) return; cardCtx.hover = i; document.querySelectorAll('.solc').forEach(x => x.classList.toggle('sel', x === c)); paintMg(sols[i]); }; });
     document.querySelectorAll('.solext').forEach(b => b.onclick = e => { e.stopPropagation(); exportSolPlan(sols[+b.dataset.i], +b.dataset.i, expCtx || {}); });
     document.querySelectorAll('.solapply').forEach(b => b.onclick = () => { const sol = sols[+b.dataset.i]; if (!sol.state) return;
       const lb = label(sol); const snap = JSON.stringify(st); const prevFills = JSON.parse(JSON.stringify(st.fills || []));
@@ -427,114 +488,174 @@
   }
   const nmOf = (sol, id) => { const p = (sol.state || st).pilots.find(x => x.id === id); return p ? p.name : '空缺'; };
   function stepTxt(sol) { return sol.steps.map(x => x.type === 'split' ? `${x.pairing}${x.whole ? '整组替换' : '在' + C.apName(x.station, st) + '拆分'}` : x.pairing + (x.to ? '→' + nmOf(sol, x.to) : '空缺') + (x.chain ? `（${x.chain.pairing}→${nmOf(sol, x.chain.to)}）` : '')).join('，'); }
+
   function rLeave() {
     const caps = st.pilots.filter(p => C.isCaptClass(p.rank)).concat(st.pilots.filter(p => C.isFO(p.rank)));
     const idx = C.buildIndex(st);
     if (!leaveSel.pid) { const c = caps.slice().sort((a, b) => idx.sched[b.id].length - idx.sched[a.id].length)[0]; const pr = idx.sched[c.id][1] || idx.sched[c.id][0]; leaveSel = { pid: c.id, from: pr ? pr.start : 1, to: pr ? pr.start + pr.ndays - 1 : 1 }; }
     const p = st.pilots.find(x => x.id === leaveSel.pid); const o = leaveOpts; const holes = leaveHoles;
-    const tog = `<span class="seg" id="lvView"><button type="button" data-v="holes" class="${leaveView === 'holes' ? 'on' : ''}">空洞换人</button><button type="button" data-v="cards" class="${leaveView === 'cards' ? 'on' : ''}">多方案卡片</button><button type="button" data-v="history" class="${leaveView === 'history' ? 'on' : ''}">补位历史</button></span>`;
-    let h = `<div class="panel"><h3>临时请假 · 调配 <small>先看「空洞换人」：空缺座位 + 推荐候选人与合规灯；完整多方案在右侧/次要视图</small></h3>
-      <div class="flex" style="flex-wrap:wrap;gap:8px">${tog}
-        <input id="lvQ" placeholder="搜索姓名/工号/级别/中队" value="${esc(ui.lvq || '')}" style="width:170px"><span class="mut" id="lvQn"></span>
-        <select id="lvP">${caps.filter(c => c.id === leaveSel.pid || C.pilotMatches(c, ui.lvq)).map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select>
-        <span>日期</span><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>至</span><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select><span>日</span>
-        <button class="btn primary" id="lvGo">生成推荐</button>
-        <button class="btn" id="lvHold" title="一键排班前先占模拟机等非飞位置">提前占位</button>${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}</div>
-      <div class="note" style="margin-top:4px">一键排班前先占模拟机等非飞位置。连续 2–4 日写入「模拟机占位」，其它长度亦为提前占位（禁飞）；自动排班不会覆盖。</div>
-      <div class="note" style="margin-top:6px">任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'} · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'} · 提前占位：${((st.simHold || {})[p.id] || []).join(',') || '无'}
-        · 灯：<span class="clight green"></span>合规 <span class="clight amber"></span>软性/意向休息 <span class="clight red"></span>硬性冲突</div></div>`;
-    if (!holes && !o) h += `<div class="note">选择人员与日期后点击「生成推荐」</div>`;
-    if (leaveView === 'holes' && holes) {
-      h += `<div class="panel"><h3>${esc(holes.pilot.name)}（${holes.pilot.rank}）请假 ${holes.days[0]}${holes.days.length > 1 ? '–' + holes.days[holes.days.length - 1] : ''} 日 · 空洞 ${holes.holes.length} 个</h3>`;
-      if (holes.plan) h += `<div class="planhint">✔ 引擎整案推荐「${esc(holes.plan.name)}」：${esc(holes.plan.desc || '')} · 评分 ${holes.plan.score}
-        · 可在下方点选候选人预览，点「确定」写入；或打开「多方案卡片」确定应用整案</div>`;
-      if (!holes.holes.length) h += `<div class="note">所选日期内无执勤任务，仅需登记请假（可在多方案卡片中一键登记）。</div>`;
-      h += `<div class="holegrid">${holes.holes.map((hh, hi) => {
-        const empty = `<div class="hole-seat empty"><span class="clight red"></span><b>${hh.slotName}位 · 空缺</b><div class="mut">${esc(p.name)} 请假腾出</div></div>`;
-        const left = hh.crewLeft.map(c => c.id ? `<div class="hole-seat"><b>${C.SLOT_NAME[c.slot]} ${esc(c.name)}</b> ${pill(c.rank)}</div>` : `<div class="hole-seat mut">${C.SLOT_NAME[c.slot]} 空</div>`).join('');
-        const chips = (hh.legChips || []).map(l => `<span class="legchip">D${l.d} ${esc(l.flt)} <span class="${l.spFrom ? 'sp' : ''}">${esc(l.fromName)}</span>-<span class="${l.spTo ? 'sp' : ''}">${esc(l.toName)}</span></span>`).join('');
-        const cands = hh.candidates.map((c, ci) => `<button type="button" data-s="${esc([c.name, c.id, c.rank, (st.pilots.find(x => x.id === c.id) || {}).squad].join(' '))}" data-py="${esc((C.pinyinInitialsOf && C.pinyinInitialsOf(c.name)) || '')}" class="cand ${c.light === 'red' ? 'redish' : ''} ${holePrev && holePrev.hi === hi && holePrev.ci === ci ? 'on' : ''}" data-hi="${hi}" data-ci="${ci}">
-          <span class="clight ${c.light}"></span><span class="av">${esc((c.name || '??').slice(-2))}</span>
-          <span class="cn"><b>${esc(c.name)}</b> ${pill(c.rank)}<br><span class="mut">${c.hoursBefore}h${c.fromStandby ? ' · ★备份' : ''}${c.warn ? ' · ⚠休息' : ''}${c.light === 'red' && c.reasons[0] ? ' · ' + esc(c.reasons[0].slice(0, 18)) : ''}</span></span></button>`).join('') || '<span class="mut">无候选</span>';
-        const psteps = (hh.planSteps || []).map(x => x.type === 'chain' ? `链式：${x.to ? '←新机长位' : ''} ${esc(x.type)}` : `${esc(x.type)}${x.to ? '→…' : ''}`).join('；');
-        return `<div class="holec" id="hole${hi}"><div class="holehd"><b>${hh.id}</b><span class="holemeta">${dateOf(hh.start)}起 ${hh.ndays} 天 · ${hh.ac} · ${hh.hours}h · 机号 ${(hh.reg || []).join('/') || '—'}</span></div>
-          <div class="holeroute">${chips}</div>
-          <div class="holeseats">${empty}${left}</div>
-          <div class="candrow"><span class="lab">推荐</span><input class="holeq" data-hi="${hi}" placeholder="搜索姓名/工号/级别/中队" style="width:160px"><span class="mut holen" data-hi="${hi}">${hh.candidates.length}/${hh.candidates.length}</span>${cands}</div>
-          ${hh.nGreen === 0 && holes.plan ? `<div class="note warnc" style="margin-top:8px">直接合规候选人不足；请用整案「${esc(holes.plan.name)}」或点选候选人查看原因。${psteps ? ' · ' + esc(psteps) : ''}</div>` : ''}
-          </div>`;
-      }).join('')}</div></div>`;
-      if (holePrev && holes.holes[holePrev.hi] && holes.holes[holePrev.hi].candidates[holePrev.ci]) {
-        const hh = holes.holes[holePrev.hi]; const c = hh.candidates[holePrev.ci];
-        const imp = C.holeImpact(st, holes.pilot.id, holes.days, hh.id, hh.slot, c.id);
-        h += `<div class="panel" id="holePrev"><div class="flex" style="flex-wrap:wrap"><h3 style="margin:0">预览 · ${esc(c.name)} → ${hh.id} ${hh.slotName}位</h3>
-          <span class="clight ${c.light}" style="margin-left:8px"></span><b class="${c.light === 'green' ? 'okc' : c.light === 'amber' ? 'warnc' : 'red'}">${c.light === 'green' ? '合规通过' : c.light === 'amber' ? '软性提示' : '硬性冲突'}</b>
-          <button class="btn sm" id="hpX" style="margin-left:auto">关闭</button></div>
-          <div class="chiprow">
-            <span class="chip">工时 ${c.hoursBefore}h → <b>${c.hoursAfter}h</b>（+${c.hoursDelta}）</span>
-            <span class="chip ${c.overHard ? 'bad' : 'ok'}">${c.overHard ? '将超法规上限' : '未超法规上限'}</span>
-            <span class="chip ${c.prefHit.length ? 'warn' : 'ok'}">意向休息 ${c.prefHit.length ? '占 ' + c.prefHit.join(',') + ' 日' : '不占用'}</span>
-            <span class="chip">${c.fromStandby ? '调用备份 ' + c.standbyDays.join(',') : '非备份'}</span>
-            <span class="chip">候选人剩余备份 ${c.sbMonthLeft} 天</span>
-          </div>
-          ${c.reasons.length ? `<div class="note red">冲突：${c.reasons.map(esc).join('；')}</div>` : ''}
-          ${c.warn ? `<div class="note warnc">提示：${esc(c.warn)}</div>` : ''}
-          ${imp ? `<div class="impactbox"><h4>下游影响（模拟应用后）</h4>
-            <div class="chiprow">
-              <span class="chip">基尼 ${imp.giniB} → <b>${imp.giniA}</b>（${imp.giniD >= 0 ? '+' : ''}${imp.giniD}）</span>
-              <span class="chip ${imp.hardA > imp.hardB ? 'bad' : 'ok'}">硬性违规 ${imp.hardB} → ${imp.hardA}</span>
-              <span class="chip ${imp.softA > imp.softB ? 'warn' : 'ok'}">软性 ${imp.softB} → ${imp.softA}</span>
-              <span class="chip">满员率 ${(imp.coverageB * 100).toFixed(1)}% → ${(imp.coverageA * 100).toFixed(1)}%</span>
-              <span class="chip ${imp.otherHoles.length ? 'warn' : 'ok'}">其余空洞 ${imp.otherHoles.length ? imp.otherHoles.join('、') : '无'}</span>
-            </div>
-            <table class="solt"><tr><th>人员</th><th>工时前</th><th>工时后</th><th>Δ</th><th>休息间隔（后）</th></tr>
-              ${imp.hours.map((x, i) => `<tr><td>${esc(x.name)} ${pill(x.rank)}</td><td>${x.hb}</td><td><b>${x.ha}</b></td><td class="${x.delta > 0 ? 'warnc' : 'okc'}">${x.delta >= 0 ? '+' : ''}${x.delta}</td><td class="mut">${(imp.rest[i].gapsAfter || []).join(',') || '—'}</td></tr>`).join('')}
-            </table>
-            <div class="note">请假日备份人数：${imp.sbDays.map(x => `${x.d}日 ${x.before}→${x.after}`).join('；')}</div>
-          </div>` : ''}
-          ${holes.plan ? `<div class="note">若直接补位不可行，请改用多方案卡片中的「${esc(holes.plan.name)}」整案（可能含链式调换）。</div>` : ''}
-          <div class="flex" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button class="btn primary" id="hpApply" ${c.light === 'red' ? 'disabled' : ''}>确定</button><span class="mut">写入补位并登记请假 · 点选候选人仅预览</span>
-            ${holes.plan && o ? `<button class="btn" id="hpUsePlan">改用整案「${esc(holes.plan.name)}」</button>` : ''}
-            <span class="mut">仅填本空洞；其余空洞请继续点选</span></div></div>`;
-      }
+    const phase = holes ? 3 : 1;
+    const hi = holePrev ? holePrev.hi : 0;
+    const hh = holes && holes.holes[hi] ? holes.holes[hi] : null;
+    const cands = hh ? (hh.candidates || []) : [];
+    const ci = holePrev && hh ? holePrev.ci : -1;
+    const curCand = (ci >= 0 && cands[ci]) ? cands[ci] : null;
+    if (curCand) cardCtx.focus = [leaveSel.pid, curCand.id];
+    else if (holes) cardCtx.focus = [leaveSel.pid];
+
+    let h = leaveProgressHtml(phase);
+
+    // —— Step 1 ——
+    h += `<div class="panel lv-panel" id="lvStep1"><h3><span class="lv-sn">①</span> 选择请假人与日期 <small>先定谁请假、哪几天</small></h3>
+      <div class="lv-hint">顺序明确：先选人/日期，再看影响，最后确认替补。</div>
+      <div class="flex" style="flex-wrap:wrap;gap:8px;align-items:flex-end">
+        <div class="lv-field"><label>搜索</label><input id="lvQ" placeholder="姓名/工号/级别" value="${esc(ui.lvq || '')}" style="width:150px"></div>
+        <div class="lv-field"><label>请假人</label><select id="lvP">${caps.filter(c => c.id === leaveSel.pid || C.pilotMatches(c, ui.lvq)).map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${idx.hours[c.id].toFixed(1)}h</option>`).join('')}</select></div>
+        <div class="lv-field"><label>起始日</label><select id="lvF">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.from ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
+        <div class="lv-field"><label>结束日</label><select id="lvT">${Array.from({ length: C.DAYS }, (_, i) => `<option ${i + 1 === leaveSel.to ? 'selected' : ''}>${i + 1}</option>`).join('')}</select></div>
+        <button class="btn primary" id="lvGo">应用选择</button>
+        <button class="btn" id="lvHold" title="一键排班前先占模拟机等非飞位置">提前占位</button>
+        ${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}
+        <span class="mut" id="lvQn"></span>
+      </div>
+      <div class="note" style="margin-top:8px">关联任务：${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''}日)</a>`).join(' ') || '无'}
+        · 已请假：${(p.leave || []).join(',') || '无'} · 意向休息：${(p.prefs || []).join(',') || '无'} · 提前占位：${((st.simHold || {})[p.id] || []).join(',') || '无'}
+        · 灯：<span class="clight green"></span>合规 <span class="clight amber"></span>软性 <span class="clight red"></span>硬性</div></div>`;
+
+    if (!holes) {
+      h += `<div class="note">选择人员与日期后点击「应用选择」，将列出受影响航班与推荐替补。</div>`;
+      h += `<div class="panel"><h3>补位历史 <small>可撤销</small></h3>${fillsHistoryHtml()}</div>`;
+      $('#main').innerHTML = h;
+      bindLeaveStep1(caps, p, false);
+      return;
     }
-    if (leaveView === 'cards' && o) {
-      h += `<div class="panel"><h3>${esc(o.pilot.name)}（${o.pilot.rank}）请假 ${o.days[0]}${o.days.length > 1 ? '–' + o.days[o.days.length - 1] : ''} 日 <small>受影响 ${o.affected.map(a => a.id + '·' + C.SLOT_NAME[a.slot] + '位').join('、') || '无'} · ${o.solutions.length} 方案 · ${o.ms} ms</small></h3>
-        ${o.solutions.some(x => x.manual) ? '<div class="note red">有方案需人工处理</div>' : ''}
-        <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
-        <div class="panel"><h3>影响预览</h3><div id="mgBox">${miniGantt(o.solutions[cardCtx.hover])}</div></div>`;
-    } else if (holes && leaveView === 'holes') {
-      h += `<div class="panel"><details><summary>高级：多方案卡片（${o ? o.solutions.length : 0}）</summary>
-        ${o ? `<div class="solgrid" style="margin-top:10px">${o.solutions.map(solCard).join('')}</div>` : '<div class="note">请先生成</div>'}</details></div>`;
-    }
-    if (leaveView === 'history') {
-      h += `<div class="panel"><h3>补位历史 <small>谁请假 · 谁补位 · 任务 · 可撤销</small></h3>${fillsHistoryHtml()}</div>`;
+
+    // —— Step 2：受影响航班 ——
+    const fltSeg = `<span class="seg" id="lvFltView"><button type="button" data-v="cards" class="${lvFltView === 'cards' ? 'on' : ''}">卡片</button><button type="button" data-v="table" class="${lvFltView === 'table' ? 'on' : ''}">表格</button></span>`;
+    h += `<div class="panel lv-panel" id="lvStep2"><div class="lv-h3row"><div class="lv-h3"><span class="lv-sn">②</span> 受影响航班 · 空缺座位 <small>${esc(holes.pilot.name)} 请假 ${holes.days[0]}${holes.days.length > 1 ? '–' + holes.days[holes.days.length - 1] : ''} 日 · 空洞 ${holes.holes.length} 个</small></div>${fltSeg}</div>
+      <div class="lv-hint">本步提供<strong>卡片 / 表格</strong>两种视图。只看清缺什么；点选航班后在下方选替补。</div>`;
+    if (holes.plan) h += `<div class="planhint">✔ 引擎整案推荐「${esc(holes.plan.name)}」：${esc(holes.plan.desc || '')} · 评分 ${holes.plan.score} · 可在下方确认直接补位，或展开「多方案整案」</div>`;
+    if (!holes.holes.length) {
+      h += `<div class="note">所选日期内无执勤任务，仅需登记请假（可在多方案整案中一键登记）。</div>`;
+    } else if (lvFltView === 'table') {
+      h += `<table class="lv-wf"><thead><tr><th>航班</th><th>日期</th><th>航线</th><th>空缺座位</th><th>原机组（其余）</th><th>状态</th></tr></thead><tbody>
+        ${holes.holes.map((x, i) => {
+          const route = (x.legChips || []).map(l => `${esc(l.fromName)}→${esc(l.toName)}`).join(' · ') || esc(x.route || '');
+          const left = (x.crewLeft || []).filter(c => c.id).map(c => `${C.SLOT_NAME[c.slot]} ${esc(c.name)}`).join(' · ') || '—';
+          return `<tr class="lv-flt ${i === hi ? 'sel' : ''}" data-hi="${i}"><td><b>${esc(x.id)}</b></td><td>${x.start}${x.ndays > 1 ? '–' + (x.start + x.ndays - 1) : ''} 日 · ${x.ndays}天</td><td>${route}</td>
+            <td class="cell-red">${esc(x.slotName)}位 · ${esc(holes.pilot.name)} 请假腾出</td><td>${left}</td><td><span class="badge-empty">空缺 1 座</span></td></tr>`;
+        }).join('')}</tbody></table>`;
     } else {
-      h += `<div class="panel"><h3>补位历史 <small><a href="#" id="lvToHist">查看全部</a></small></h3>${fillsHistoryHtml()}</div>`;
+      h += `<div class="lv-flight-list">${holes.holes.map((x, i) => {
+        const meta = `${x.start}${x.ndays > 1 ? '–' + (x.start + x.ndays - 1) : ''} 日 · ${x.ac || ''} · ${(x.reg || []).join('/') || '—'}`;
+        const chips = (x.legChips || []).map(l => `${esc(l.flt)} ${esc(l.fromName)}-${esc(l.toName)}`).join(' · ');
+        const seats = `<div class="seat empty"><div class="role">${esc(x.slotName)}位 · 空缺</div><div class="name">${esc(holes.pilot.name)} 请假腾出</div></div>`
+          + (x.crewLeft || []).map(c => c.id ? `<div class="seat"><div class="role">${C.SLOT_NAME[c.slot]}</div><div class="name">${esc(c.name)}</div></div>` : `<div class="seat mut"><div class="role">${C.SLOT_NAME[c.slot]}</div><div class="name">空</div></div>`).join('');
+        return `<div class="flight-row ${i === hi ? 'sel' : ''}" data-hi="${i}"><div><div class="flight-id">${esc(x.id)}</div><div class="flight-meta">${esc(meta)}<br>${chips}</div></div>
+          <div class="seats">${seats}</div><div class="badge-empty">空缺 1 座</div></div>`;
+      }).join('')}</div>`;
     }
+    h += `</div>`;
+
+    // —— Step 3：替补 ——
+    const subSeg = `<span class="seg" id="lvSubView"><button type="button" data-v="cards" class="${lvSubView === 'cards' ? 'on' : ''}">卡片</button><button type="button" data-v="table" class="${lvSubView === 'table' ? 'on' : ''}">表格</button></span>`;
+    h += `<div class="panel lv-panel" id="lvStep3"><div class="lv-h3row"><div class="lv-h3"><span class="lv-sn">③</span> 系统推荐替补（已排序） <small>${hh ? esc(hh.id) + ' · ' + esc(hh.slotName) + '位' : '请先点选上方航班'}</small></div>${subSeg}</div>
+      <div class="lv-hint">推荐按合规与代价排序；每张卡用<strong>一句话推荐理由</strong>。点选后下方<strong>影响预览</strong>展示移出/新增。</div>`;
+    if (!hh) {
+      h += `<div class="note">无空洞可选，或所选日期无执勤任务。</div>`;
+    } else {
+      const shown = cands.filter(c => c.light !== 'red');
+      const list = shown.length ? shown : cands;
+      h += `<div class="rank-note">共 ${list.length} 名候选人${shown.length ? ' · 已优先合规' : ''} · 当前预览：${curCand ? '#' + (list.indexOf(curCand) + 1) + ' ' + esc(curCand.name) : '未选'}</div>`;
+      if (lvSubView === 'table') {
+        h += `<table class="lv-wf"><thead><tr><th>排序</th><th>姓名</th><th>职级 / 编号</th><th>月飞行</th><th>合规</th><th>代价</th><th>推荐理由（一行）</th><th>操作</th></tr></thead><tbody>`;
+        list.forEach((c, i) => {
+          const cost = c.fromStandby ? '调备份' : (c.prefHit && c.prefHit.length ? '占休息' : '无链式');
+          const costCls = (c.fromStandby || (c.prefHit && c.prefHit.length)) ? 'cell-warn' : 'cell-ok';
+          const lightTxt = c.light === 'green' ? '绿' : c.light === 'amber' ? '黄' : '红';
+          const sel = curCand && curCand.id === c.id;
+          h += `<tr class="${i === 0 ? 'top-row' : ''} ${sel ? 'sel' : ''} lv-cand" data-hi="${hi}" data-ci="${cands.indexOf(c)}">
+            <td><b class="${i === 0 ? 'cell-ok' : ''}">#${i + 1}</b></td><td><b>${esc(c.name)}</b></td><td>${esc(c.rank)} · ${esc(c.id)}</td>
+            <td>${c.hoursBefore}h</td><td class="${c.light === 'green' ? 'cell-ok' : c.light === 'amber' ? 'cell-warn' : 'cell-red'}">${lightTxt}</td>
+            <td class="${costCls}">${cost}</td><td>${esc(candOneLiner(c))}</td>
+            <td><button type="button" class="btn sm ${i === 0 ? 'primary' : ''} lv-confirm" data-hi="${hi}" data-ci="${cands.indexOf(c)}" ${c.light === 'red' ? 'disabled' : ''}>确认</button></td></tr>`;
+        });
+        h += `</tbody></table>`;
+      } else {
+        h += `<div class="lv-cards">${list.map((c, i) => {
+          const realCi = cands.indexOf(c);
+          const sel = curCand && curCand.id === c.id;
+          return `<div class="rec-card ${i === 0 ? 'top' : ''} ${sel ? 'sel' : ''} lv-cand" data-hi="${hi}" data-ci="${realCi}">
+            <div class="rank">#${i + 1}</div>
+            <div><div class="who">${esc(c.name)} <span class="meta">${esc(c.rank)} · ${esc(c.id)} · 本月 ${c.hoursBefore}h</span></div>
+              <div class="tags">${candTags(c)}</div>
+              <div class="reason"><b>推荐理由</b>${esc(candOneLiner(c))}</div></div>
+            <div class="confirm-col">
+              <button type="button" class="btn ${i === 0 || sel ? 'primary' : ''} lv-confirm" data-hi="${hi}" data-ci="${realCi}" ${c.light === 'red' ? 'disabled' : ''}>确认补位</button>
+              <div class="muted">${i === 0 ? '写入并登记请假' : '备选'}</div>
+            </div></div>`;
+        }).join('')}</div>`;
+      }
+
+      // 影响预览 mini-Gantt
+      const gsol = curCand ? holeSolForGantt(hh, curCand) : null;
+      h += `<div class="impactbox"><h4>影响预览 <small>绿=新增 · 红虚线斜纹=移出 · 蓝=不变 · 左侧小时 Δ</small></h4>
+        <div class="impact-leg">
+          <span><i class="leg-blue"></i>不变执勤</span>
+          <span><i class="leg-gone"></i>移出</span>
+          <span><i class="leg-add"></i>新增</span>
+          <span><i class="leg-lv"></i>请假日底纹</span>
+          <span><i class="leg-sb"></i>备份日</span>
+          <span>当前预览 ${curCand ? '#' + (list.indexOf(curCand) + 1) + ' ' + esc(curCand.name) : '—'} · 点选上方推荐卡切换</span>
+        </div>
+        <div id="mgBox">${gsol ? miniGantt(gsol, { focus: [leaveSel.pid, curCand.id], days: holes.days }) : '<div class="note">点选替补后显示多人局部甘特</div>'}</div>
+      </div>`;
+    }
+    h += `</div>`;
+
+    // 高级：多方案整案 + 历史
+    h += `<details class="panel" style="padding:12px 16px"><summary style="cursor:pointer;color:var(--mut)">高级：多方案整案（${o ? o.solutions.length : 0}）· 含链式调换</summary>
+      ${o ? `<div class="solgrid" style="margin-top:10px">${o.solutions.map(solCard).join('')}</div>
+        <div class="panel" style="margin-top:10px"><h3>整案影响预览</h3><div id="mgBoxAdv">${miniGantt(o.solutions[cardCtx.hover])}</div></div>` : '<div class="note">请先应用选择</div>'}
+    </details>`;
+    h += `<div class="panel"><h3>补位历史 <small>谁请假 · 谁补位 · 可撤销</small></h3>${fillsHistoryHtml()}</div>`;
+
     $('#main').innerHTML = h;
-    if ($('#lvToHist')) $('#lvToHist').onclick = e => { e.preventDefault(); leaveView = 'history'; rLeave(); };
+    bindLeaveStep1(caps, p, true);
+    document.querySelectorAll('#lvFltView button').forEach(b => b.onclick = () => { lvFltView = b.dataset.v; rLeave(); });
+    document.querySelectorAll('#lvSubView button').forEach(b => b.onclick = () => { lvSubView = b.dataset.v; rLeave(); });
+    document.querySelectorAll('.lv-flt, .flight-row').forEach(el => el.onclick = () => {
+      const nhi = +el.dataset.hi; const hs = leaveHoles.holes[nhi].candidates || [];
+      let nci = hs.findIndex(c => c.light === 'green'); if (nci < 0) nci = hs.findIndex(c => c.light === 'amber'); if (nci < 0) nci = 0;
+      holePrev = { hi: nhi, ci: nci }; rLeave(); const e = $('#lvStep3'); if (e) e.scrollIntoView({ block: 'nearest' });
+    });
+    document.querySelectorAll('.lv-cand').forEach(el => el.onclick = e => {
+      if (e.target.closest('.lv-confirm')) return;
+      holePrev = { hi: +el.dataset.hi, ci: +el.dataset.ci }; rLeave();
+    });
+    document.querySelectorAll('.lv-confirm').forEach(b => b.onclick = e => {
+      e.stopPropagation();
+      holePrev = { hi: +b.dataset.hi, ci: +b.dataset.ci };
+      applyHoleCand();
+    });
+    if (o) bindCards(o.solutions, sol => `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { leaveOpts = null; leaveHoles = null; },
+      { kind: 'leave', leave: { pilotId: o.pilot.id, pilotName: o.pilot.name, days: o.days }, date: o.days[0], pairingId: (o.affected[0] && o.affected[0].id) || '' });
+  }
+
+  function bindLeaveStep1(caps, p, afterGen) {
+    const regen = () => { if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; genLeave(); rLeave();
+      setTimeout(() => { const e = $('#lvStep2'); if (e) e.scrollIntoView({ block: 'start', behavior: 'smooth' }); }, 40); };
     if ($('#fillUndoLast')) $('#fillUndoLast').onclick = undoLeave;
     document.querySelectorAll('.fillUndoOne').forEach(b => b.onclick = () => undoFillById(b.dataset.fid));
-    const regen = () => { if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; genLeave(); rLeave(); };
-    document.querySelectorAll('#lvView button').forEach(b => b.onclick = () => { leaveView = b.dataset.v; rLeave(); });
     $('#lvP').onchange = e => { leaveSel.pid = e.target.value; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); };
     { const q = $('#lvQ'), sel = $('#lvP'), n = $('#lvQn');
-      const caps = st.pilots.filter(p => C.isCaptClass(p.rank)).concat(st.pilots.filter(p => C.isFO(p.rank))); const ix = C.buildIndex(st);
+      const ix = C.buildIndex(st);
       const draw = () => { const list = caps.filter(c => c.id === leaveSel.pid || C.pilotMatches(c, ui.lvq));
         sel.innerHTML = list.map(c => `<option value="${c.id}" ${c.id === leaveSel.pid ? 'selected' : ''}>${esc(c.name)} · ${c.rank} · ${c.id}${c.squad ? ' · ' + esc(c.squad) : ''} · ${ix.hours[c.id].toFixed(1)}h</option>`).join('');
-        n.textContent = '匹配 ' + list.length + '/' + caps.length; };
-      if (q) { n.textContent = '匹配 ' + sel.options.length + '/' + caps.length;
+        if (n) n.textContent = '匹配 ' + list.length + '/' + caps.length; };
+      if (q) { if (n) n.textContent = '匹配 ' + sel.options.length + '/' + caps.length;
         bindSearchInput(q, v => { ui.lvq = v; draw(); });
         q.onkeydown = e => { if (e.key === 'Enter') { const m = caps.find(c => c.id !== leaveSel.pid && C.pilotMatches(c, ui.lvq)); if (m) { leaveSel.pid = m.id; leaveOpts = null; leaveHoles = null; holePrev = null; rLeave(); } } }; } }
-    document.querySelectorAll('.holeq').forEach(inp => bindSearchInput(inp, () => {
-      const row = inp.closest('.candrow'); const t = inp.value.trim().toLowerCase().split(/\s+/).filter(Boolean); let n = 0, all = 0;
-      row.querySelectorAll('.cand').forEach(b => { all++;
-        const hay = (b.dataset.s || '').toLowerCase();
-        const py = (C.pinyinInitialsOf && b.dataset.py) ? b.dataset.py : '';
-        const ok = !t.length || t.every(x => hay.includes(x) || (py && py.includes(x)));
-        b.style.display = ok ? '' : 'none'; if (ok) n++; });
-      row.querySelector('.holen').textContent = n + '/' + all; }));
     $('#lvF').onchange = e => { leaveSel.from = +e.target.value; if (leaveSel.to < leaveSel.from) leaveSel.to = leaveSel.from; leaveOpts = null; leaveHoles = null; rLeave(); };
     $('#lvT').onchange = e => { leaveSel.to = +e.target.value; leaveOpts = null; leaveHoles = null; rLeave(); };
     document.querySelectorAll('.lvpr').forEach(a => a.onclick = () => { leaveSel.from = +a.dataset.f; leaveSel.to = +a.dataset.t; regen(); });
@@ -551,12 +672,6 @@
       const skip = r.skipped && r.skipped.length ? `（跳过已飞 ${r.skipped.join(',')} 日）` : '';
       toast(`✔ 已${r.label}：${esc(p.name)} ${r.days.join(',')} 日${skip} · 一键排班不会覆盖`);
     };
-    document.querySelectorAll('.cand').forEach(b => b.onclick = () => { holePrev = { hi: +b.dataset.hi, ci: +b.dataset.ci }; rLeave(); const e = $('#holePrev'); if (e) e.scrollIntoView({ block: 'nearest' }); });
-    if ($('#hpX')) $('#hpX').onclick = () => { holePrev = null; rLeave(); };
-    if ($('#hpApply')) $('#hpApply').onclick = () => applyHoleCand();
-    if ($('#hpUsePlan')) $('#hpUsePlan').onclick = () => { leaveView = 'cards'; rLeave(); const e = document.querySelector('.solc.rec .solapply') || document.querySelector('.solc.rec'); if (e) e.scrollIntoView({ block: 'center' }); };
-    if (o && (leaveView === 'cards' || (leaveView === 'holes' && holes))) bindCards(o.solutions, sol => `${o.pilot.name} 请假 ${o.days[0]}–${o.days[o.days.length - 1]} 日 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { leaveOpts = null; leaveHoles = null; },
-      { kind: 'leave', leave: { pilotId: o.pilot.id, pilotName: o.pilot.name, days: o.days }, date: o.days[0], pairingId: (o.affected[0] && o.affected[0].id) || '' });
     if ($('#lvUndo')) $('#lvUndo').onclick = undoLeave;
   }
   function applyHoleCand() {
