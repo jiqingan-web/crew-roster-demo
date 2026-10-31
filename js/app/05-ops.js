@@ -606,12 +606,11 @@
           const sel = curCand && curCand.id === c.id;
           return `<div class="rec-card ${i === 0 ? 'top' : ''} ${sel ? 'sel' : ''} lv-cand" data-hi="${hi}" data-ci="${realCi}">
             <div class="rank">#${i + 1}</div>
-            <div><div class="who">${esc(c.name)} <span class="meta">${esc(c.rank)} · ${esc(c.id)} · 本月 ${c.hoursBefore}h</span></div>
+            <div><div class="who">${esc(c.name)} <span class="meta">${esc(c.rank)} · ${esc(c.id)} · ${c.hoursBefore}h</span></div>
               <div class="tags">${candTags(c)}</div>
-              <div class="reason"><b>推荐理由</b>${esc(candOneLiner(c))}</div></div>
+              <div class="reason"><b>理由</b>${esc(candOneLiner(c))}</div></div>
             <div class="confirm-col">
-              <button type="button" class="btn ${i === 0 || sel ? 'primary' : ''} lv-confirm" data-hi="${hi}" data-ci="${realCi}" ${c.light === 'red' ? 'disabled' : ''}>确认补位</button>
-              <div class="muted">${i === 0 ? '写入并登记请假' : '备选'}</div>
+              <button type="button" class="btn sm ${i === 0 || sel ? 'primary' : ''} lv-confirm" data-hi="${hi}" data-ci="${realCi}" ${c.light === 'red' ? 'disabled' : ''}>确认</button>
             </div></div>`;
         }).join('')}</div>`;
       }
