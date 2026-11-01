@@ -244,115 +244,94 @@
     const ctlN = ((st.control || {})[p.id] || []).length;
 
     const selDay = ui.auditDay;
-    const DAYM = 1440;
 
-    // —— 日历（月网格 + 日内连续条 + 跨日细条）——
-    const firstDow = new Date(C.YEAR, C.MONTH - 1, 1).getDay();
-    const cells = [];
-    for (let i = 0; i < firstDow; i++) cells.push(null);
-    for (let d = 1; d <= C.DAYS; d++) cells.push(d);
-    while (cells.length % 7) cells.push(null);
-    const weeks = [];
-    for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+    // —— 日期条（复用请假工作台 .lvdays 样式：1…C.DAYS 横条 + 图例）——
+    const flyDays = new Set();
+    sched.forEach(pr => { for (let d = pr.start; d < pr.start + pr.ndays; d++) if (d >= 1 && d <= C.DAYS) flyDays.add(d); });
+    const lvDays = new Set((p.leave || []).filter(d => d >= 1 && d <= C.DAYS));
+    const sbDays = new Set(((st.standby || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
+    const pfDays = new Set((p.prefs || []).filter(d => d >= 1 && d <= C.DAYS));
+    const simDays = new Set(((st.sim || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
+    const trDays = new Set(((st.training || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
+    const ctlDays = new Set(((st.control || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
+    const holdDays = new Set(((st.simHold || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
 
-    function cellBody(d) {
-      const items = dayItems[d];
-      const flies = items.filter(x => x.kind === 'fly');
-      const tags = items.filter(x => x.kind !== 'fly');
-      let body = '';
-      if (flies.length) {
-        const byPr = {};
-        flies.forEach(f => { (byPr[f.pr.id] = byPr[f.pr.id] || []).push(f); });
-        body += '<div class="pa-daytrack">';
-        Object.keys(byPr).forEach(pid0 => {
-          const ls = byPr[pid0].slice().sort((a, b) => a.dep - b.dep);
-          const col = ls[0].col || paColor(pid0);
-          const day0 = (d - 1) * DAYM;
-          const t0 = Math.min(...ls.map(x => x.dep)) - day0;
-          const t1 = Math.max(...ls.map(x => x.arr)) - day0;
-          const left = Math.max(0, Math.min(96, (t0 / DAYM) * 100));
-          const right = Math.max(left + 8, Math.min(100, (t1 / DAYM) * 100));
-          const hSum = ls.reduce((s, x) => s + x.h, 0);
-          const segs = ls.map(f => {
-            const r = paRoute(f.from, f.to);
-            const tm = `${C.fmtT(f.dep)}-${C.fmtT(f.arr)}`;
-            const hh = f.h ? `${f.h.toFixed(1)}h` : '';
-            return `<span class="pa-gseg"><span class="pa-g1"><b>${esc(f.flt)}</b> ${esc(r)}</span>`
-              + `<span class="pa-g2"><span class="pa-gt">${esc(tm)}</span>`
-              + (hh ? ` <span class="pa-h">${esc(hh)}</span>` : '') + `</span></span>`;
-          }).join('');
-          const titleBits = ls.map(f => `${f.flt} ${paRoute(f.from, f.to)} ${C.fmtT(f.dep)}-${C.fmtT(f.arr)}${f.h ? ' ' + f.h.toFixed(1) + 'h' : ''}`);
-          const title = `${pid0}${ls[0].role ? ' ' + ls[0].role : ''} ${paRouteChain(ls[0].pr) || ''} · ${titleBits.join(' · ')}${hSum ? ' · Σ' + hSum.toFixed(1) + 'h' : ''}`.trim();
-          body += `<div class="pa-gbar" title="${esc(title)}" style="left:${left.toFixed(1)}%;width:${(right - left).toFixed(1)}%;background:${col}">${segs}</div>`;
-        });
-        body += '</div>';
-      }
-      tags.forEach(t => { body += `<div class="pa-tag t-${t.kind}">${esc(t.label)}</div>`; });
-      if (!flies.length && !tags.length) {
-        const kind = C.personalDayKind(st, p, d, idx);
-        body += `<div class="pa-tag t-rest">${kind === '意向休息' ? '意向休息' : '休息'}</div>`;
-      }
-      return body;
+    let dayStrip = '<div class="lvdays-wrap pa-days-wrap"><div class="lvdays" id="paDays">';
+    for (let d = 1; d <= C.DAYS; d++) {
+      const cls = ['lvday'];
+      if ([0, 6].includes(dow(d))) cls.push('we');
+      if (selDay === d) cls.push('sel');
+      if (flyDays.has(d)) cls.push('fly');
+      if (lvDays.has(d)) cls.push('lv');
+      if (simDays.has(d) || holdDays.has(d)) cls.push('sim');
+      if (sbDays.has(d)) cls.push('sb');
+      if (pfDays.has(d)) cls.push('pref');
+      if (trDays.has(d) || ctlDays.has(d)) cls.push('tr');
+      if (!flyDays.has(d) && !lvDays.has(d) && !sbDays.has(d) && !pfDays.has(d) && !simDays.has(d) && !holdDays.has(d) && !trDays.has(d) && !ctlDays.has(d)) cls.push('rest');
+      const tip = [
+        dateOf(d) + ' 周' + WK[dow(d)],
+        flyDays.has(d) ? '有任务' : '',
+        lvDays.has(d) ? '请假' : '',
+        sbDays.has(d) ? '备份' : '',
+        pfDays.has(d) ? '意向休息' : '',
+        (simDays.has(d) || holdDays.has(d)) ? '模拟机/占位' : '',
+        trDays.has(d) ? '培训' : '',
+        ctlDays.has(d) ? '控班' : '',
+        (!flyDays.has(d) && !lvDays.has(d) && !sbDays.has(d) && !pfDays.has(d) && !simDays.has(d) && !holdDays.has(d) && !trDays.has(d) && !ctlDays.has(d)) ? '休息' : '',
+        (dayViol[d] && dayViol[d].hard) ? '违规' : (dayViol[d] && dayViol[d].soft) ? '预警' : ''
+      ].filter(Boolean).join(' · ');
+      const mark = dayViol[d] && (dayViol[d].hard || dayViol[d].soft)
+        ? '<i class="pa-dmark ' + (dayViol[d].hard ? 'hard' : 'soft') + '"></i>' : '';
+      dayStrip += '<button type="button" class="' + cls.join(' ') + '" data-d="' + d + '" title="' + esc(tip) + '">' + d + mark + '</button>';
     }
+    dayStrip += '</div><div class="lvlegend">'
+      + '<span><i class="lvlg fly"></i>有任务</span>'
+      + '<span><i class="lvlg lv"></i>请假</span>'
+      + '<span><i class="lvlg sb"></i>备份</span>'
+      + '<span><i class="lvlg pref"></i>意向休息</span>'
+      + '<span><i class="lvlg rest"></i>休息</span>'
+      + '<span><i class="lvlg sim"></i>模拟机</span>'
+      + '<span><i class="lvlg tr"></i>培训/控班</span>'
+      + '<span><i class="lvlg sel"></i>选中日</span>'
+      + '<span class="mut">点日期筛选下方任务 · 再点取消</span>'
+      + '</div></div>';
 
-    let cal = `<div class="pa-cal"><div class="pa-cal-hd">`;
-    ['日', '一', '二', '三', '四', '五', '六'].forEach(w => { cal += `<div class="pa-wd">${w}</div>`; });
-    cal += '</div>';
-    weeks.forEach(week => {
-      // 跨日细条：同色贯穿本周内多日单元格
-      let xbars = '';
-      const lane = {};
-      sched.forEach(pr => {
-        if (pr.ndays < 2) return;
-        const a = pr.start, b = pr.start + pr.ndays - 1;
-        let c0 = -1, c1 = -1;
-        week.forEach((d, i) => {
-          if (d == null) return;
-          if (d >= a && d <= b) { if (c0 < 0) c0 = i; c1 = i; }
-        });
-        if (c0 < 0) return;
-        const col = paColor(pr.id);
-        const key = c0 + '-' + c1;
-        lane[key] = (lane[key] || 0);
-        const top = 2 + lane[key] * 5;
-        lane[key]++;
-        const left = (c0 / 7) * 100;
-        const width = ((c1 - c0 + 1) / 7) * 100;
-        xbars += `<div class="pa-xbar" title="${esc(pr.id)} ${a}–${b}日" style="left:${left}%;width:${width}%;top:${top}px;background:${col}"></div>`;
-      });
-      cal += `<div class="pa-week"><div class="pa-week-xbars">${xbars}</div><div class="pa-week-cells">`;
-      week.forEach(d => {
-        if (d == null) { cal += '<div class="pa-cell empty"></div>'; return; }
-        const dv = dayViol[d];
-        const mark = dv && (dv.hard || dv.soft) ? `<span class="pa-mark ${dv.hard ? 'hard' : 'soft'}" title="${dv.hard ? '违规' : '预警'}"></span>` : '';
-        const we = [0, 6].includes(dow(d)) ? ' we' : '';
-        const on = selDay === d ? ' on' : '';
-        cal += `<div class="pa-cell${we}${on}${dv && dv.hard ? ' viol' : dv && dv.soft ? ' warn' : ''}" data-day="${d}">`
-          + `<div class="pa-d">${d}${mark}</div>${cellBody(d)}</div>`;
-      });
-      cal += '</div></div>';
-    });
-    cal += '</div>';
+    // —— 任务列表：每个 pairing 标题 + 小表（航班号/航线/时刻/小时）——
+    const schedSorted = sched.slice().sort((a, b) => a.start - b.start || a.id.localeCompare(b.id));
+    const pairBlocks = schedSorted.length ? schedSorted.map(pr => {
+      const a = pr.start, b = pr.start + pr.ndays - 1;
+      const dayBit = a === b ? (a + '日') : (a + '–' + b + '日');
+      const touchSel = selDay != null && selDay >= a && selDay <= b;
+      if (selDay != null && !touchSel) return '';
+      const chain = paRouteChain(pr);
+      const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id);
+      const role = slot ? C.SLOT_NAME[slot] : '';
+      const hrs = C.pairingHours(pr).toFixed(1);
+      const legs = (pr.legs || []).slice().sort((x, y) => x.dep - y.dep);
+      const rows = legs.length ? legs.map(l => {
+        const h = l.dh ? 0 : (l.arr - l.dep) / 60;
+        return '<tr><td>' + esc(C.fltLabel(l)) + '</td>'
+          + '<td>' + esc(paRoute(l.from, l.to)) + '</td>'
+          + '<td>' + esc(C.fmtT(l.dep) + '–' + C.fmtT(l.arr)) + '</td>'
+          + '<td>' + (l.dh ? '置位' : (h ? h.toFixed(2) + 'h' : '—')) + '</td></tr>';
+      }).join('') : '<tr><td colspan="4" class="mut">无航段</td></tr>';
+      return '<div class="pa-pr' + (touchSel ? ' on' : '') + '" data-pid="' + esc(pr.id) + '">'
+        + '<div class="pa-prhd"><b>' + esc(pr.id) + '(' + dayBit + ')</b>'
+        + (chain ? ' <span class="mut">' + esc(chain) + '</span>' : '')
+        + (role ? ' <span class="pill-lite">' + esc(role) + '</span>' : '')
+        + ' <span class="mut">' + hrs + 'h · ' + legs.length + ' 段</span></div>'
+        + '<table class="pa-prtab"><tr><th>航班号</th><th>航线</th><th>时刻</th><th>小时</th></tr>' + rows + '</table>'
+        + '</div>';
+    }).filter(Boolean).join('') : '<div class="mut">本周期无飞行任务</div>';
 
-    // day detail panel
-    let dayPanel = '';
-    if (selDay) {
-      const items = dayItems[selDay] || [];
-      const rows = items.length ? items.map(it => {
-        if (it.kind === 'fly') {
-          return `<tr><td>${esc(it.pr.id)}</td><td>${esc(it.flt)}</td><td>${paRoute(it.from, it.to)}</td>`
-            + `<td>${esc(it.role || '')}</td><td>${C.fmtT(it.dep)}–${C.fmtT(it.arr)}</td>`
-            + `<td>${it.h ? it.h.toFixed(2) + 'h' : (it.dh ? '置位' : '—')}</td></tr>`;
-        }
-        return `<tr class="pa-nf"><td colspan="2">${esc(it.label)}</td><td colspan="4" class="mut">非飞任务</td></tr>`;
-      }).join('') : '<tr><td colspan="6" class="mut">当日无任务</td></tr>';
-      const dv = dayViol[selDay];
-      const vnote = dv ? `<span class="${dv.hard ? 'red' : 'warnc'}">${dv.hard ? '违规 ' + dv.hard : ''}${dv.hard && dv.soft ? ' · ' : ''}${dv.soft ? '预警 ' + dv.soft : ''}</span>` : '';
-      dayPanel = `<div class="panel pa-daypanel"><h3>${C.YEAR}-${String(C.MONTH).padStart(2, '0')}-${String(selDay).padStart(2, '0')} 周${WK[dow(selDay)]} 任务明细 ${vnote}</h3>
-        <table class="tftab pa-dtab"><tr><th>任务</th><th>航班</th><th>航线</th><th>角色</th><th>时刻</th><th>小时</th></tr>${rows}</table></div>`;
-    }
+    const pairSection = '<div class="pa-prs">'
+      + (selDay != null
+        ? '<div class="pa-prs-hd mut">筛选 · ' + dateOf(selDay) + ' 周' + WK[dow(selDay)] + ' · 点日期条取消</div>'
+        : '<div class="pa-prs-hd mut">全部任务 ' + schedSorted.length + ' 个</div>')
+      + (pairBlocks || '<div class="mut">当日无飞行任务</div>')
+      + '</div>';
 
-    // metric cards — 紧贴日历下方一行
+    // metric cards — 紧贴下方一行
     const hCls = hours > caacMonthH ? 'red' : hours > 80 ? 'warnc' : 'okc';
     const cards = `
       <div class="pa-kpis">
@@ -400,9 +379,8 @@
     </div>`;
 
     $('#main').innerHTML = `${header}
-      <div class="panel pa-calwrap"><h3>${C.YEAR}年${C.MONTH}月 · 个人日历 <small>连续航段条 · 跨日细色条 · 红点=违规/预警 · 点日期展开</small></h3>${cal}</div>
+      <div class="panel pa-calwrap lvform"><h3>个人日历 <small>${C.DAYS} 日条 · 有任务/请假/备份/休息</small></h3>${dayStrip}${pairSection}</div>
       ${cards}
-      ${dayPanel}
       <div class="grid g2 pa-detail">
         <div class="panel"><h3>休息间隔 <small>软 ${softH}h · 硬 ${hardRest}h</small></h3><div class="pa-list">${restList}</div></div>
         <div class="panel"><h3>飞行执勤期 <small>相对日限制</small></h3><div class="pa-list">${fdpList}</div></div>
@@ -413,9 +391,9 @@
       </div>`;
 
     $('#paBack').onclick = () => closePersonAudit();
-    document.querySelectorAll('.pa-cell[data-day]').forEach(el => {
+    document.querySelectorAll('#paDays .lvday').forEach(el => {
       el.onclick = () => {
-        const d = +el.dataset.day;
+        const d = +el.dataset.d;
         ui.auditDay = ui.auditDay === d ? null : d;
         rPersonAudit();
       };
