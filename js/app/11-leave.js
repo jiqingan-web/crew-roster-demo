@@ -108,7 +108,7 @@
       + '<div class="lvfield lvwho"><label>人员</label><div class="lvsrch"><input id="lvQ" placeholder="搜索 姓名/工号/级别/拼音" value="' + esc(ui.lvq || '') + '"><span class="mut" id="lvQn">' + sel.length + '/' + caps.length + '</span></div>'
       + '<select id="lvP">' + sel.map(c => '<option value="' + c.id + '"' + (c.id === p.id ? ' selected' : '') + '>' + esc(c.name) + ' · ' + c.rank + ' · ' + c.id + (c.squad ? ' · ' + esc(c.squad) : '') + ' · ' + idx.hours[c.id].toFixed(1) + 'h</option>').join('') + '</select></div>'
       + '<div class="lvfield"><label>类型</label><span class="seg" id="lvKindSeg"><button type="button" data-k="leave" class="' + (lvKind === 'leave' ? 'on' : '') + '">请假</button><button type="button" data-k="hold" class="' + (lvKind === 'hold' ? 'on' : '') + '">禁飞占位</button></span></div>'
-      + '<div class="lvfield lvrange"><label>日期</label><b>11/' + lvPad(days[0]) + (days.length > 1 ? ' – 11/' + lvPad(days[days.length - 1]) : '') + '</b><span class="mut">共 ' + days.length + ' 天 · 点下方日期条选起止</span></div>'
+      + '<div class="lvfield lvrange"><label>日期</label><b>' + dateOf(days[0]) + (days.length > 1 ? ' – ' + dateOf(days[days.length - 1]) : '') + '</b><span class="mut">共 ' + days.length + ' 天 · 点下方日期条选起止</span></div>'
       + '<div class="lvcta">' + cta + '</div></div>'
       + lvDayStrip(p, idx)
       + lvWhoInfo(p, idx)
@@ -116,11 +116,14 @@
   }
 
   function lvDayStrip(p, idx) {
-    const fly = new Set(); (idx.sched[p.id] || []).forEach(pr => { for (let d = pr.start; d < pr.start + pr.ndays; d++) fly.add(d); });
-    const lv = new Set(p.leave || []), sb = new Set((st.standby || {})[p.id] || []), pf = new Set(p.prefs || []), sm = new Set((st.sim || {})[p.id] || []);
+    const fly = new Set(); (idx.sched[p.id] || []).forEach(pr => { for (let d = pr.start; d < pr.start + pr.ndays; d++) if (d >= 1 && d <= C.DAYS) fly.add(d); });
+    const lv = new Set((p.leave || []).filter(d => d >= 1 && d <= C.DAYS));
+    const sb = new Set(((st.standby || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
+    const pf = new Set((p.prefs || []).filter(d => d >= 1 && d <= C.DAYS));
+    const sm = new Set(((st.sim || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
     const a = Math.min(leaveSel.from, leaveSel.to), b = Math.max(leaveSel.from, leaveSel.to);
-    let h = '<div class="lvdays-wrap"><div class="lvdays" id="lvDays">';
-    for (let d = 1; d <= C.DAYS; d++) {
+    const buckets = (C.monthBuckets && C.monthBuckets()) || [{ key: 'all', label: '', days: Array.from({ length: C.DAYS }, (_, i) => i + 1) }];
+    const chipFor = d => {
       const cls = ['lvday'];
       if ([0, 6].includes(dow(d))) cls.push('we');
       if (d >= a && d <= b) cls.push('sel');
@@ -129,9 +132,20 @@
       if (sm.has(d)) cls.push('sim');
       if (sb.has(d)) cls.push('sb');
       if (pf.has(d)) cls.push('pref');
-      const t = ['11/' + lvPad(d) + ' 周' + WK[dow(d)] + (fly.has(d) ? ' · 有任务' : ''), lv.has(d) ? '已请假' : '', sb.has(d) ? '备份' : '', pf.has(d) ? '意向休息' : '', sm.has(d) ? '禁飞占位' : ''].filter(Boolean).join(' · ');
-      h += '<button type="button" class="' + cls.join(' ') + '" data-d="' + d + '" title="' + esc(t) + '">' + d + '</button>';
-    }
+      const L = C.dayLabel ? C.dayLabel(d) : { d, text: '11/' + lvPad(d) };
+      const tip = [dateOf(d) + ' 周' + WK[dow(d)] + (fly.has(d) ? ' · 有任务' : ''), lv.has(d) ? '已请假' : '', sb.has(d) ? '备份' : '', pf.has(d) ? '意向休息' : '', sm.has(d) ? '禁飞占位' : ''].filter(Boolean).join(' · ');
+      return '<button type="button" class="' + cls.join(' ') + '" data-d="' + d + '" style="grid-column:' + L.d + '" title="' + esc(tip) + '">' + L.d + '</button>';
+    };
+    // 日期条：按自然月分行（monthBuckets），与个人审计 v668 一致；起止仍用网格日 data-d
+    let h = '<div class="lvdays-wrap pa-days-wrap"><div id="lvDays" class="pa-months">';
+    buckets.forEach(b => {
+      const d0 = b.days[0], d1 = b.days[b.days.length - 1];
+      const L0 = C.dayLabel ? C.dayLabel(d0) : null, L1 = C.dayLabel ? C.dayLabel(d1) : null;
+      const span = L0 && L1 ? (L0.d + '–' + L1.d + '日 · 网格 ' + d0 + '–' + d1) : (d0 + '–' + d1);
+      h += '<div class="pa-mrow" data-mkey="' + esc(b.key || '') + '">'
+        + '<div class="pa-mlab" title="' + esc(span) + '">' + esc(b.label || '') + '</div>'
+        + '<div class="lvdays">' + b.days.map(chipFor).join('') + '</div></div>';
+    });
     h += '</div><div class="lvlegend"><span><i class="lvlg fly"></i>有任务</span><span><i class="lvlg sel"></i>本次请假</span><span><i class="lvlg lv"></i>已请假</span><span><i class="lvlg sb"></i>备份</span><span><i class="lvlg pref"></i>意向休息</span><span class="mut">点击：第一次点起始日，第二次点结束日</span></div></div>';
     return h;
   }
