@@ -1,7 +1,7 @@
 /* 机组排班助手 - 界面 · main.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 启动 ----------------
   load();
-  $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; location.hash = t; closeIssuePanel(); closeMore(); render(); } };
+  $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; ui.auditPid = null; ui.auditDay = null; location.hash = t; closeIssuePanel(); closeMore(); render(); } };
   $('#btnMore').onclick = e => { e.stopPropagation(); toggleMore(); };
   document.addEventListener('mousedown', e => { const w = $('#moreWrap'); if (w && !w.contains(e.target)) closeMore(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMore(); });
@@ -27,4 +27,4 @@
     if (hp.includes('edit')) { const pr = st.pairings.find(p => C.specialAirportsOf(p, st).length); openEdit(pr.id); $('#drwE').click(); document.querySelectorAll('#drawer details')[0].open = true; } document.title += ' ready'; });
 
   // debug/screenshot hook
-  window.__roster = () => ({ st, sum, tab, C, openDrawer, closeDrawer, rReport, rOps, rDuty, rGantt });
+  window.__roster = () => ({ st, sum, tab, C, openDrawer, closeDrawer, rReport, rOps, rDuty, rGantt, openPersonAudit, closePersonAudit, rPersonAudit });

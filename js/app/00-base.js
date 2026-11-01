@@ -8,7 +8,7 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => new Date(C.YEAR, C.MONTH - 1, d).getDay();
   let st, sum, tab = 'overview', lastSolveMs = null, leaveResult = null;
-  const ui = { gq: '', gg: '全部', gsq: '演示中队', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '' };
+  const ui = { gq: '', gg: '全部', gsq: '演示中队', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null };
   // IME 友好搜索：composition 期间不重渲染；支持拼音首字母
   function bindSearchInput(el, onCommit, opt) {
     if (!el) return;
@@ -175,6 +175,7 @@
     const days = opt.days || null;
     const ok = !!opt.ok;
     ui.hl = { pairings: new Set(pairings), pilots: new Set(pilots.filter(Boolean)), days, ok };
+    ui.auditPid = null; ui.auditDay = null;
     closeIssuePanel();
     tab = 'gantt'; location.hash = 'gantt';
     refresh();

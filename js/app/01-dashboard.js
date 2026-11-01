@@ -3,7 +3,7 @@
   const MORE_TABS = { roster: '人员总览', welfare: '员工福利', fills: '补位历史', rules: '规则库', settings: '设置' };
   function toggleMore() { const p = $('#morePanel'); const open = p.classList.contains('hidden'); p.classList.toggle('hidden', !open); $('#btnMore').setAttribute('aria-expanded', open ? 'true' : 'false'); }
   function closeMore() { const p = $('#morePanel'); if (p) p.classList.add('hidden'); const b = $('#btnMore'); if (b) b.setAttribute('aria-expanded', 'false'); }
-  function goTab(t) { tab = t; ui.hl = null; location.hash = t; closeIssuePanel(); closeMore(); render(); }
+  function goTab(t) { tab = t; ui.hl = null; ui.auditPid = null; ui.auditDay = null; location.hash = t; closeIssuePanel(); closeMore(); render(); }
   function renderStory() {
     const mb = $('#btnMore'); if (mb) { const inMore = MORE_TABS[tab]; mb.classList.toggle('active', !!inMore); mb.textContent = inMore ? '更多功能 · ' + inMore + ' ▾' : '更多功能 ▾'; }
     const el = $('#story'); if (!el || !sum) return;
@@ -23,6 +23,7 @@
   }
   function render() {
     document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+    if (!(tab === 'gantt' && ui.auditPid)) document.body.classList.remove('pa-on');
     renderStory(); renderSide(); applyCompact();
     ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, overview: rOverview, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
