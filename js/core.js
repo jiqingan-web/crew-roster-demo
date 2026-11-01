@@ -4891,5 +4891,7 @@
     api.dayLabel = dayLabel;
     api.monthBuckets = monthBuckets;
     api.monthOfDay = monthOfDay;
+    api.monthHoursOf = monthHoursOf;
+    api.pairingMonthKey = pairingMonthKey;
     return api;
 });

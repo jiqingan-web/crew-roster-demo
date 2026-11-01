@@ -21,7 +21,7 @@
     const d = ui.tday = Math.min(C.DAYS, Math.max(1, ui.tday || 1));
     const hardN = sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length, softN = sum.soft, infoN = sum.info;
     const riskN = st.pairings.filter(pr => ['over', 'high', 'med'].includes(C.pairingRisk(pr, st).risk)).length;
-    const fly = sum.per.filter(x => x.hours > 0.5); const avg = fly.length ? fly.reduce((a, x) => a + x.hours, 0) / fly.length : 0;
+    // avg 工时改到月桶选择之后（见下）
     let h = `<div class="cw"><div class="cw-head"><div><h2>任务视图</h2><div class="mut">${st.pairings.length} 个任务 · 按日/时段查看 · 点击卡片查看详情</div></div>
       <div class="cw-acts"><button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="okpis">${kpiCard('◎', '满员率', (sum.coverage * 100).toFixed(1) + '%', `${st.pairings.length} 个任务 · ${sum.full === sum.total ? '全部已覆盖' : '缺员 ' + (sum.total - sum.full)}`, sum.coverage >= 0.99 ? 'okc' : 'warnc')}
@@ -117,7 +117,6 @@
     const tasks = days.map(d => st.pairings.filter(pr => pr.legs.some(l => Math.floor(l.dep / 1440) + 1 === d)).length);
     const hrsCum = days.map(d => { let s = 0; st.pairings.forEach(pr => pr.legs.forEach(l => { if (Math.floor(l.dep / 1440) + 1 <= d) s += ['C', 'F', 'T'].filter(k => pr.crew[k]).length * (l.arr - l.dep) / 60; })); return s / N; });
     const satD = duty.map(v => v / N * 100);
-    const fly = sum.per.filter(x => x.hours > 0.5); const avg = fly.length ? fly.reduce((a, x) => a + x.hours, 0) / fly.length : 0;
     const hardN = sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length;
     const kc = (lab, val, sub, vals, color) => `<div class="bkpi" style="--c:${color}"><div class="bk-l">${lab}<i></i></div><div class="bk-v">${val}</div><div class="bk-s">${sub}</div>${spark(vals, color)}</div>`;
     // 维度
@@ -140,6 +139,7 @@
       return idx.hours[id] || 0;
     };
     const ranked = st.pilots.map(p => ({ p, h: mhOf(p.id) })).sort((a, b) => b.h - a.h || a.p.id.localeCompare(b.p.id));
+    const flyM = ranked.filter(x => x.h > 0.5); const avg = flyM.length ? flyM.reduce((a, x) => a + x.h, 0) / flyM.length : 0;
     const top = ranked.slice(0, 8), bot = ranked.slice(-8).reverse(); const hmx = Math.max(1, ranked[0] ? ranked[0].h : 0, 0.1);
     const bar = (x, i, col) => `<div class="rk"><span class="rk-i">${i + 1}</span><span class="rk-n">${esc(x.p.name)}<small>${esc(x.p.rank)}</small></span><span class="rk-b"><i style="width:${(x.h / hmx * 100).toFixed(1)}%;background:${col}"></i></span><b>${x.h.toFixed(1)}h</b></div>`;
     const monthSeg = buckets.length > 1
@@ -160,7 +160,7 @@
       ${om.bySquadron.map(s => `<circle cx="${qx(s.satPct)}" cy="${qy(s.resiliPct)}" r="7" class="q-pt"><title>${esc(s.squad)} 饱和 ${s.satPct}% 韧性 ${s.resiliPct}%</title></circle>`).join('')}</svg>`;
     let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · 2026-11 · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
-        ${kc('平均工时', avg.toFixed(1) + 'h', `${sum.all.min.toFixed(0)}–${sum.all.max.toFixed(0)}h · 基尼 ${sum.all.gini.toFixed(3)}`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
+        ${kc('平均工时' + (monthLab ? ' · ' + monthLab : ''), avg.toFixed(1) + 'h', (monthLab ? monthLab + ' · ' : '') + `有飞 ${flyM.length} 人 · Top ${hmx.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, satD.map(v => 100 - v), '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
       <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比</h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), N, '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
         <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>

@@ -18,6 +18,21 @@
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
     const demos = st.pairings.filter(p => p.demoAnomaly);
     const R = C.CCAR121, COM = C.COM || {};
+    // 月飞行图表：按自然月桶（与总览 ovMonth / monthHours 同源），避免 51 天全期伪「本月」
+    const repBuckets = (s.monthMeta && s.monthMeta.length) ? s.monthMeta : ((C.monthBuckets && C.monthBuckets()) || []);
+    let repMk = ui.ovMonth;
+    if (!repMk || !repBuckets.some(b => b.key === repMk)) {
+      repMk = (typeof uiActiveMonth === 'function') ? uiActiveMonth(null) : ((repBuckets[0] || {}).key || null);
+      if (repMk) ui.ovMonth = repMk;
+    }
+    const repLab = ((repBuckets.find(b => b.key === repMk) || {}).label) || '';
+    const mhOf = id => (typeof monthHoursFor === 'function') ? monthHoursFor(id, repMk) : ((s.per.find(x => x.id === id) || {}).monthHours || {})[repMk] || 0;
+    const perMonth = s.per.map(x => Object.assign({}, x, { hours: mhOf(x.id) }));
+    const grpMonth = {};
+    C.GROUPS.forEach(g => { grpMonth[g] = C.stats(perMonth.filter(x => x.group === g).map(x => x.hours)); });
+    const repMonthSeg = repBuckets.length > 1
+      ? `<span class="seg repMonthSeg" style="margin-left:8px">${repBuckets.map(b => `<button type="button" data-repm="${esc(b.key)}" class="${b.key === repMk ? 'on' : ''}">${esc(b.label)}</button>`).join('')}</span>`
+      : '';
     const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 规章回测摘要 <small>R8 · 公司运行手册 · ${COM.re12 || 'RE12'}</small></h3>
       <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、4连续值勤日(执飞/主备份)后第5日不执飞，第5日置位=软提示、7日飞行执勤期≤${R.sevenDayFdpH}h、月飞行执勤期≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编）<br>
       <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/121回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
@@ -31,9 +46,9 @@
       <div class="grid g2"><div class="panel"><h3>合规性 <small>硬性规则逐项计数${lastSolveMs ? ' · 自动排班用时 ' + lastSolveMs + ' ms' : ''}</small></h3><table><tr><th>规则</th><th>违规数</th></tr>
       ${hardTypes.map(t => { const n = (s.byType[t] || {}).n || 0; return `<tr><td>${t}</td><td class="${n ? 'red' : 'okc'}">${n ? n : '0 ✔'}</td></tr>`; }).join('')}
       <tr><td>备份超过每人每月 ${S.maxStandbyPerPilot} 天（软性）</td><td class="warnc">${(s.byType['备份超限'] || {}).n || 0}</td></tr><tr><td>每日备份人数不足（软性）</td><td class="warnc">${(s.byType['备份人数不足'] || {}).n || 0}</td></tr><tr><td>意向休息日未满足（软性）</td><td class="warnc">${(s.byType['意向休息日未满足'] || {}).n || 0}</td></tr><tr><td>始发站需血压测试仪提醒（信息）</td><td class="warnc">${(s.byType['需血压测试仪'] || {}).n || 0}</td></tr></table></div>
-      <div class="panel"><h3>公平性 · 各级别组月飞行小时分布 <small>圆点=均值，阴影=±1σ，线=最小–最大；红虚线=月硬上限（设置值） ${S.hardMaxHours || 100}h</small></h3><div class="chart">${CH.ranges(C.GROUPS.map(g => Object.assign({ label: g, color: GCOL[g] }, s.groups[g].hours)), { range: [20, 100], marks: [{ v: S.hardMaxHours || 100, color: '#ff5a6a' }] })}</div>
-      <table><tr><th>组别</th><th>人数</th><th>均值</th><th>标准差</th><th>最小</th><th>最大</th><th>基尼</th></tr>${C.GROUPS.map(g => { const x = s.groups[g].hours; return `<tr><td>${g}</td><td>${x.n}</td><td>${x.mean.toFixed(1)}</td><td>${x.std.toFixed(2)}</td><td>${x.min.toFixed(1)}</td><td>${x.max.toFixed(1)}</td><td>${x.gini.toFixed(3)}</td></tr>`; }).join('')}</table></div></div>
-      <div class="panel"><h3>每人本月飞行小时 <small>按组别、小时排序；颜色=组别</small></h3><div class="chart">${CH.bars(s.per.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.hardMaxHours || 100, label: '月硬上限(设置) ' + (S.hardMaxHours || 100) + 'h', color: '#ff5a6a' }], max: 100 })}</div>
+      <div class="panel"><h3>公平性 · 各级别组月飞行小时分布 <small>${esc(repLab || '本月')} · 圆点=均值，阴影=±1σ，线=最小–最大；红虚线=月硬上限（设置值） ${S.hardMaxHours || 100}h</small>${repMonthSeg}</h3><div class="chart">${CH.ranges(C.GROUPS.map(g => Object.assign({ label: g, color: GCOL[g] }, grpMonth[g] || s.groups[g].hours)), { range: [20, 100], marks: [{ v: S.hardMaxHours || 100, color: '#ff5a6a' }] })}</div>
+      <table><tr><th>组别</th><th>人数</th><th>均值</th><th>标准差</th><th>最小</th><th>最大</th><th>基尼</th></tr>${C.GROUPS.map(g => { const x = grpMonth[g] || s.groups[g].hours; return `<tr><td>${g}</td><td>${x.n}</td><td>${x.mean.toFixed(1)}</td><td>${x.std.toFixed(2)}</td><td>${x.min.toFixed(1)}</td><td>${x.max.toFixed(1)}</td><td>${x.gini.toFixed(3)}</td></tr>`; }).join('')}</table></div></div>
+      <div class="panel"><h3>每人本月飞行小时 <small>${esc(repLab || '本月')} · 按组别、小时排序；颜色=组别</small>${repMonthSeg}</h3><div class="chart">${CH.bars(perMonth.slice().sort((a, b) => C.GROUPS.indexOf(a.group) - C.GROUPS.indexOf(b.group) || b.hours - a.hours).map(x => ({ label: x.name, value: x.hours, color: GCOL[x.group] })), { w: 1400, h: 260, showLabels: false, lines: [{ v: S.hardMaxHours || 100, label: '月硬上限(设置) ' + (S.hardMaxHours || 100) + 'h', color: '#ff5a6a' }], max: 100 })}</div>
       <div class="legend">${C.GROUPS.map(g => `<span><i style="background:${GCOL[g]}"></i>${g}</span>`).join('')}</div></div>
       <div class="grid g3">
       <div class="panel"><h3>节奏 · 任务天数分布 <small>${s.total} 个任务</small></h3>${CH.bars(Object.keys(s.rhythm.lenDist).map(k => ({ label: k + '天', value: s.rhythm.lenDist[k], color: '#3ea6ff' })), { w: 420, h: 200, values: true })}<div class="note">以 3–4 天多日任务为主，${((((s.rhythm.lenDist[3] || 0) + (s.rhythm.lenDist[4] || 0)) / s.total) * 100).toFixed(0)}% 为 3–4 天</div></div>
@@ -56,6 +71,8 @@
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
     document.querySelectorAll('tr.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
     bindExportButtons();
+    document.querySelectorAll('.repMonthSeg button').forEach(b => { b.onclick = () => { ui.ovMonth = b.dataset.repm; if (typeof setUiMonth === 'function') setUiMonth(b.dataset.repm); rReport(); }; });
+
     const btnAf = $('#btnAutoFix');
     if (btnAf) btnAf.onclick = () => {
       const plan = C.autoCorrectPlan(st, { maxDepth: 4 });

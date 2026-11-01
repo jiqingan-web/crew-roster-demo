@@ -51,6 +51,15 @@
   function openPersonAudit(pid) {
     ui.auditPid = pid;
     ui.auditDay = null;
+    // 继承甘特/总览活动月（全部→首桶），避免一进页仍用全期假合计
+    const bks = (C.monthBuckets && C.monthBuckets()) || [];
+    if (bks.length) {
+      const inherit = (ui.gMonth && ui.gMonth !== 'all' && bks.some(b => b.key === ui.gMonth))
+        ? ui.gMonth
+        : (ui.ovMonth && bks.some(b => b.key === ui.ovMonth) ? ui.ovMonth : bks[0].key);
+      ui.auditMonth = inherit;
+      if (!ui.ovMonth) ui.ovMonth = inherit;
+    }
     tab = 'audit';
     location.hash = 'audit';
     closeIssuePanel();
@@ -63,6 +72,7 @@
   function closePersonAudit() {
     ui.auditPid = null;
     ui.auditDay = null;
+    // 保留 auditMonth，便于重选人后仍在同月口径
     tab = 'audit';
     location.hash = 'audit';
     render();
@@ -116,22 +126,73 @@
     const hardRest = 48;
     const caacMonthH = 90; // 展示口径：CAAC 硬月 90h（卡片）；公司 hardMaxHours 另计
     const hardMonth = C.pilotHardCap ? C.pilotHardCap(p, st) : (S.hardMaxHours || 100);
-    const hours = idx.hours[p.id] || 0;
     const sched = idx.sched[p.id] || [];
-    const viols = (sum.violations || []).filter(v => v.pilot === p.id);
-    const hardV = viols.filter(v => v.level === 'hard');
-    const softV = viols.filter(v => v.level === 'soft');
-    // 无 pilot 字段但 pairing 落在此人任务上的硬违规（搭配等）
+    // —— 活动自然月（KPI/列表唯一口径；与 monthBuckets / monthHoursOf 同源）——
+    const buckets0 = (C.monthBuckets && C.monthBuckets()) || [{ key: 'all', label: '', days: Array.from({ length: C.DAYS }, (_, i) => i + 1) }];
+    if (ui.auditMonth && !buckets0.some(b => b.key === ui.auditMonth)) ui.auditMonth = null;
+    if (!ui.auditMonth) {
+      if (ui.auditDay != null && C.monthOfDay) ui.auditMonth = C.monthOfDay(ui.auditDay);
+      else ui.auditMonth = (typeof uiActiveMonth === 'function') ? uiActiveMonth(null) : (buckets0[0] && buckets0[0].key);
+    }
+    const mk = ui.auditMonth;
+    const monthBucket = buckets0.find(b => b.key === mk) || buckets0[0];
+    const monthDays = new Set((monthBucket && monthBucket.days) || []);
+    const inMonth = d => !mk || monthDays.has(d);
+    const prMonthKey = pr => (C.pairingMonthKey ? C.pairingMonthKey(pr, st) : (C.monthOfDay ? C.monthOfDay(pr.start) : null));
+    const prInMonth = pr => {
+      if (!mk) return true;
+      const k = prMonthKey(pr);
+      if (k) return k === mk;
+      // 跨月兜底：值勤日与活动月有交集即计入列表
+      for (let d = pr.start; d < pr.start + pr.ndays; d++) if (monthDays.has(d)) return true;
+      return false;
+    };
+    const hours = (typeof monthHoursFor === 'function')
+      ? monthHoursFor(p.id, mk, idx)
+      : ((() => { const mh = C.monthHoursOf ? C.monthHoursOf(p, st, idx, null) : null; return (mh && mk) ? (mh[mk] || 0) : (idx.hours[p.id] || 0); })());
+    const hoursAll = idx.hours[p.id] || 0;
+    const monthLab = (monthBucket && monthBucket.label) || '';
+
+    const violsAll = (sum.violations || []).filter(v => v.pilot === p.id);
     const pairIds = new Set(sched.map(pr => pr.id));
-    const pairHard = (sum.violations || []).filter(v => v.level === 'hard' && v.pairing && pairIds.has(v.pairing) && (!v.pilot || v.pilot === p.id));
+    const pairHardAll = (sum.violations || []).filter(v => v.level === 'hard' && v.pairing && pairIds.has(v.pairing) && (!v.pilot || v.pilot === p.id));
+    const violTouchesMonth = v => {
+      if (!mk) return true;
+      const pr = v.pairing && st.pairings.find(x => x.id === v.pairing);
+      if (pr) {
+        const ds = C.daysTouched ? C.daysTouched(pr, st) : [];
+        if (ds.some(d => monthDays.has(d))) return true;
+        if (prInMonth(pr)) return true;
+      }
+      const m = String(v.msg || '').match(/(\d+)\s*日/);
+      if (m && monthDays.has(+m[1])) return true;
+      // 月小时类：文案含本月标签或 key
+      if (/月飞行|月小时|个人月飞行/.test(String(v.type || '') + String(v.msg || ''))) {
+        if (monthLab && String(v.msg || '').includes(monthLab.replace('月', ''))) return true;
+        if (String(v.msg || '').includes(mk)) return true;
+        // 无更细信息时，月小时违规按活动月展示（硬上限即按桶判）
+        if ((v.type || '').includes('月小时') || (v.msg || '').includes('月飞行')) return true;
+      }
+      return false;
+    };
+    const hardV = violsAll.filter(v => v.level === 'hard' && violTouchesMonth(v));
+    const softV = violsAll.filter(v => v.level === 'soft' && violTouchesMonth(v));
+    const pairHard = pairHardAll.filter(violTouchesMonth);
     const hardAll = [];
     const seenH = new Set();
     hardV.concat(pairHard).forEach(v => { const k = v.type + '|' + v.msg; if (seenH.has(k)) return; seenH.add(k); hardAll.push(v); });
     const warnN = softV.length;
     const hardN = hardAll.length;
+    // 日历红点用全期违规；KPI 计数用上方 month-scoped hardAll/softV
+    const hardAllCal = [];
+    const seenHC = new Set();
+    violsAll.filter(v => v.level === 'hard').concat(pairHardAll).forEach(v => {
+      const k = v.type + '|' + v.msg; if (seenHC.has(k)) return; seenHC.add(k); hardAllCal.push(v);
+    });
+    const softAllCal = violsAll.filter(v => v.level === 'soft');
 
     const dayViol = {}; // d → {hard, soft}
-    hardAll.forEach(v => {
+    hardAllCal.forEach(v => {
       const pr = v.pairing && st.pairings.find(x => x.id === v.pairing);
       if (pr) C.daysTouched(pr, st).forEach(d => { dayViol[d] = dayViol[d] || { hard: 0, soft: 0 }; dayViol[d].hard++; });
       else {
@@ -139,7 +200,7 @@
         if (m) { const d = +m[1]; dayViol[d] = dayViol[d] || { hard: 0, soft: 0 }; dayViol[d].hard++; }
       }
     });
-    softV.forEach(v => {
+    softAllCal.forEach(v => {
       const pr = v.pairing && st.pairings.find(x => x.id === v.pairing);
       if (pr) C.daysTouched(pr, st).forEach(d => { dayViol[d] = dayViol[d] || { hard: 0, soft: 0 }; dayViol[d].soft++; });
       else {
@@ -179,10 +240,10 @@
     ((st.standby || {})[p.id] || []).forEach(d => { if (d >= 1 && d <= C.DAYS) dayItems[d].push({ kind: 'sb', label: '备份' }); });
     (p.leave || []).forEach(d => { if (d >= 1 && d <= C.DAYS) dayItems[d].push({ kind: 'lv', label: '休假' }); });
 
-    // 休息间隔（任务/备份前连续休息小时）
+    // 休息间隔（任务/备份前连续休息小时）— 仅活动月
     const dutyIv = C.pilotDutyIntervals(p, st, idx);
     const restRows = [];
-    sched.forEach(pr => {
+    sched.filter(prInMonth).forEach(pr => {
       const t0 = C.report(pr, st);
       const iv = dutyIv.filter(x => x[3] !== pr.id);
       const rh = paMaxRestH(iv, t0);
@@ -193,7 +254,7 @@
         hours: rh, underHard, underSoft, soft: softH, hard: hardRest
       });
     });
-    ((st.standby || {})[p.id] || []).forEach(d => {
+    ((st.standby || {})[p.id] || []).filter(inMonth).forEach(d => {
       const t0 = (d - 1) * C.DAY;
       const iv = dutyIv.filter(x => !(x[2] === 'S' && x[3] === 'SB' + d));
       const rh = paMaxRestH(iv, t0);
@@ -207,11 +268,12 @@
     const minRest = restHs.length ? Math.min(...restHs) : null;
     const avgRest = restHs.length ? restHs.reduce((a, b) => a + b, 0) / restHs.length : null;
 
-    // 飞行执勤期 rows
+    // 飞行执勤期 rows — 值勤日落在活动月
     const fdpRows = [];
     let maxFdp = 0, maxFdpLimit = 0;
     sched.forEach(pr => {
       C.fdpDays(pr, st).forEach(dy => {
+        if (mk && !inMonth(dy.date)) return;
         maxFdp = Math.max(maxFdp, dy.planFdp || 0);
         if ((dy.planFdp || 0) >= maxFdp) maxFdpLimit = dy.limit;
         const risk = dy.planRisk || 'low';
@@ -228,20 +290,21 @@
     });
     fdpRows.sort((a, b) => (b.fdp / Math.max(1, b.limit)) - (a.fdp / Math.max(1, a.limit)));
 
-    // 过夜：仅天数 + 最长连续过夜段
-    const per = (sum.per || []).find(x => x.id === p.id);
-    const overnightDays = per ? per.overnights : sched.reduce((s, pr) => s + Math.max(0, pr.ndays - 1), 0);
-    let longestOv = 0, curOv = 0;
+    // 过夜：活动月内过夜夜数 + 最长连续
+    let overnightDays = 0, longestOv = 0, curOv = 0;
     for (let d = 1; d <= C.DAYS; d++) {
       const isOvNight = sched.some(pr => pr.ndays > 1 && d >= pr.start && d <= pr.start + pr.ndays - 2);
-      if (isOvNight) { curOv++; longestOv = Math.max(longestOv, curOv); }
-      else curOv = 0;
+      if (isOvNight && inMonth(d)) {
+        overnightDays++;
+        curOv++; longestOv = Math.max(longestOv, curOv);
+      } else if (!isOvNight) curOv = 0;
+      else curOv = 0; // 跨出活动月打断连续计数
     }
 
-    const trN = ((st.training || {})[p.id] || []).length;
-    const sbN = ((st.standby || {})[p.id] || []).length;
-    const simN = ((st.sim || {})[p.id] || []).length;
-    const ctlN = ((st.control || {})[p.id] || []).length;
+    const trN = ((st.training || {})[p.id] || []).filter(inMonth).length;
+    const sbN = ((st.standby || {})[p.id] || []).filter(inMonth).length;
+    const simN = ((st.sim || {})[p.id] || []).filter(inMonth).length;
+    const ctlN = ((st.control || {})[p.id] || []).filter(inMonth).length;
 
     const selDay = ui.auditDay;
 
@@ -257,7 +320,7 @@
     const holdDays = new Set(((st.simHold || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
 
     // —— 日期条：按自然月分行（monthBuckets），芯片样式/图例与请假台一致 ——
-    const buckets = (C.monthBuckets && C.monthBuckets()) || [{ key: 'all', label: '', days: Array.from({ length: C.DAYS }, (_, i) => i + 1) }];
+    const buckets = buckets0;
     const chipFor = d => {
       const cls = ['lvday'];
       if ([0, 6].includes(dow(d))) cls.push('we');
@@ -294,8 +357,9 @@
       const span = L0 && L1
         ? (L0.d + '–' + L1.d + '日 · 网格 ' + d0 + '–' + d1)
         : (d0 + '–' + d1);
-      dayStrip += '<div class="pa-mrow" data-mkey="' + esc(b.key || '') + '">'
-        + '<div class="pa-mlab" title="' + esc(span) + '">' + esc(b.label || '') + '</div>'
+      const on = b.key === mk ? ' on' : '';
+      dayStrip += '<div class="pa-mrow' + on + '" data-mkey="' + esc(b.key || '') + '">'
+        + '<button type="button" class="pa-mlab" data-mkey="' + esc(b.key || '') + '" title="' + esc('切换 KPI 口径 · ' + span) + '">' + esc(b.label || '') + '</button>'
         + '<div class="lvdays">' + b.days.map(chipFor).join('') + '</div></div>';
     });
     dayStrip += '</div><div class="lvlegend">'
@@ -307,7 +371,7 @@
       + '<span><i class="lvlg sim"></i>模拟机</span>'
       + '<span><i class="lvlg tr"></i>培训/控班</span>'
       + '<span><i class="lvlg sel"></i>选中日</span>'
-      + '<span class="mut">点日期筛选下方任务 · 再点取消</span>'
+      + '<span class="mut">点月名切 KPI · 点日期看当日航段</span>'
       + '</div></div>';
 
     // —— 任务列表：每个 pairing 标题 + 小表（航班号/航线/时刻/小时）——
@@ -345,16 +409,20 @@
       + (pairBlocks || '<div class="mut">当日无飞行任务</div>')
       + '</div>';
 
-    // metric cards — 紧贴下方一行
+    // metric cards — 全部按活动月实时重算（monthHoursOf / monthDays）
     const hCls = hours > caacMonthH ? 'red' : hours > 80 ? 'warnc' : 'okc';
+    const monthSeg = buckets.length > 1
+      ? `<div class="pa-mseg seg" id="paMonthSeg">${buckets.map(b => `<button type="button" data-pam="${esc(b.key)}" class="${b.key === mk ? 'on' : ''}">${esc(b.label)}</button>`).join('')}${hoursAll && Math.abs(hoursAll - hours) > 0.05 ? `<span class="mut pa-mseg-all">全期 ${hoursAll.toFixed(1)}h</span>` : ''}</div>`
+      : '';
     const cards = `
+      ${monthSeg}
       <div class="pa-kpis">
-        <div class="pa-kpi"><div class="pa-kl">月飞小时</div><div class="pa-kv ${hCls}">${hours.toFixed(1)}<small>/${caacMonthH}h</small></div><div class="pa-ks">CAAC · 公司 ${hardMonth}h</div></div>
+        <div class="pa-kpi"><div class="pa-kl">月飞小时${monthLab ? ' · ' + monthLab : ''}</div><div class="pa-kv ${hCls}">${hours.toFixed(1)}<small>/${caacMonthH}h</small></div><div class="pa-ks">CAAC · 公司 ${hardMonth}h</div></div>
         <div class="pa-kpi"><div class="pa-kl">最短 / 平均休息</div><div class="pa-kv">${minRest == null ? '—' : minRest.toFixed(1) + 'h'}<small> / ${avgRest == null ? '—' : avgRest.toFixed(1) + 'h'}</small></div><div class="pa-ks">软≥${softH}h · 硬 ${hardRest}h</div></div>
-        <div class="pa-kpi"><div class="pa-kl">最长飞行执勤期</div><div class="pa-kv">${maxFdp ? C.fmtH(maxFdp) : '—'}</div><div class="pa-ks">${maxFdp ? '限 ' + C.fmtH(maxFdpLimit) : '本月无执勤'}</div></div>
+        <div class="pa-kpi"><div class="pa-kl">最长飞行执勤期</div><div class="pa-kv">${maxFdp ? C.fmtH(maxFdp) : '—'}</div><div class="pa-ks">${maxFdp ? '限 ' + C.fmtH(maxFdpLimit) : (monthLab || '本月') + '无执勤'}</div></div>
         <div class="pa-kpi"><div class="pa-kl">过夜天数</div><div class="pa-kv">${overnightDays}</div><div class="pa-ks">${longestOv ? '最长连续 ' + longestOv + ' 夜' : '无过夜'}</div></div>
         <div class="pa-kpi"><div class="pa-kl">培训·备份·模拟机</div><div class="pa-kv">${trN + sbN + simN}<small> 次</small></div><div class="pa-ks">培${trN} · 备${sbN} · 模${simN}${ctlN ? ' · 控' + ctlN : ''}</div></div>
-        <div class="pa-kpi"><div class="pa-kl">硬违规 / 预警</div><div class="pa-kv ${hardN ? 'red' : 'okc'}">${hardN}<small> / ${warnN}</small></div><div class="pa-ks">本人相关</div></div>
+        <div class="pa-kpi"><div class="pa-kl">硬违规 / 预警</div><div class="pa-kv ${hardN ? 'red' : 'okc'}">${hardN}<small> / ${warnN}</small></div><div class="pa-ks">${monthLab || '本人'}相关</div></div>
       </div>`;
 
     // detail lists（压缩）
@@ -374,7 +442,7 @@
 
     const miscLines = [];
     const listDays = (label, arr) => {
-      const ds = (arr || []).slice().sort((a, b) => a - b);
+      const ds = (arr || []).filter(inMonth).slice().sort((a, b) => a - b);
       if (!ds.length) return;
       miscLines.push(`<div class="pa-misc"><b>${label}</b> ${ds.length} 次 · ${ds.map(d => dateOf(d)).join('、')}</div>`);
     };
@@ -393,7 +461,7 @@
     </div>`;
 
     $('#main').innerHTML = `${header}
-      <div class="panel pa-calwrap lvform"><h3>个人日历 <small>${C.DAYS} 日 · 按月分行 · 有任务/请假/备份/休息</small></h3>${dayStrip}${pairSection}</div>
+      <div class="panel pa-calwrap lvform"><h3>个人日历 <small>${C.DAYS} 日 · 按月分行 · KPI 口径 ${esc(monthLab || '全期')}</small></h3>${dayStrip}${pairSection}</div>
       ${cards}
       <div class="grid g2 pa-detail">
         <div class="panel"><h3>休息间隔 <small>软 ${softH}h · 硬 ${hardRest}h</small></h3><div class="pa-list">${restList}</div></div>
@@ -405,10 +473,36 @@
       </div>`;
 
     $('#paBack').onclick = () => closePersonAudit();
+    const applyMonth = key => {
+      if (!key || key === ui.auditMonth) {
+        // 同月再点：仅清除日筛选，KPI 仍留在该月
+        if (key === ui.auditMonth && ui.auditDay != null) { ui.auditDay = null; rPersonAudit(); return; }
+      }
+      ui.auditMonth = key;
+      if (typeof setUiMonth === 'function') setUiMonth(key);
+      else ui.ovMonth = key;
+      if (ui.auditDay != null && C.monthOfDay && C.monthOfDay(ui.auditDay) !== key) ui.auditDay = null;
+      rPersonAudit();
+    };
+    document.querySelectorAll('#paDays .pa-mlab').forEach(el => {
+      el.onclick = e => { e.preventDefault(); e.stopPropagation(); applyMonth(el.dataset.mkey); };
+    });
+    document.querySelectorAll('#paMonthSeg button').forEach(b => {
+      b.onclick = () => applyMonth(b.dataset.pam);
+    });
     document.querySelectorAll('#paDays .lvday').forEach(el => {
       el.onclick = () => {
         const d = +el.dataset.d;
-        ui.auditDay = ui.auditDay === d ? null : d;
+        const next = ui.auditDay === d ? null : d;
+        ui.auditDay = next;
+        if (next != null && C.monthOfDay) {
+          const km = C.monthOfDay(next);
+          if (km && km !== ui.auditMonth) {
+            ui.auditMonth = km;
+            if (typeof setUiMonth === 'function') setUiMonth(km);
+            else ui.ovMonth = km;
+          }
+        }
         rPersonAudit();
       };
     });

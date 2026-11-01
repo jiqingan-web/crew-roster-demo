@@ -8,7 +8,7 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => { const L = C.dayLabel ? C.dayLabel(d) : { m: C.MONTH, d }; return new Date(C.YEAR, L.m - 1, L.d).getDay(); };
   let st, sum, tab = 'overview', lastSolveMs = null, leaveResult = null;
-  const ui = { gq: '', gg: '全部', gsq: '演示中队', gMonth: 'all', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditQ: '', auditSq: '演示中队', ovMonth: null };
+  const ui = { gq: '', gg: '全部', gsq: '演示中队', gMonth: 'all', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditMonth: null, auditQ: '', auditSq: '演示中队', ovMonth: null };
   // IME 友好搜索：composition 期间不重渲染；支持拼音首字母
   function bindSearchInput(el, onCommit, opt) {
     if (!el) return;
@@ -26,7 +26,34 @@
     if (C.nameMatchesQuery && C.nameMatchesQuery(p.name, q)) return true;
     return false;
   }
-  function squadOptions(selected) {
+  /** 当前 UI 活动自然月 key（与 monthBuckets 对齐）；prefer 优先 */
+  function uiActiveMonth(prefer) {
+    const buckets = (C.monthBuckets && C.monthBuckets()) || [];
+    if (!buckets.length) return null;
+    const cands = [prefer, ui.auditMonth, ui.ovMonth, (ui.gMonth && ui.gMonth !== 'all') ? ui.gMonth : null];
+    for (const k of cands) if (k && buckets.some(b => b.key === k)) return k;
+    return buckets[0].key;
+  }
+  /** 某人在指定自然月的飞行小时；mk 空则回退全期 idx.hours */
+  function monthHoursFor(pid, mk, idx) {
+    idx = idx || C.buildIndex(st);
+    if (!mk) return idx.hours[pid] || 0;
+    const per = (sum && sum.per || []).find(x => x.id === pid);
+    if (per && per.monthHours) return per.monthHours[mk] || 0;
+    if (C.monthHoursOf) {
+      const p = st.pilots.find(x => x.id === pid);
+      const m = p ? C.monthHoursOf(p, st, idx, null) : null;
+      return m ? (m[mk] || 0) : (idx.hours[pid] || 0);
+    }
+    return idx.hours[pid] || 0;
+  }
+  function setUiMonth(mk) {
+    if (!mk) return;
+    ui.auditMonth = mk;
+    ui.ovMonth = mk;
+    if (ui.gMonth && ui.gMonth !== 'all') ui.gMonth = mk;
+  }
+    function squadOptions(selected) {
     const set = new Set(st.pilots.map(p => p.squad).filter(Boolean));
     const list = ['全部', ...[...set].sort((a, b) => a.localeCompare(b, 'zh'))];
     return list.map(s => `<option value="${esc(s)}" ${s === (selected || '全部') ? 'selected' : ''}>${esc(s)}</option>`).join('');

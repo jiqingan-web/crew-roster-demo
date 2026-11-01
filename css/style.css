@@ -815,3 +815,11 @@ body.pa-on .story{display:none}
 .pa-prtab td{padding:5px 8px;border-bottom:1px solid var(--line);font-variant-numeric:tabular-nums}
 .pa-prtab tr:last-child td{border-bottom:none}
 
+
+/* 个人审计：活动月行高亮 + 月切换 */
+.pa-mlab{appearance:none;background:transparent;border:0;cursor:pointer;padding:2px 0;font:inherit}
+.pa-mlab:hover{color:var(--acc)}
+.pa-mrow.on .pa-mlab{color:var(--acc);font-weight:700}
+.pa-mrow.on .lvdays{outline:1px solid rgba(62,166,255,.28);outline-offset:2px;border-radius:6px}
+.pa-mseg{display:flex;align-items:center;gap:6px;margin:8px 0 6px;flex-wrap:wrap}
+.pa-mseg-all{font-size:11px;margin-left:6px}
