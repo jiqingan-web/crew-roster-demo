@@ -125,8 +125,27 @@
     const slotN = SLOTS.map(([n, a, b]) => [n, st.pairings.filter(pr => { const t = ((pr.legs[0].dep % 1440) + 1440) % 1440 / 60; return t >= a && t < b; }).length]);
     const cls = {}; st.pairings.forEach(pr => pr.legs.forEach(l => { const k = C.apClass(l.to, st); const lab = k ? k.label : '普通'; cls[lab] = (cls[lab] || 0) + 1; }));
     const clsOrder = ['一类·高高原', '二类', '三类', '四类', '复杂', '普通']; const clsCol = ['#ef5d6c', '#f5a524', '#8b6cf6', '#3cc4f0', '#21c7a8', '#4f6a90'];
-    const ranked = st.pilots.map(p => ({ p, h: idx.hours[p.id] || 0 })).sort((a, b) => b.h - a.h); const top = ranked.slice(0, 8), bot = ranked.slice(-8).reverse(); const hmx = Math.max(1, ranked[0].h);
+    // 个人月工时排行：按自然月桶（monthHours / monthBuckets）排序，可切换 9月/10月
+    const buckets = (sum.monthMeta && sum.monthMeta.length) ? sum.monthMeta : ((C.monthBuckets && C.monthBuckets()) || []);
+    const curCalKey = C.YEAR + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
+    let mk = ui.ovMonth;
+    if (!mk || !buckets.some(b => b.key === mk)) {
+      mk = (buckets.find(b => b.key === curCalKey) || buckets[0] || {}).key || null;
+      ui.ovMonth = mk;
+    }
+    const mhOf = id => {
+      const per = (sum.per || []).find(x => x.id === id);
+      if (per && per.monthHours && mk) return per.monthHours[mk] || 0;
+      if (C.monthHoursOf) { const m = C.monthHoursOf(st.pilots.find(p => p.id === id), st, idx, null); return (m && mk) ? (m[mk] || 0) : (idx.hours[id] || 0); }
+      return idx.hours[id] || 0;
+    };
+    const ranked = st.pilots.map(p => ({ p, h: mhOf(p.id) })).sort((a, b) => b.h - a.h || a.p.id.localeCompare(b.p.id));
+    const top = ranked.slice(0, 8), bot = ranked.slice(-8).reverse(); const hmx = Math.max(1, ranked[0] ? ranked[0].h : 0, 0.1);
     const bar = (x, i, col) => `<div class="rk"><span class="rk-i">${i + 1}</span><span class="rk-n">${esc(x.p.name)}<small>${esc(x.p.rank)}</small></span><span class="rk-b"><i style="width:${(x.h / hmx * 100).toFixed(1)}%;background:${col}"></i></span><b>${x.h.toFixed(1)}h</b></div>`;
+    const monthSeg = buckets.length > 1
+      ? `<span class="seg" id="ovMonthSeg" style="margin-left:8px;vertical-align:middle">${buckets.map(b => `<button type="button" data-ovm="${esc(b.key)}" class="${b.key === mk ? 'on' : ''}">${esc(b.label)}</button>`).join('')}</span>`
+      : '';
+    const monthLab = (buckets.find(b => b.key === mk) || {}).label || '';
     // 事件流
     const ev = [];
     (st.fills || []).slice(-8).reverse().forEach(f => ev.push(['调整', `${f.time || ''}`, `${esc(f.pairingId)} ${esc(f.slotName || '')}：${esc(f.fromName || '空缺')} → ${esc(f.toName || '')}${f.source === 'leave' ? '（请假替换）' : ''}`, 'ev-a']));
@@ -145,12 +164,13 @@
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, satD.map(v => 100 - v), '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
       <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比</h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), N, '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
         <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>
-      <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8</small></h4><div class="rks">${top.map((x, i) => bar(x, i, 'linear-gradient(90deg,#f5a524,#ef5d6c)')).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => bar(x, ranked.length - 1 - i, 'linear-gradient(90deg,#2b6fd6,#4f8cff)')).join('')}</div></div>
+      <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8${monthLab ? ' · ' + esc(monthLab) : ''}</small>${monthSeg}</h4><div class="rks">${top.map((x, i) => bar(x, i, 'linear-gradient(90deg,#f5a524,#ef5d6c)')).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => bar(x, ranked.length - 1 - i, 'linear-gradient(90deg,#2b6fd6,#4f8cff)')).join('')}</div></div>
         <div class="bpanel"><h4>实时事件 <span class="live">● LIVE</span></h4><div class="feed">${ev.length ? ev.slice(0, 16).map(e => `<div class="ev ${e[3]}"><span class="ev-t">${e[1] || '—'}</span><span class="ev-k">${e[0]}</span><span>${e[2]}</span></div>`).join('') : '<div class="tempty">暂无事件</div>'}</div></div>
         <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => String(d).padStart(2, '0')))}
           <h4 style="margin-top:8px">四象限 · 饱和 × 韧性</h4>${quad}<div class="mut sm">${esc(om.zoneHint)}</div></div></div>
       <div class="mut sm">渲染 <span id="ovMs"></span> ms · 指标沿用运营看板口径（${esc(om.formulas.sat)}）</div></div>`;
     $('#main').innerHTML = h; tickClock(); ui.lastRenderMs = Math.round(performance.now() - t0); $('#ovMs').textContent = ui.lastRenderMs;
+    document.querySelectorAll('#ovMonthSeg button').forEach(b => { b.onclick = () => { ui.ovMonth = b.dataset.ovm; rOverview(); }; });
   }
   function tickClock() { const c = $('#ovClock'); if (!c) return; const n = new Date(); c.textContent = n.toTimeString().slice(0, 8); const dd = $('#ovDate'); if (dd) dd.textContent = n.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }); }
   setInterval(tickClock, 1000);
