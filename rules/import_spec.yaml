@@ -1,0 +1,122 @@
+# 航段/班表导入读取规则（Import Spec）
+# 单一真源的"读取契约"：机器可校验，人不靠记忆。
+version: 2
+updated: 2026-10-31
+
+formats:
+  roster_grid:            # 月班表网格（人 × 日），如 7中队真实航班.xls
+    detect:
+      header_contains: [名称, 排班授权, 飞行小时]
+    meta_columns: [部门名称, 名称, 排班授权, 飞行小时]
+    date_column_pattern: '^\d{2}-\d{2}$'
+    summary_columns_allow: [病假天数, 年假天数, 其他休假天数, 模拟机小时, 其他培训小时]
+    cell_line_rules:      # 单元格按行解析，每行必须命中其一，否则 unresolved
+      duty: '^(\S+?)(\(随\))?\s+((?:\(V\))?\d{3,4}(?:/(?:\(V\))?\d{3,4})*)\s*$'
+      time: '^(\d\d):(\d\d)-(\d\d):(\d\d)$'
+  leg_list:               # 航段清单（模板 templates/航段导入模板.xlsx；执行端 scripts/official_roster/validate.py）
+    detect:               # 表头含下列四列 = leg_list；不含则按 roster_grid 走（roster_grid 逻辑不变）
+      header_contains: [任务号, 航班号, 起飞机场, 到达机场]
+      header_search_rows: 6          # 前 6 行内找表头（允许上方有标题行）
+      sheet_prefer: [航段]           # 多工作表时优先「航段」
+    per_leg: true                    # 一行一航段；同一任务号的多行 = 一个任务（任务串）
+    required_columns: [任务号, 日期, 航班号, 起飞机场, 到达机场, 计划起飞, 计划到达]
+    column_aliases:                  # 与 js/leg-import.js 的 ALIAS 同口径（表头去空白后匹配）
+      任务号: [任务号, 任务编号, 任务]
+      日期: [日期, 航班日期]
+      航班号: [航班号, 航班]
+      起飞机场: [起飞机场, 起飞, 出发机场]
+      到达机场: [到达机场, 落地机场, 到达, 落地]
+      计划起飞: [计划起飞, 起飞时间]
+      计划到达: [计划到达, 落地时间, 到达时间]
+      是否置位(随): [是否置位(随), 是否置位, 置位(随), 置位, 随]
+    field_rules:
+      date: 'YYYY-MM-DD（兼容 YYYY/M/D、YYYY年M月D日、Excel 日期/序列号）'
+      flight_no: '^[A-Z0-9]{2}\d{3,4}$'
+      airport: 'ICAO 四字码，且必须能在机场表找到；另支持单字简称（ABBR_FIXED）与机场全称'
+      airport_table: 'js/core.js AIRPORTS_BASE + js/sample-data.js SAMPLE_AIRPORTS（= js/leg-import.js 的 C.AIRPORTS）'
+      time: 'HH:MM（24 小时制）；到达 ≤ 起飞视为跨午夜，+1440 分钟'
+      crew_columns: '机长/副驾驶/副驾驶(2)/观察员 可留空（导入后由「一键自动填人」排班）'
+    ordering:
+      group_by: 任务号
+      sort_key: [日期, 计划起飞]
+      rows_in_sequence: true         # 同一任务同日期多行按源表行序执行（模板约定）
+      same_date_rollover: true        # 同日期内起飞时刻回退 → 推断次日（+1440），记 day_rollover
+      note: '源表日期列建议写航段当日；若整个任务都写任务开始日，跨日靠时刻回退推断'
+    chaining:
+      adjacent: '上一段到达机场 == 下一段起飞机场'
+      break_signal: chain_break
+      bases: [ZUUU, ZUTF]
+      base_rule: '任务首段自基地起飞、末段回基地；违反 → warning（G3 只告警）'
+    block_crosscheck:
+      per_leg: true
+      source: '坐标反算 block_min（与 js/core.js blockMin 同口径）'
+      long_tolerance_min: 30         # 表内轮挡比反算长 > 30 → 提示（外站等待/过站/调度加时）
+      short_tolerance_pct: 20        # 表内轮挡比反算短 > 20% → 硬矛盾
+      short_policy: warn             # leg_list 默认 W2 告警（坐标反算是估算模型）；--strict-block 时并入 G2
+      deadhead_exempt: true          # 置位（随）航段不计飞行时间，不参与轮挡矛盾判定
+    deadhead:
+      is_dh_values: [是, 随, 置位, y, yes, true, 1, dh, √]
+      stats: [dh_legs, dh_tasks]
+    aggregates:                      # 报告输出
+      - task_count                   # 任务数
+      - leg_count                    # 航段数
+      - task_days_dist               # 任务长度分布（按天）
+      - daily_legs                   # 每日航班数
+      - base_violations              # 基地约定异常（warning）
+      - cross_midnight_legs          # 跨午夜航段数（到达 ≤ 起飞）
+      - day_rollover                 # 同日记录跨日推断次数
+    gates:
+      G1_parse: '表头/必填列/日期/航班号/机场/时刻全部可解析（任一失败 exit 1）'
+      G2_structure: '断链=0（exit 2）；轮挡长向偏差提示、短向硬矛盾默认 W2 告警（--strict-block 时并入闸）'
+      G3_semantics: '基地约定 + 置位/跨午夜/任务长度统计（约定类仅告警，不阻断）'
+
+# —— 语义约定：任何一条被误解过一次的，都在这里写死 ——
+semantics:
+  cell_time: first_dep_last_arr      # 单元格时刻 = 当日首段起飞 → 末段落地（不是逐段，也不是报到时刻）
+  cross_midnight: arr_le_dep_plus_24h
+  inferred_marker_required: true     # 中间段由窗口推算时，必须打上 inferred 标记
+  abbr_scope: single_char_closed_set # 单字机场简称必须命中闭集，禁止地理猜测
+  flight_number_is_unique_key: false # 同一航班号可串飞多段/多方向
+  flight_key: [date, from, to, flt]
+  crew_text_key: [date, route, flight_numbers, time]  # 合车键：同机组同文本同窗口
+  name_mapping_required: true        # 真名 → 化名/ID 必须来自显式 map，缺失即阻断
+
+vocabulary:
+  priority: [leave, training, sim, control, standby]   # 同格多标签时的优先级，其余记 shadowed
+  leave:    [停飞, 病假, 疗养, 婚假, 年假, 空班, 育儿假, 陪产假, 事假]
+  training: ['培训(飞技)', '培训(飞行)', 换季教育, 体检, ICAO, 会议]
+  sim:      [模拟机训练]
+  control:  [中队控班, 值班]
+  standby:  [可能抓飞]
+
+airports:
+  abbr_single_source: js/leg-import.js   # 只允许从 ABBR_FIXED 读取，禁止复制第二份
+  unknown_policy: block                  # 未知简称 → 阻断导入（旧代码 fallback 90 分钟是错的）
+  confirmed_abbr:                        # 已按"航班号+坐标反算"双重确认，禁止再回退成占位码
+    曲: {code: ZSJG, name: 济宁曲阜, evidence: "EU2723 ZUTF-JNG / EU2724 大连-济宁 13:30-15:15"}
+    桃: {code: ZGCD, name: 常德桃花源, evidence: "成都航空 TFU-CGD 记录；轮挡按坐标 90min = 表内 1h29"}
+    内: {code: VVNB, name: 河内内排, evidence: "EU2863 成都天府-河内"}
+
+time:
+  block_from_coords: true     # 用机场坐标反算轮挡，与表内窗口对撞（独立来源交叉校验）
+  block_tolerance_min: 30     # 反算轮挡+过站 与 表内窗口 偏差 > 30min 报警
+  min_turn_min: 30            # 窗口 ≥ Σ轮挡 + (nlegs-1)*min_turn
+  min_block_min: 40
+  max_window_min: 1440
+  window_vs_declared_ratio: [1.10, 1.80]   # 窗口/申报小时 合理区间，越界 warning
+
+chaining:
+  same_crew_required: true
+  continue_if: next_first == cur_last and cur_last not in bases
+  bases: [ZUUU, ZUTF]
+  break_signal: chain_break_suspected      # 单日链但次日从同一外站起飞 → 疑似被拆断
+
+gates:                           # 三道闸：顺序执行，前面的不通过不进下一步
+  - id: G1_parse
+    fail_if: unresolved > 0
+  - id: G2_structure
+    checks: [date_columns_contiguous, route_len_matches_legs, time_monotonic, pilot_day_cells_accounted]
+  - id: G3_semantics
+    checks: [unknown_abbr_zero, chain_break_zero, nonfly_shadowed_reported]
+    baseline: rules/import_baseline.json     # 首版冻结，之后漂移超阈值报警
+    drift_threshold_pct: 10

@@ -261,7 +261,7 @@
     if ($('#acEditX')) $('#acEditX').onclick = () => { dutySel = null; rDuty(); };
   }
 
-  // ---------------- 请假调配（多方案） ----------------
+  // ---------------- 请假调配（旧实现，已被 js/app/11-leave.js 的工作台覆盖；保留以备回滚） ----------------
   // 同页三段：①选请假人/日期 → ②受影响航班 → ③选替补；复用 holeRecommend / leaveOptions / applyHoleCand
   let leaveSel = { pid: null, from: null, to: null }, leaveOpts = null, leaveHover = null, leaveHist = [], leaveView = 'flow', leaveHoles = null, holePrev = null, leaveHoldFlash = null;
   let lvFltView = 'cards', lvSubView = 'cards';

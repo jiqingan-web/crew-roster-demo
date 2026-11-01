@@ -6,7 +6,7 @@
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const GCOL = { '教员': '#e6a23c', '机长': '#3ea6ff', '新机长': '#a78bfa', '副驾驶': '#2ecc8f' };
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
-  const dow = d => new Date(C.YEAR, C.MONTH - 1, d).getDay();
+  const dow = d => { const L = C.dayLabel ? C.dayLabel(d) : { m: C.MONTH, d }; return new Date(C.YEAR, L.m - 1, L.d).getDay(); };
   let st, sum, tab = 'overview', lastSolveMs = null, leaveResult = null;
   const ui = { gq: '', gg: '全部', gsq: '演示中队', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditQ: '', auditSq: '演示中队' };
   // IME 友好搜索：composition 期间不重渲染；支持拼音首字母
@@ -47,7 +47,7 @@
         const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 17 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
           || !s.sampleSchema || s.sampleSchema < 17;
-        const offStale = LITE && isSampleish && window.RosterOfficial && s.official !== 1;
+        const offStale = LITE && isSampleish && window.RosterOfficial && (s.official !== 1 || (window.RosterOfficial.OFFICIAL_ROSTER.grid && !s.grid));
         if (isSampleish && (stale || offStale)) {
           reset(false);
           toast(offStale && !stale ? '已载入「模拟表格1」为默认方案（可在方案切换处切到自动填人方案）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
@@ -57,16 +57,18 @@
         st.settings = Object.assign(C.defaultSettings(), st.settings);
         C.migrateSettings(st.settings); C.migrateDelays(st); C.ensureAircraftRegs(st); C.migratePilots(st);
         st.fills = st.fills || [];
+        if (st.grid && C.setPeriod) C.setPeriod(st.grid);
         return;
       }
     } catch (e) {}
     reset(false);
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
-  function reset(r) { st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
+  function reset(r) { if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
   // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
   function loadOfficial() {
-    st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample(undefined, { reserves: false }) : st); st.solHist = []; st.solN = 0;
+    // 正式班表：外中队候补池按 23 机长 + 19 副驾（三人制 + 高高原双机长）
+    st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample(20261101, { reserves: [23, 19] }) : st); st.solHist = []; st.solN = 0;
     pushSolution(C.summarize(st), { seed: '正式', name: window.RosterOfficial.NAME }); return st;
   }
   // ---------------- 人员变更：统一失效 + 全局重算（增/删/改 级别·授权·中队·健康） ----------------
@@ -205,7 +207,7 @@
 
   const pm = () => { const m = {}; st.pilots.forEach(p => m[p.id] = p); return m; };
   const pill = r => `<span class="pill r-${C.rankGroup(r)}">${esc(r)}</span>`;
-  const dateOf = d => `11/${String(d).padStart(2, '0')}`;
+  const dateOf = d => (C.dayLabel ? C.dayLabel(d).text : `11/${String(d).padStart(2, '0')}`);
 
   function ensureFills() { if (!st.fills) st.fills = []; }
   function fillsOf(prId) { return (st.fills || []).filter(f => f.pairingId === prId && !f.undone); }
