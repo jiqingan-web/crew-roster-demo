@@ -71,9 +71,9 @@
         const isSampleish = s.sample === true;
         // 用户改过人员（新增/删除/编辑）后不再按人数判旧，只在 sampleSchema 真正升级时重置
         const edited = !!s.pilotsEdited;
-        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 17 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
+        const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 18 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
-          || !s.sampleSchema || s.sampleSchema < 17;
+          || !s.sampleSchema || s.sampleSchema < 18;
         const offStale = LITE && isSampleish && window.RosterOfficial && (s.official !== 1 || (window.RosterOfficial.OFFICIAL_ROSTER.grid && !s.grid));
         if (isSampleish && (stale || offStale)) {
           reset(false);
@@ -234,6 +234,17 @@
 
   const pm = () => { const m = {}; st.pilots.forEach(p => m[p.id] = p); return m; };
   const pill = r => `<span class="pill r-${C.rankGroup(r)}">${esc(r)}</span>`;
+  const isOuterPilot = p => !!(C.isOuterPilot ? C.isOuterPilot(p) : (p && (p.outer || p.external || p.reserve || /外中队/.test(String(p.squad || '')))));
+  const outerBadge = p => {
+    if (!isOuterPilot(p)) return '';
+    const role = (C.outerRoleOf && C.outerRoleOf(p)) || p.outerRole || p.rank || '';
+    const tip = `外中队候补（演示）· 需${role}等级 · 当前 ${p.rank}`;
+    return `<span class="outer-pilot" title="${esc(tip)}">外中队</span><span class="outer-rank" title="外中队所需/当前等级">等级 ${esc(p.rank)}</span>`;
+  };
+  const squadCell = p => {
+    if (isOuterPilot(p)) return `${outerBadge(p)}<span class="mut"> · ${esc(p.squad || '外中队候补·演示')}</span>`;
+    return esc(p.squad || '—');
+  };
   const dateOf = d => (C.dayLabel ? C.dayLabel(d).text : `11/${String(d).padStart(2, '0')}`);
 
   function ensureFills() { if (!st.fills) st.fills = []; }

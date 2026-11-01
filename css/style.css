@@ -823,3 +823,8 @@ body.pa-on .story{display:none}
 .pa-mrow.on .lvdays{outline:1px solid rgba(62,166,255,.28);outline-offset:2px;border-radius:6px}
 .pa-mseg{display:flex;align-items:center;gap:6px;margin:8px 0 6px;flex-wrap:wrap}
 .pa-mseg-all{font-size:11px;margin-left:6px}
+
+/* 外中队候补人员（人员池 / 人员视图） */
+.outer-pilot { display:inline-block; padding:0 6px; border-radius:4px; background:#e8f0ff; color:#2a5bd7; font-size:11px; font-weight:700; margin-left:4px; vertical-align:middle; border:1px solid #9bb6ef; }
+.outer-rank { display:inline-block; padding:0 6px; border-radius:4px; background:#fff6e8; color:#a15c00; font-size:11px; font-weight:600; margin-left:3px; vertical-align:middle; border:1px solid #e6c48a; }
+.gwrap.z-tiny .outer-pilot, .gwrap.z-tiny .outer-rank, .gwrap.z-small .outer-pilot, .gwrap.z-small .outer-rank { font-size:8px; padding:0 3px; margin-left:2px; }

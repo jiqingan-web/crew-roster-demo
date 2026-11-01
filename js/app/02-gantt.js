@@ -70,7 +70,7 @@
       const hr = (multi && ui.gMonth !== 'all') ? (+mh[ui.gMonth] || 0) : (idx.hours[p.id] || 0);
       const bad = hr > (S.hardMaxHours || 100); const amb = false;
       const hlr = ui.hl && ui.hl.pilots.has(p.id);
-      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点姓名→合规审计；点其余→请假调配 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm pa-name" data-pid="${p.id}" title="打开个人合规审计">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
+      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点姓名→合规审计；点其余→请假调配 · ${p.id} ${esc(p.name)} ${esc(p.rank)}${isOuterPilot(p) ? ' · 外中队' : ''} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm pa-name" data-pid="${p.id}" title="打开个人合规审计">${esc(p.name)}</span>${pill(p.rank)}${outerBadge(p)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
       const trd = (st.training || {})[p.id] || [];
       const ctd = (st.control || {})[p.id] || [];

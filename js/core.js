@@ -293,6 +293,16 @@
       if (!p.fleet) p.fleet = SQUADS_C909.includes(p.squad) ? 'C909' : 'A320';
       if (!Array.isArray(p.auth)) p.auth = [];
       if (p.bangfu == null) p.bangfu = false; else p.bangfu = !!p.bangfu;
+      // 外中队候补标记：仅 reserve / 外中队中队名；真实导入本中队人员绝不标 outer
+      const looksOuter = !!(p.reserve || /外中队/.test(String(p.squad || '')));
+      if (looksOuter) {
+        p.outer = true; p.external = true; p.reserve = true;
+        if (!/外中队/.test(String(p.squad || ''))) p.squad = '外中队候补·演示';
+        p.outerRole = isCaptClass(p.rank) || INSTR.includes(p.rank) ? '机长' : (isFO(p.rank) ? '副驾驶' : '其他');
+      } else {
+        delete p.outer; delete p.external; delete p.outerRole;
+        if (p.reserve) p.reserve = false; // 本中队人不应带 reserve
+      }
     });
     return st;
   }
@@ -475,7 +485,7 @@
     H.forEach(({ i, h }) => { if (pilots[i]) pilots[i].health = Object.assign(defaultHealth(), h); });
     medRestrictionSeed().forEach(p => pilots.push(p));
     stripLhasaBelowJ3({ pilots });
-    return { version: 1, sample: true, sampleSchema: 17, settings: S, pilots, pairings, fills: [],
+    return { version: 1, sample: true, sampleSchema: 18, settings: S, pilots, pairings, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [],
       sampleMeta: SAMPLE_META };
   }
@@ -495,6 +505,15 @@
       ['F8', 1], ['F7', 16], ['F6', 12], ['F5', 5], ['F4', 15], ['F3', 15], ['F1', 1]];
   }
 
+  function isOuterPilot(p) { return !!(p && (p.outer || p.external || p.reserve || /外中队/.test(String(p.squad || '')))); }
+  function outerRoleOf(p) {
+    if (!p) return '';
+    if (p.outerRole) return p.outerRole;
+    if (isCaptClass(p.rank) || INSTR.includes(p.rank)) return '机长';
+    if (isFO(p.rank)) return '副驾驶';
+    return '其他';
+  }
+
   // ---------- 外中队候补飞行员（化名，非真实人员）：按演示中队职级比例补充机长/副驾驶 ----------
   // 拉萨资质只能由 J3 及以上（含 TL/TB/TC 教员）持有
   function lhasaRankOK(rank) { return INSTR.includes(rank) || CAPT_ORDER.indexOf(rank) >= CAPT_ORDER.indexOf('J3'); }
@@ -506,11 +525,12 @@
     const used = new Set(st.pilots.map(p => p.name)); const nm = () => { for (let k = 0; k < 500; k++) { const s = SUR[Math.floor(r() * SUR.length)] + GIV[Math.floor(r() * GIV.length)] + (r() < 0.5 ? GIV[Math.floor(r() * GIV.length)] : ''); if (!used.has(s)) { used.add(s); return s; } } return '候补' + used.size; };
     const capt = own.filter(p => isCaptClass(p.rank)), fo = own.filter(p => isFO(p.rank));
     const out = []; let seq = (st.pilots.filter(p => p.reserve).length) + 1;
-    const mk = (tpl) => { const p = JSON.parse(JSON.stringify(tpl)); p.id = 'R9' + String(seq++).padStart(4, '0'); p.name = nm(); p.squad = '外中队候补·演示'; p.reserve = true; p.prefs = []; p.leave = []; p.health = defaultHealth(); delete p.traineeCapt; delete p.requalCapt; delete p.qualNotes; out.push(p); return p; };
+    const mk = (tpl) => { const p = JSON.parse(JSON.stringify(tpl)); p.id = 'R9' + String(seq++).padStart(4, '0'); p.name = nm(); p.squad = '外中队候补·演示'; p.reserve = true; p.outer = true; p.external = true; p.prefs = []; p.leave = []; p.health = defaultHealth(); delete p.traineeCapt; delete p.requalCapt; delete p.qualNotes; out.push(p); return p; };
     const plat = Object.keys(AIRPORTS).filter(c => ['LHASA', 'HIGH', 'PLATEAU'].includes(apCat(c)));
     for (let i = 0; i < nC; i++) { const q = mk(capt[(i * 7 + 3) % capt.length]); // 外中队候补机长：全部具备拉萨/高原资质（拉萨须 J3+ 或教员）
+      q.outerRole = '机长';
       if (lhasaRankOK(q.rank)) { q.auth = [...new Set([...(q.auth || []), ...plat])]; q.lhasaFull = true; } else q.auth = (q.auth || []).filter(c => apCat(c) !== 'LHASA'); }
-    for (let i = 0; i < nF; i++) mk(fo[(i * 5 + 1) % fo.length]);
+    for (let i = 0; i < nF; i++) { const q = mk(fo[(i * 5 + 1) % fo.length]); q.outerRole = '副驾驶'; }
     st.pilots.push(...out); return out;
   }
 
@@ -566,7 +586,7 @@
     }
     chosen.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
     chosen.forEach((p, i) => { p.id = 'PR' + String(i + 1).padStart(3, '0'); });
-    const out = { version: 1, sample: true, lite: true, sampleSchema: 17, settings: S, pilots, pairings: chosen, fills: [],
+    const out = { version: 1, sample: true, lite: true, sampleSchema: 18, settings: S, pilots, pairings: chosen, fills: [],
       demoAnomaliesApplied: false, demoAnomalies: [], demoHolesApplied: false, demoHoles: [], sampleMeta: SAMPLE_META };
     // 外中队候补（化名）：按 9 月真实航段回测，+20 机长类 +20 副驾驶 → 0 供给性空缺、余量约 28%
     const RES = opt.reserves === false ? [0, 0] : (opt.reserves || LITE_RESERVES); if (RES[0] || RES[1]) addReservePilots(out, RES[0], RES[1], 909); stripLhasaBelowJ3(out);
@@ -4882,7 +4902,7 @@
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
     crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });

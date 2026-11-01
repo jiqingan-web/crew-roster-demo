@@ -29,7 +29,7 @@
         <select id="rs">${squads.map(g => `<option ${g === ui.rs ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <select id="ra"><option value="全部">授权机场：全部</option>${authList.map(c => `<option value="${c}" ${ui.ra === c ? 'selected' : ''}>${esc(C.apName(c, st))}</option>`).join('')}</select>
         <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长', '帮扶对象'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
-        <span class="mut">${ps.length}/${st.pilots.length} 人 · 有健康限制 ${nRest} 人 · 帮扶 ${st.pilots.filter(p => p.bangfu).length} 人 · 授权机场 ${nAuth} 个</span>
+        <span class="mut">${ps.length}/${st.pilots.length} 人 · 外中队 ${st.pilots.filter(isOuterPilot).length}（机长 ${st.pilots.filter(p => isOuterPilot(p) && ((C.outerRoleOf?C.outerRoleOf(p):p.outerRole)==='机长')).length}）· 本中队 ${st.pilots.filter(p => !isOuterPilot(p)).length} · 有健康限制 ${nRest} 人 · 帮扶 ${st.pilots.filter(p => p.bangfu).length} 人 · 授权机场 ${nAuth} 个</span>
         <button class="btn sm primary" id="roAdd" style="margin-left:auto">＋ 新增人员</button>
         <button class="btn sm" id="roExp">导出人员 CSV</button>
         <button class="btn sm primary" id="exMonthRoster">全月班表</button>
@@ -53,7 +53,7 @@
         : '<span class="mut">—</span>';
       const authN = (p.auth || []).filter(c => authList.includes(c)).length;
       h += `<tr class="rorow" data-pid="${p.id}">
-        <td class="mut">${p.id}</td><td><b>${esc(p.name)}</b></td><td>${pill(p.rank)}</td><td>${esc(p.squad || '—')}</td>
+        <td class="mut">${p.id}</td><td><b>${esc(p.name)}</b>${isOuterPilot(p) ? ' ' + outerBadge(p) : ''}</td><td>${pill(p.rank)}${isOuterPilot(p) ? `<span class="outer-rank">等级 ${esc(p.rank)}</span>` : ''}</td><td>${squadCell(p)}</td>
         <td class="hcell"><button type="button" class="btn sm roBangfu ${p.bangfu ? 'primary' : ''}" data-pid="${p.id}" title="切换帮扶对象">${p.bangfu ? '帮扶✓' : '—'}</button></td>
         <td class="hcell">${badges}</td>
         ${authList.map(c => `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`).join('')}
@@ -84,10 +84,10 @@
     });
     document.querySelectorAll('.rorow').forEach(r => r.ondblclick = () => openRosterEdit(r.dataset.pid));
     $('#roExp').onclick = () => {
-      const rows = [['员工号', '姓名', '级别', '组别', '中队', '帮扶对象', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
+      const rows = [['员工号', '姓名', '级别', '组别', '中队', '外中队', '外中队角色', '帮扶对象', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
       st.pilots.forEach(p => {
         const h = p.health || C.defaultHealth();
-        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', p.bangfu ? '是' : '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.maxMonthH != null ? h.maxMonthH : '', h.noSoleCaptain ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
+        rows.push([p.id, p.name, p.rank, C.rankGroup(p.rank), p.squad || '', isOuterPilot(p) ? '是' : '', isOuterPilot(p) ? ((C.outerRoleOf && C.outerRoleOf(p)) || p.outerRole || '') : '', p.bangfu ? '是' : '', h.noFly ? '是' : '', h.noPlateau ? '是' : '', h.noNight ? '是' : '', h.maxMonthH != null ? h.maxMonthH : '', h.noSoleCaptain ? '是' : '', h.bpNote || '', h.medExamExpiry || '', h.note || '',
           ...authList.map(c => (p.auth || []).includes(c) ? '✓' : ''), (p.auth || []).filter(c => authList.includes(c)).length]);
       });
       dl('人员总览_授权与健康_2026-11.csv', csv(rows));
@@ -103,7 +103,7 @@
     const h = Object.assign(C.defaultHealth(), p.health || {});
     // 中队选项 = 现有人员中队 ∪ 标准中队（保留当前值，避免保存时被改成列表第一项）
     const squads = [...new Set([p.squad, ...st.pilots.map(x => x.squad), ...(C.ALL_SQUADS || [])].filter(Boolean))];
-    let box = `<div class="flex"><h3 style="margin:0">${isNew ? '新增人员' : '人员档案 · ' + esc(p.name) + ' ' + pill(p.rank)} <span class="mut">${p.id}</span></h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>
+    let box = `<div class="flex"><h3 style="margin:0">${isNew ? '新增人员' : '人员档案 · ' + esc(p.name) + ' ' + pill(p.rank)}${!isNew && isOuterPilot(p) ? ' ' + outerBadge(p) : ''} <span class="mut">${p.id}</span></h3><button class="btn" style="margin-left:auto" id="mClose">关闭</button></div>${!isNew && isOuterPilot(p) ? `<div class="note" style="margin-top:6px">来源：外中队候补（演示）· 角色 <b>${esc((C.outerRoleOf && C.outerRoleOf(p)) || p.outerRole || '')}</b> · 当前等级 <b>${esc(p.rank)}</b>（拉萨类任务机长须 J3+ / 教员）</div>` : ''}
       <div class="grid g2" style="margin-top:12px">
         <div><label class="lab">员工号</label><input id="edId" value="${esc(p.id)}" ${isNew ? '' : 'disabled'}></div>
         <div><label class="lab">姓名（化名）</label><input id="edName" value="${esc(p.name)}" placeholder="化名"></div>

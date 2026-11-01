@@ -5,7 +5,8 @@ const med = a => { a = a.slice().sort((x, y) => x - y); return a[a.length >> 1];
 for (const seed of [20261101, 7, 42]) {
   const st = C.generateLiteSample(seed);
   const capt = st.pilots.filter(p => C.RANK_VAL[p.rank] >= 9 || C.NEW_CAPT.includes(p.rank) || C.INSTR.includes(p.rank) || p.rank === 'J3').length;
-  chk(seed + ' size', st.lite && st.pilots.filter(p => !p.reserve).length === 101 && st.pilots.filter(p => p.reserve).length === 40 && st.pilots.filter(p => p.reserve).every(p => p.squad === '外中队候补·演示') && [...new Set(st.pilots.map(p => p.squad))][0] === '演示中队', st.pilots.length + ' pilots');
+  chk(seed + ' size', st.lite && st.pilots.filter(p => !p.reserve).length === 101 && st.pilots.filter(p => p.reserve).length === 40 && st.pilots.filter(p => p.reserve).every(p => p.squad === '外中队候补·演示' && p.outer && p.external && C.isOuterPilot(p)) && st.pilots.filter(p => !p.reserve).every(p => !p.outer && !p.external && !C.isOuterPilot(p) && p.squad === '演示中队') && [...new Set(st.pilots.map(p => p.squad))].sort().join('|') === '外中队候补·演示|演示中队', st.pilots.length + ' pilots');
+  { const rc = st.pilots.filter(p => p.reserve && p.outerRole === '机长'); chk(seed + ' outer captains tagged', rc.length === 20 && rc.every(p => p.outer && p.rank), rc.length + ' ' + [...new Set(rc.map(p => p.rank))].join(',')); }
   { const own = st.pilots.filter(p => !p.reserve); chk(seed + ' mix', own.filter(p => C.INSTR.includes(p.rank)).length === 14 && own.filter(p => C.NEW_CAPT.includes(p.rank)).length === 7, ''); }
   chk(seed + ' demoFill', st.pairings.every(p => p.demoFill));
   const t = Date.now(); C.autoFill(st); C.leaveDemoHoles(st); const ms = Date.now() - t;
@@ -68,7 +69,7 @@ for (const seed of [20261101, 7, 42]) {
   }
   chk(seed + ' pairing continuity', contOk, contInfo);
 
-  chk(seed + ' schema17', st.sampleSchema === 17);
+  chk(seed + ' schema18', st.sampleSchema === 18);
   { const rc = st.pilots.filter(p => p.reserve && C.isCaptClass(p.rank)); chk(seed + ' reserve captains Lhasa = J3+ only', rc.length === 20 && rc.every(p => p.auth.includes('ZULS') === C.lhasaRankOK(p.rank)), rc.filter(p => p.auth.includes('ZULS')).length + '/20'); }
   chk(seed + ' training 1-2', tr.length && Math.min(...tr) >= 1 && Math.max(...tr) <= 2, (tr.length ? Math.min(...tr) + '-' + Math.max(...tr) : 'none'));
   const active = st.pilots.filter(p => !(p.health && p.health.noFly) && ix.hours[p.id] > 0.5);
