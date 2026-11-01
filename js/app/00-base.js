@@ -8,7 +8,7 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => { const L = C.dayLabel ? C.dayLabel(d) : { m: C.MONTH, d }; return new Date(C.YEAR, L.m - 1, L.d).getDay(); };
   let st, sum, tab = 'overview', lastSolveMs = null, leaveResult = null;
-  const ui = { gq: '', gg: '全部', gsq: '演示中队', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditQ: '', auditSq: '演示中队', ovMonth: null };
+  const ui = { gq: '', gg: '全部', gsq: '演示中队', gMonth: 'all', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditQ: '', auditSq: '演示中队', ovMonth: null };
   // IME 友好搜索：composition 期间不重渲染；支持拼音首字母
   function bindSearchInput(el, onCommit, opt) {
     if (!el) return;
