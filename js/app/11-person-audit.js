@@ -245,7 +245,7 @@
 
     const selDay = ui.auditDay;
 
-    // —— 日期条（复用请假工作台 .lvdays 样式：1…C.DAYS 横条 + 图例）——
+    // —— 日期条（请假台芯片样式；按自然月分行）——
     const flyDays = new Set();
     sched.forEach(pr => { for (let d = pr.start; d < pr.start + pr.ndays; d++) if (d >= 1 && d <= C.DAYS) flyDays.add(d); });
     const lvDays = new Set((p.leave || []).filter(d => d >= 1 && d <= C.DAYS));
@@ -256,8 +256,9 @@
     const ctlDays = new Set(((st.control || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
     const holdDays = new Set(((st.simHold || {})[p.id] || []).filter(d => d >= 1 && d <= C.DAYS));
 
-    let dayStrip = '<div class="lvdays-wrap pa-days-wrap"><div class="lvdays" id="paDays">';
-    for (let d = 1; d <= C.DAYS; d++) {
+    // —— 日期条：按自然月分行（monthBuckets），芯片样式/图例与请假台一致 ——
+    const buckets = (C.monthBuckets && C.monthBuckets()) || [{ key: 'all', label: '', days: Array.from({ length: C.DAYS }, (_, i) => i + 1) }];
+    const chipFor = d => {
       const cls = ['lvday'];
       if ([0, 6].includes(dow(d))) cls.push('we');
       if (selDay === d) cls.push('sel');
@@ -282,8 +283,21 @@
       ].filter(Boolean).join(' · ');
       const mark = dayViol[d] && (dayViol[d].hard || dayViol[d].soft)
         ? '<i class="pa-dmark ' + (dayViol[d].hard ? 'hard' : 'soft') + '"></i>' : '';
-      dayStrip += '<button type="button" class="' + cls.join(' ') + '" data-d="' + d + '" title="' + esc(tip) + '">' + d + mark + '</button>';
-    }
+      const L = C.dayLabel ? C.dayLabel(d) : { d };
+      const lab = L.d; // 日历日（9月=1–30，10月=1–21）；data-d 仍为网格日 1..DAYS
+      return '<button type="button" class="' + cls.join(' ') + '" data-d="' + d + '" style="grid-column:' + lab + '" title="' + esc(tip) + '">' + lab + mark + '</button>';
+    };
+    let dayStrip = '<div class="lvdays-wrap pa-days-wrap"><div id="paDays" class="pa-months">';
+    buckets.forEach(b => {
+      const d0 = b.days[0], d1 = b.days[b.days.length - 1];
+      const L0 = C.dayLabel ? C.dayLabel(d0) : null, L1 = C.dayLabel ? C.dayLabel(d1) : null;
+      const span = L0 && L1
+        ? (L0.d + '–' + L1.d + '日 · 网格 ' + d0 + '–' + d1)
+        : (d0 + '–' + d1);
+      dayStrip += '<div class="pa-mrow" data-mkey="' + esc(b.key || '') + '">'
+        + '<div class="pa-mlab" title="' + esc(span) + '">' + esc(b.label || '') + '</div>'
+        + '<div class="lvdays">' + b.days.map(chipFor).join('') + '</div></div>';
+    });
     dayStrip += '</div><div class="lvlegend">'
       + '<span><i class="lvlg fly"></i>有任务</span>'
       + '<span><i class="lvlg lv"></i>请假</span>'
@@ -379,7 +393,7 @@
     </div>`;
 
     $('#main').innerHTML = `${header}
-      <div class="panel pa-calwrap lvform"><h3>个人日历 <small>${C.DAYS} 日条 · 有任务/请假/备份/休息</small></h3>${dayStrip}${pairSection}</div>
+      <div class="panel pa-calwrap lvform"><h3>个人日历 <small>${C.DAYS} 日 · 按月分行 · 有任务/请假/备份/休息</small></h3>${dayStrip}${pairSection}</div>
       ${cards}
       <div class="grid g2 pa-detail">
         <div class="panel"><h3>休息间隔 <small>软 ${softH}h · 硬 ${hardRest}h</small></h3><div class="pa-list">${restList}</div></div>

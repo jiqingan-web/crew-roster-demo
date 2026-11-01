@@ -795,7 +795,11 @@ body.pa-on .story{display:none}
 .pa-pick-h{margin-left:auto;color:var(--mut);font-size:12px;font-variant-numeric:tabular-nums}
 @media(max-width:1100px){.pa-kpis{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:700px){.pa-kpis{grid-template-columns:repeat(2,1fr)}}
-.pa-days-wrap{margin-top:8px}
+;.pa-days-wrap{margin-top:8px}
+.pa-months{display:flex;flex-direction:column;gap:6px}
+.pa-mrow{display:flex;align-items:center;gap:8px;min-width:0}
+.pa-mlab{flex:0 0 34px;font-size:12px;font-weight:600;color:var(--mut);text-align:right;letter-spacing:.02em}
+.pa-days-wrap .lvdays{flex:1;min-width:0;display:grid;grid-template-columns:repeat(31,minmax(0,1fr));gap:2px}
 .pa-calwrap.lvform{overflow:visible}
 .pa-dmark{display:inline-block;width:5px;height:5px;border-radius:50%;margin-left:1px;vertical-align:super;background:var(--warn)}
 .pa-dmark.hard{background:#ff5a6a}
