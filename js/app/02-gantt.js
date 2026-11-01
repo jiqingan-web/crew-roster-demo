@@ -100,8 +100,20 @@
         rz.onpointermove = ev => { gw0.style.height = Math.max(300, h0 + ev.clientY - y0) + 'px'; };
         rz.onpointerup = () => { rz.onpointermove = null; rz.classList.remove('on'); localStorage.setItem(GH_KEY, String(gw0.offsetHeight)); if (ui.fit) { ui.fitAvail = 0; rGantt(); } }; }; }
     if (ui.fit) { const av = gw0.clientHeight - $('.ghead').offsetHeight - 2; if (Math.abs(av - (ui.fitAvail || 0)) > 4) { ui.fitAvail = av; return rGantt(); } }
-    document.querySelectorAll('.pa-name').forEach(n => n.onclick = e => { e.stopPropagation(); openPersonAudit(n.dataset.pid); });
-    document.querySelectorAll('.lvable').forEach(c => c.onclick = () => { const id = c.dataset.pid; const nx = C.buildIndex(st).sched[id].find(pr => pr.start + pr.ndays - 1 >= 1); goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1); });
+    document.querySelectorAll('.pa-name').forEach(n => {
+      n.onclick = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+        openPersonAudit(n.dataset.pid || n.closest('[data-pid]')?.dataset?.pid);
+      };
+    });
+    document.querySelectorAll('.lvable').forEach(c => c.onclick = e => {
+      if (e.target.closest('.pa-name')) return; // name → 个人审计 only
+      const id = c.dataset.pid;
+      const nx = C.buildIndex(st).sched[id].find(pr => pr.start + pr.ndays - 1 >= 1);
+      goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1);
+    });
     if ($('#hlClr')) { $('#hlClr').onclick = () => { ui.hl = null; rGantt(); }; $('#hlUndo').onclick = undoLeave; }
     bindSearchInput($('#gq'), v => { ui.gq = v; const pos = $('#gq').selectionStart; rGantt(); const el=$('#gq'); if(el){ el.focus(); try{el.setSelectionRange(pos,pos);}catch(e){} } });
     const gsq = $('#gsq'); if (gsq) gsq.onchange = e => { ui.gsq = e.target.value; rGantt(); };

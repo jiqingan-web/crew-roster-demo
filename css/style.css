@@ -208,7 +208,7 @@ details summary{cursor:pointer;color:var(--mut)}
 .grow.hlrow .gcell0{background:#173a2e}
 .bar.hl{outline:3px solid var(--ok);outline-offset:-1px;box-shadow:0 0 14px rgba(46,204,143,.8);z-index:4}
 .hlbar{display:flex;align-items:center;gap:8px;background:#0f3b2c;border:1px solid var(--ok);border-radius:6px;padding:4px 10px;margin-bottom:8px;font-size:12px}
-.gcell0.lvable{cursor:pointer}.gcell0.lvable:hover .nm{text-decoration:underline}
+.gcell0.lvable{cursor:pointer}
 .btn[disabled]{opacity:.4;cursor:not-allowed}
 /* 执勤风险 / 监控 */
 .rbadge{display:inline-block;margin-right:3px;font-weight:700}.rbadge.r-high,.rbadge.r-over{color:#ff6b7a}.rbadge.r-med{color:var(--warn)}
@@ -617,7 +617,7 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 
 /* ---- 单人合规审计 ---- */
 body.pa-on .story{display:none}
-.pa-name{cursor:pointer;color:var(--acc);text-decoration:underline;text-underline-offset:2px}
+.pa-name{cursor:pointer;color:var(--acc);text-decoration:underline;text-underline-offset:2px;padding:2px 4px;margin:-2px -4px;border-radius:4px;position:relative;z-index:2}
 .pa-name:hover{color:var(--acc2)}
 .pa-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
 .pa-head #paBack{margin-left:0}
