@@ -156,7 +156,7 @@
   setInterval(tickClock, 1000);
   document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('[data-auto]'); if (a) runAuto(); const g = e.target.closest && e.target.closest('[data-go]'); if (g) goTab(g.dataset.go); });
   // 侧边栏
-  const SIDE = [['计划', [['overview', '▦', '总览'], ['gantt', '♙', '人员视图'], ['tasks', '☰', '任务视图'], ['leave', '▤', '请假调配']]],
+  const SIDE = [['计划', [['overview', '▦', '总览'], ['gantt', '♙', '人员视图'], ['audit', '▣', '个人审计'], ['tasks', '☰', '任务视图'], ['leave', '▤', '请假调配']]],
     ['监控', [['report', '⚠', '校验与异常'], ['duty', '◷', '执勤监控'], ['ops', '◔', '运营看板']]],
     ['管理', [['settings', '⚙', '设置'], ['data', '⇅', '导入导出'], ['rules', '§', '规则库'], ['roster', '☷', '人员总览'], ['welfare', '♡', '员工福利'], ['fills', '↺', '补位历史']]]];
   function renderSide() {

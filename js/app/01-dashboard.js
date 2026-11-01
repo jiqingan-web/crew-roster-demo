@@ -23,9 +23,9 @@
   }
   function render() {
     document.querySelectorAll('#tabs button[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
-    if (!(tab === 'gantt' && ui.auditPid)) document.body.classList.remove('pa-on');
+    if (!(tab === 'audit' && ui.auditPid)) document.body.classList.remove('pa-on');
     renderStory(); renderSide(); applyCompact();
-    ({ ops: rOps, gantt: rGantt, roster: rRoster, tasks: rTasks, overview: rOverview, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
+    ({ ops: rOps, gantt: rGantt, audit: rPersonAudit, roster: rRoster, tasks: rTasks, overview: rOverview, report: rReport, leave: rLeave, fills: rFills, rules: rRules, duty: rDuty, welfare: rWelfare, data: rData, settings: rSettings })[tab]();
   }
 
 
