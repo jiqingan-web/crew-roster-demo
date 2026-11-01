@@ -37,7 +37,7 @@
     for (const p of ps) {
       const hr = idx.hours[p.id]; const bad = hr > (S.hardMaxHours || 100); const amb = false;
       const hlr = ui.hl && ui.hl.pilots.has(p.id);
-      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点左栏→请假调配 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
+      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点姓名→合规审计；点其余→请假调配 · ${p.id} ${esc(p.name)} ${esc(p.rank)} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm pa-name" data-pid="${p.id}" title="打开个人合规审计">${esc(p.name)}</span>${pill(p.rank)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
       const trd = (st.training || {})[p.id] || [];
       const ctd = (st.control || {})[p.id] || [];
@@ -100,6 +100,7 @@
         rz.onpointermove = ev => { gw0.style.height = Math.max(300, h0 + ev.clientY - y0) + 'px'; };
         rz.onpointerup = () => { rz.onpointermove = null; rz.classList.remove('on'); localStorage.setItem(GH_KEY, String(gw0.offsetHeight)); if (ui.fit) { ui.fitAvail = 0; rGantt(); } }; }; }
     if (ui.fit) { const av = gw0.clientHeight - $('.ghead').offsetHeight - 2; if (Math.abs(av - (ui.fitAvail || 0)) > 4) { ui.fitAvail = av; return rGantt(); } }
+    document.querySelectorAll('.pa-name').forEach(n => n.onclick = e => { e.stopPropagation(); openPersonAudit(n.dataset.pid); });
     document.querySelectorAll('.lvable').forEach(c => c.onclick = () => { const id = c.dataset.pid; const nx = C.buildIndex(st).sched[id].find(pr => pr.start + pr.ndays - 1 >= 1); goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1); });
     if ($('#hlClr')) { $('#hlClr').onclick = () => { ui.hl = null; rGantt(); }; $('#hlUndo').onclick = undoLeave; }
     bindSearchInput($('#gq'), v => { ui.gq = v; const pos = $('#gq').selectionStart; rGantt(); const el=$('#gq'); if(el){ el.focus(); try{el.setSelectionRange(pos,pos);}catch(e){} } });

@@ -1,4 +1,4 @@
-/* 机组排班助手 - 单人合规审计页（侧栏「个人审计」先选人） */
+/* 机组排班助手 - 单人合规审计页（侧栏「个人审计」先选人；人员视图点姓名直达该人） */
   // ICAO → IATA（日历航线展示 CTU-PVG；未收录则回退 ICAO）
   const PA_IATA = {
     ZUUU: 'CTU', ZUTF: 'TFU', ZSPD: 'PVG', ZSSS: 'SHA', ZBAA: 'PEK', ZBAD: 'PKX',

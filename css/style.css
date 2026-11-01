@@ -617,7 +617,8 @@ html[data-theme=warm]{--bg:#1d1b19;--panel:#28251f;--panel2:#322e27;--line:#4a44
 
 /* ---- 单人合规审计 ---- */
 body.pa-on .story{display:none}
-.pa-name{cursor:default;color:inherit;text-decoration:none}
+.pa-name{cursor:pointer;color:var(--acc);text-decoration:underline;text-underline-offset:2px}
+.pa-name:hover{color:var(--acc2)}
 .pa-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:8px;padding:8px 12px;background:var(--panel);border:1px solid var(--line);border-radius:8px}
 .pa-head #paBack{margin-left:0}
 .pa-title{font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
