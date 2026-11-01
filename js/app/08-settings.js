@@ -160,9 +160,9 @@
     const p = $('#progress'); p.classList.remove('hidden');
     showAutoStatus({ pct: 0, stage: '启动后台计算', elapsed: 0 });
     const t0 = performance.now();
-    // 每次点击新种子：方案不同但合法；lite 内部 3 候选择优且与历史方案差异 ≥40%
+    // 单次生成：新种子即可；不再为「多套方案轮播」强求 minDiff / 多候选
     const seed = (window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4e9)) % 1000000000;
-    const opts = { seed, prevCrews: (st.solHist || []).slice(-4).map(h => h.crews), minDiff: 0.4, tries: LITE ? 3 : 1 };
+    const opts = { seed, tries: 1, minDiff: 0 };
     const cancelBtn = ensureCancelBtn();
     const w = makeAutoWorker();
     const runMain = () => { // 退回：主线程同步计算（界面在计算期间不会刷新）

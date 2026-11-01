@@ -77,7 +77,7 @@
         const offStale = LITE && isSampleish && window.RosterOfficial && (s.official !== 1 || (window.RosterOfficial.OFFICIAL_ROSTER.grid && !s.grid));
         if (isSampleish && (stale || offStale)) {
           reset(false);
-          toast(offStale && !stale ? '已载入「模拟表格1」为默认方案（可在方案切换处切到自动填人方案）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
+          toast(offStale && !stale ? '已载入「模拟表格1」为默认（真实导入；一键自动填人另生成一套）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
           return;
         }
         st = s;
@@ -348,33 +348,43 @@
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, m)} ${seatTxt(pr, s, m)}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 
-  // ---------------- 方案历史（最近 5 套）----------------
+  // ---------------- 方案历史：模拟表格1（真实导入）+ 至多 1 套自动填人结果 ----------------
   function solKpi(s) { return { coverage: s.coverage, holes: s.total - s.full, hard: s.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length,
     min: s.all.min, max: s.all.max, std: s.all.std, gini: s.all.gini, g34: s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23, pref: s.prefRate }; }
   function pushSolution(s, info) {
-    const H = st.solHist = st.solHist || []; st.solN = (st.solN || 0) + 1;
+    st.solN = (st.solN || 0) + 1;
     const crews = st.pairings.map(p => Object.assign({}, p.crew));
-    const diff = H.length ? C.crewDiff(crews, H[H.length - 1].crews) : null;
-    H.push({ n: st.solN, name: info.name || null, seed: info.seed != null ? info.seed : null, crews, control: st.control || null, trainingKind: st.trainingKind || null, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
-      demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() });
-    while (H.length > 5) { const k = H.findIndex(x => !x.name); H.splice(k < 0 ? 0 : k, 1); } st.solIdx = H.length - 1; // 「模拟表格1」固定保留在首位
+    const H0 = st.solHist || [];
+    const diff = H0.length ? C.crewDiff(crews, H0[H0.length - 1].crews) : null;
+    const entry = { n: st.solN, name: info.name || null, seed: info.seed != null ? info.seed : null, crews, control: st.control || null, trainingKind: st.trainingKind || null, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
+      demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() };
+    // 真实导入固定保留；自动填人只保留最新一套（不再堆到 5 套）
+    if (info.name) st.solHist = [entry];
+    else {
+      const named = H0.filter(x => x.name).slice(0, 1);
+      st.solHist = named.concat([entry]);
+    }
+    st.solIdx = st.solHist.length - 1;
   }
   function useSolution(i) {
     const H = st.solHist || []; const h = H[i]; if (!h) return;
     st.pairings.forEach((p, k) => { p.crew = Object.assign({}, h.crews[k]); delete p.demoHole; }); const dh = new Set(h.demoHoles || []);
     st.pairings.forEach(p => { if (dh.has(p.id)) p.demoHole = true; });
-    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; if (h.control !== undefined) st.control = h.control; if (h.trainingKind !== undefined) st.trainingKind = h.trainingKind; st.solIdx = i; refresh(); toast(h.name ? `已切换到「${h.name}」` : `已切换到方案 #${h.n}（seed ${h.seed}）`);
+    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; if (h.control !== undefined) st.control = h.control; if (h.trainingKind !== undefined) st.trainingKind = h.trainingKind; st.solIdx = i; refresh(); toast(h.name ? `已切换到「${h.name}」（真实导入）` : `已切换到自动填人结果` + (h.seed != null ? `（seed ${h.seed}）` : ''));
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];
-    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="上一套">◀ 上一套</button><b>${h.name ? esc(h.name) : '方案 #' + h.n}</b><small>${h.name ? '源表逐格载入' : 'seed ' + h.seed}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="下一套">下一套 ▶</button></span>`;
+    const label = h.name ? esc(h.name) : '自动填人';
+    const sub = h.name ? '真实导入' : ('生成结果' + (h.seed != null ? ' · seed ' + h.seed : ''));
+    if (H.length < 2) return `<span class="solsw"><b>${label}</b><small>${sub}</small></span>`;
+    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="模拟表格1（真实导入）">◀ 真实表</button><b>${label}</b><small>${sub}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="最新自动填人结果">生成结果 ▶</button></span>`;
   }
   function solCompareHtml() {
     const H = st.solHist || []; if (!H.length) return '';
     const cur = st.solIdx != null ? st.solIdx : H.length - 1; const pc = x => (x * 100).toFixed(1) + '%';
-    return `<div class="panel"><h3>方案对比 <small>每次「一键自动填人」生成新种子方案；保留最近 ${H.length}/5 套 · 差异 = 与上一套相比换人的岗位比例</small></h3>
+    return `<div class="panel"><h3>方案对比 <small>「模拟表格1」= 真实导入；「自动填人」= 引擎最新结果（只保留一套，再次填人会覆盖）</small></h3>
       <table><tr><th>方案</th><th>seed</th><th>满员率</th><th>空洞</th><th>硬违规(非空洞)</th><th>工时区间</th><th>标准差</th><th>基尼</th><th>休3–4天占比</th><th>意向满足</th><th>与上一套差异</th><th></th></tr>${H.map((h, i) => { const k = h.kpi;
-        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>${h.name ? esc(h.name) : '#' + h.n}</b></td><td class="mut">${h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>`;
+        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>${h.name ? esc(h.name) : '自动填人'}</b></td><td class="mut">${h.seed == null ? '—' : h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>`;
   }
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-sol]'); if (b && !b.disabled) useSolution(+b.dataset.sol); });
   function renderKpis() {
