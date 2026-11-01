@@ -18,6 +18,18 @@
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return PA_COLORS[Math.abs(h) % PA_COLORS.length];
   }
+  /** 任务机场单字简称链（复用 apAbbr：蓉/府…），压缩无横线，如 蓉府蓉 */
+  function paRouteChain(pr) {
+    if (!pr || !pr.legs || !pr.legs.length) return '';
+    const codes = [pr.legs[0].from, ...pr.legs.map(l => l.to)];
+    return codes.map(c => apAbbr(c)).join('');
+  }
+  /** 列表标签：OF008 蓉府蓉 · D1… */
+  function paPairLabel(pr, dayBit) {
+    const chain = paRouteChain(pr);
+    const head = chain ? `${pr.id} ${chain}` : String(pr.id || '');
+    return dayBit ? `${head} · ${dayBit}` : head;
+  }
 
   /** 144h 窗内、报到前最大连续休息（小时） */
   function paMaxRestH(intervals, t0) {
@@ -177,7 +189,7 @@
       const underHard = rh + 1e-9 < hardRest;
       const underSoft = rh + 1e-9 < softH;
       restRows.push({
-        label: `${pr.id} · D${pr.start}` + (pr.ndays > 1 ? `–${pr.start + pr.ndays - 1}` : ''),
+        label: paPairLabel(pr, 'D' + pr.start + (pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : '')),
         hours: rh, underHard, underSoft, soft: softH, hard: hardRest
       });
     });
@@ -209,7 +221,7 @@
         else if (risk === 'high') note = `延误风险高 · 余 ${dy.planBuffer} 分`;
         else if (risk === 'med') note = `延误风险中 · 余 ${dy.planBuffer} 分`;
         fdpRows.push({
-          label: `${pr.id} · D${dy.d}（${dateOf(dy.date)}）`,
+          label: paPairLabel(pr, 'D' + dy.d + '（' + dateOf(dy.date) + '）'),
           fdp: dy.planFdp, limit: dy.limit, buffer: dy.planBuffer, risk, over, note
         });
       });
@@ -262,12 +274,15 @@
           const right = Math.max(left + 8, Math.min(100, (t1 / DAYM) * 100));
           const hSum = ls.reduce((s, x) => s + x.h, 0);
           const segs = ls.map(f => {
-            const bit = `<b>${esc(f.flt)}</b> ${paRoute(f.from, f.to)}`
-              + ` <span class="pa-gt">${C.fmtT(f.dep)}-${C.fmtT(f.arr)}</span>`
-              + (f.h ? ` <span class="pa-h">${f.h.toFixed(1)}h</span>` : '');
-            return `<span class="pa-gseg">${bit}</span>`;
-          }).join('<span class="pa-gjoin">·</span>');
-          const title = `${pid0} ${ls[0].role || ''} ${hSum ? hSum.toFixed(1) + 'h' : ''}`.trim();
+            const r = paRoute(f.from, f.to);
+            const tm = `${C.fmtT(f.dep)}-${C.fmtT(f.arr)}`;
+            const hh = f.h ? `${f.h.toFixed(1)}h` : '';
+            return `<span class="pa-gseg"><span class="pa-g1"><b>${esc(f.flt)}</b> ${esc(r)}</span>`
+              + `<span class="pa-g2"><span class="pa-gt">${esc(tm)}</span>`
+              + (hh ? ` <span class="pa-h">${esc(hh)}</span>` : '') + `</span></span>`;
+          }).join('');
+          const titleBits = ls.map(f => `${f.flt} ${paRoute(f.from, f.to)} ${C.fmtT(f.dep)}-${C.fmtT(f.arr)}${f.h ? ' ' + f.h.toFixed(1) + 'h' : ''}`);
+          const title = `${pid0}${ls[0].role ? ' ' + ls[0].role : ''} ${paRouteChain(ls[0].pr) || ''} · ${titleBits.join(' · ')}${hSum ? ' · Σ' + hSum.toFixed(1) + 'h' : ''}`.trim();
           body += `<div class="pa-gbar" title="${esc(title)}" style="left:${left.toFixed(1)}%;width:${(right - left).toFixed(1)}%;background:${col}">${segs}</div>`;
         });
         body += '</div>';
