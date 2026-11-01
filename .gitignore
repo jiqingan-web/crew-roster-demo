@@ -8,3 +8,4 @@ manuals/
 # real roster with PII — keep local only
 ref/*.xlsx
 ref/*.xls
+ref/*.tgz
