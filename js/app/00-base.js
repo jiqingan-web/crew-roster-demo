@@ -182,7 +182,7 @@
     let h = `<div class="ihd"><span>⚠ 需处理 <b>${count}</b> 个任务</span><span class="mut">${focus.length} 条硬性/缺人</span></div>`;
     h += focus.map((v, i) => `<button type="button" class="issue-row" data-pr="${esc(v.pairing)}" data-i="${i}">
       <span class="itag ${v.kind}">${v.kind === 'unfilled' ? '缺人' : '硬性'}</span>
-      <span class="ipid">${esc(v.pairing)}</span>
+      <span class="ipid">${escPairOf(v.pairing)}</span>
       <span class="imsg">${esc(v.type)} · ${esc(v.msg)}</span>
     </button>`).join('');
     pan.innerHTML = h;
@@ -301,7 +301,7 @@
       h += rows.map((f, ri) => {
         const src = f.source === 'hole' ? '空洞换人' : f.source === 'edit' ? '手工换人' : f.source === 'oneclick' ? '一键补位' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
         return `<tr class="${f.undone ? 'mut' : ''}"><td>${esc(f.time)}</td><td>${esc(f.leavePilotName || '—')}</td><td>${(f.leaveDays || []).join(',') || '—'}</td>
-          <td><b>${esc(f.pairingId)}</b>${fillBadge(f.pairingId)}</td><td>${esc(f.slotName || f.slot || '')}</td>
+          <td><b>${escPairOf(f.pairingId)}</b>${fillBadge(f.pairingId)}</td><td>${esc(f.slotName || f.slot || '')}</td>
           <td>${esc(f.fromName || '—')}</td><td><b>${esc(f.toName || '—')}</b> ${f.toRank ? pill(f.toRank) : ''}</td>
           <td>${src}${f.undone ? ' · 已撤销' : ''}</td>
           <td>${f.undone ? '' : `<button class="btn sm fillUndoOne" data-fid="${esc(f.id)}">撤销此步</button>`}</td></tr>`;
@@ -354,6 +354,10 @@
         const cand = [fix(n), ...n.replace(/^成都/, '')].filter(Boolean).concat([...n]); const ch = cand.find(x => !used.has(x)) || n[0] || code[0]; used.add(ch); AB[code] = ch; }); }
     return AB[c] || String(C.apName(c, st) || c)[0]; }
   function abHtml(c) { const a = esc(apAbbr(c)); return C.isSpecial(c, st) ? `<span class="red">${a}</span>` : a; }
+  function pairLabel(pr) { return C.pairingLabel(pr, st); }
+  function pairLabelOf(id) { return C.pairingLabelOf(st, id); }
+  function escPair(pr) { return esc(pairLabel(pr)); }
+  function escPairOf(id) { return esc(pairLabelOf(id)); }
   function crewShort(pr, m) { return ['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) + (s === 'F' && C.INSTR.includes(m[pr.crew[s]].rank) ? '<sup class="instr">教</sup>' : '') : '<span class="warnc">缺</span>').join('/'); }
   function blkDay(c) { return `${[c.ls[0].from, ...c.ls.map(l => l.to)].map(abHtml).join('-')}${c.ls.some(l => l.dh) ? '<span class="dh">(随)</span>' : ''}<br><span class="mut" style="color:#b9cbe8">${C.fmtT(c.ls[0].dep)}-${C.fmtT(c.ls[c.ls.length - 1].arr)}</span>`; }
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, m)} ${seatTxt(pr, s, m)}`).join(' / '); }

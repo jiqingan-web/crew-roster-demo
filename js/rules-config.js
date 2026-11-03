@@ -329,7 +329,22 @@
   "senior_pilot_rule_active": false,
   "restriction_table_hard": true
  },
- "_sha1": "d29b815af1"
+ "fdp_long_ground_split": {
+  "enabled_default": true,
+  "threshold_hours": 5,
+  "outstation_only": false,
+  "hotel_note_override": true,
+  "restart_report": true,
+  "remark": "对应设置 fdpSplitLongGround / fdpSplitLongGroundH（默认5h）；关闭则恢复整段连续计 FDP"
+ },
+ "fdp_window": {
+  "operating_legs_only": true,
+  "report": "first_operating_dep_minus_reportMin",
+  "end": "last_operating_arr",
+  "deadhead_extends_window": false,
+  "release_for_rest": "last_leg_including_dh_plus_releaseMin"
+ },
+ "_sha1": "bd09ce7647"
 };
   if (typeof module === "object" && module.exports) module.exports = { RULES_CONFIG };
   else root.RosterRulesConfig = { RULES_CONFIG };

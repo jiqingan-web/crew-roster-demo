@@ -53,7 +53,7 @@ chk('catalog senior disabled', /停用/.test(cat.rules.find(r => r.id === 'CR-12
 for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.autoFill(s); const v = C.validate(s);
   chk('lite ' + seed + ' no rule hard', !v.some(x => x.level === 'hard' && /搭配|机组|FO|高高原|特殊/.test(x.type)));
   const kmgAuth = s.pilots.filter(p => (p.authDemo || []).includes('ZPPP')).length; chk('lite ' + seed + ' KMG demo quals labelled', kmgAuth > 0, kmgAuth); }
-// 121.495(b) 第 5 日：执飞违规；置位(随)回基地不违规（EU.COM 3.6.10 2）「执行任何飞行任务」）
+// 第5日执飞：用户 2026-11-02 — 时间满足即可，ftlCheckPerson 不再硬禁；validate 可软提示
 { const s = C.generateLiteSample(20261101); const capt = s.pilots.find(x => C.isCaptClass(x.rank)); const D = C.DAY;
   const leg = (d, f, t, h, dh) => ({ d: 1, flt: 'EU' + d + f, from: f, to: t, dep: (d - 1) * D + h * 60, arr: (d - 1) * D + h * 60 + 120, ac: 'A320', dh });
   s.pairings = []; s.standby = null; s.training = null; s.sim = null;
@@ -61,13 +61,31 @@ for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.auto
   const mk5 = dh => ({ id: 'Q5', start: 5, ndays: 1, ac: 'A320', legs: [leg(5, 'ZUUU', 'ZBHH', 9, dh), leg(5, 'ZBHH', 'ZUUU', 13, dh)], crew: { C: null, F: null, T: null } });
   const ix = C.buildIndex(s);
   const op = C.ftlCheckPerson(capt, mk5(false), s, ix, {}), dh = C.ftlCheckPerson(capt, mk5(true), s, ix, {});
-  chk('121.495b day5 operating flagged', op.some(x => x.includes('第5日')), op.join('|'));
-  chk('121.495b day5 deadhead allowed', !dh.some(x => x.includes('第5日')), dh.join('|'));
-  // 第 5 日置位：合规但软提示
+  chk('day5 operating not hard in ftl', !op.some(x => x.includes('第5日')), op.join('|'));
+  chk('day5 deadhead not hard in ftl', !dh.some(x => x.includes('第5日')), dh.join('|'));
+  // 第 5 日置位：合规软提示；执飞亦软提示、无硬违规
   s.pairings.push(mk5(true)); s.pairings[4].crew.C = capt.id; const v5 = C.validate(s);
-  chk('day5 deadhead soft note', v5.some(v => v.type === '第5日置位' && v.level === 'soft') && !v5.some(v => v.level === 'hard' && /第5日/.test(v.msg)));
-  // 仅置位的日子不计入连续值勤日：D1-3 执飞 + D4 仅置位 + D5 执飞 → 不违规
+  chk('day5 deadhead soft note', v5.some(v => v.type === '第5日置位' && v.level === 'soft') && !v5.some(v => v.level === 'hard' && /第5日/.test(v.msg||'') || v.type === '连续4日后第5日飞行'));
+  s.pairings[4].legs.forEach(l => { delete l.dh; }); // 改成执飞
+  const vOp = C.validate(s);
+  chk('day5 operating soft not hard', vOp.some(v => v.type === '第5日执飞' && v.level === 'soft') && !vOp.some(v => v.level === 'hard' && (/第5日/.test(v.msg||'') || v.type === '连续4日后第5日飞行')));
+  // 置位日仍计连续链（仅影响软提示）：D1-3 执飞 + D4 置位 + D5 执飞 → soft 第5日执飞，ftl 无硬
   s.pairings = s.pairings.slice(0, 3); s.pairings.push({ id: 'Q4', start: 4, ndays: 1, ac: 'A320', legs: [leg(4, 'ZUUU', 'ZBHH', 9, true)], crew: { C: capt.id, F: null, T: null } });
   const ix2 = C.buildIndex(s); const r6 = C.ftlCheckPerson(capt, mk5(false), s, ix2, {});
-  chk('deadhead-only day not counted', !r6.some(x => x.includes('第5日')), r6.join('|')); }
+  chk('day5 after dh-day still not hard ftl', !r6.some(x => x.includes('第5日')), r6.join('|'));
+  s.pairings.push(Object.assign(mk5(false), { crew: { C: capt.id, F: null, T: null } }));
+  const v6 = C.validate(s);
+  chk('day5 after dh-day soft operating', v6.some(v => v.type === '第5日执飞' && v.level === 'soft') && !v6.some(v => v.level === 'hard' && /第5日/.test(v.type + v.msg))); }
+
+// CR-20 J3+ companion (v685): 机长B/SPIC/US/J0 可配 J3，非仅 TL+
+{ const fo = (id, rk) => P(id, rk, ALL);
+  const okIss = (capt, mid) => C.crewIssue(norm, [P('c', capt), fo('m', mid), fo('f', 'F5')], st);
+  for (const capt of ['机长B', 'J0', 'US', 'SPIC']) {
+    chk('CR20 ' + capt + '+J3+F5 ok', !okIss(capt, 'J3'), okIss(capt, 'J3'));
+    chk('CR20 ' + capt + '+TL+F5 ok', !okIss(capt, 'TL'));
+    chk('CR20 ' + capt + '+F4+F5 no', /CR-20/.test(okIss(capt, 'F4') || ''), okIss(capt, 'F4'));
+  }
+  chk('CR20 机长A+F4+F5 still ok', !C.crewIssue(norm, [P('c', '机长A'), fo('a', 'F4'), fo('b', 'F5')], st));
+  chk('CR20 seatOK 机长A→J0 alias', C.seatOK('机长A', 'F4') && C.seatOK('机长B', 'F4') && !C.seatOK('机长A', 'F3'));
+}
 console.log(fail ? 'RULES FAIL ' + fail : 'RULES ALL OK'); process.exitCode = fail ? 1 : 0;

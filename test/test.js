@@ -211,7 +211,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
 { const chk = (n, ok, info) => { console.log('COM ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
   const D = C.defaultSettings();
   chk('COM month=100', C.COM && C.COM.monthFlightH === 100 && C.COM.rev.indexOf('公司') >= 0);
-  chk('reportMin default 95', D.reportMin === 95, D.reportMin);
+  chk('reportMin default 105', D.reportMin === 105, D.reportMin);
   chk('hardMax default 100', D.hardMaxHours === 100);
   chk('company == law month', C.COM.monthFlightH === C.CCAR121.monthFlightH);
   const s = C.generateSample(); C.autoFill(s,{attempts:3}); s.settings.hardMaxHours = 1;
@@ -252,7 +252,10 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   const pr5 = mk('PRD5', 5, [['EU5', 'ZUUU', 'ZGSZ', 9, 12]]);
   const idx2 = C.buildIndex(st);
   const rs5 = C.ftlCheckPerson(capt, pr5, st, idx2, {});
-  chk('day5 after 4 duty', rs5.some(x => x.includes('第5日')), rs5.join('|'));
+  chk('day5 after 4 duty not hard', !rs5.some(x => x.includes('第5日')), rs5.join('|'));
+  st.pairings.push(Object.assign(pr5, { crew: { C: capt.id, F: null, T: null } }));
+  const v5s = C.validate(st);
+  chk('day5 soft tip optional', !v5s.some(v => v.level === 'hard' && (v.type === '连续4日后第5日飞行' || /第5日/.test(v.msg||''))));
   // 7 日 60h：若单人 7 天每天 FDP≈10h → 超限（用长值勤）
   st.pairings = [];
   for (let d = 1; d <= 7; d++) {

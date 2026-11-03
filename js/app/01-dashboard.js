@@ -202,7 +202,7 @@
     const specialSupply = {};
     Object.keys(specialDemand).forEach(c => { specialSupply[c] = st.pilots.filter(p => (p.auth || []).includes(c)).length; });
     const instrOnNew = st.pairings.filter(pr => {
-      const c = idx.pm[pr.crew.C]; return c && C.isNew(c.rank) && ['C','F','T'].some(s => { const x = idx.pm[pr.crew[s]]; return x && C.isInstr(x.rank); });
+      const c = idx.pm[pr.crew.C]; return c && C.isNew(c.rank) && ['C','F','T'].some(s => { const x = idx.pm[pr.crew[s]]; return x && C.isJ3plus(x.rank); });
     }).length;
     const newCaptPr = st.pairings.filter(pr => { const c = idx.pm[pr.crew.C]; return c && C.isNew(c.rank); }).length;
 
@@ -227,7 +227,7 @@
     h += `<div class="panel"><h3>资质监控</h3>
       <div class="opskpi">
         <div class="okpi"><div class="olab">体检将到期(≤45天)</div><div class="oval">${expiring}</div></div>
-        <div class="okpi"><div class="olab">新机长任务</div><div class="oval">${newCaptPr}</div><div class="omut">含教员同组 ${instrOnNew}</div></div>
+        <div class="okpi"><div class="olab">新机长任务</div><div class="oval">${newCaptPr}</div><div class="omut">含J3+同组 ${instrOnNew}</div></div>
         <div class="okpi"><div class="olab">特殊机场种类</div><div class="oval">${Object.keys(specialDemand).length}</div></div>
       </div>
       <table class="solt"><tr><th>机场</th><th>任务需求</th><th>持权人数</th><th>供需比</th></tr>

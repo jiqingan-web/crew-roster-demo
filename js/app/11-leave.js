@@ -209,7 +209,7 @@
     } else if (!lvAllCands && hh.candidates.length > 4) {
       candHtml += '<button type="button" class="btn sm lvmore" id="lvMoreCand">还有 ' + (hh.candidates.length - 4) + ' 人</button>';
     }
-    return '<div class="lvhole"><div class="lvh1"><b>' + esc(hh.id) + '</b><span class="lvseat">' + esc(hh.slotName) + '位</span>'
+    return '<div class="lvhole"><div class="lvh1"><b>' + escPairOf(hh.id) + '</b><span class="lvseat">' + esc(hh.slotName) + '位</span>'
       + '<span class="mut">11/' + lvPad(hh.start) + ' 起 ' + hh.ndays + ' 天 · ' + esc(hh.ac) + ' · ' + hh.hours + 'h · ' + hh.legs + ' 段 · 机号 ' + (esc((hh.reg || []).join('/')) || '—') + '</span>'
       + '<span class="lvneed">缺 1 人</span></div>'
       + '<div class="lvroute">' + chips + '</div>'
@@ -333,14 +333,14 @@
     const pr = st.pairings.find(x => x.id === hh.id); if (!pr) return;
     pr.crew[hh.slot] = c.id;
     if (st.standby && st.standby[c.id]) st.standby[c.id] = st.standby[c.id].filter(d => !C.daysTouched(pr, st).includes(d));
-    leaveHist.push({ snap, label: p.name + ' 请假 ' + lvSpan(days) + ' · ' + hh.id + ' ' + hh.slotName + '←' + c.name, time: new Date().toTimeString().slice(0, 8) });
+    leaveHist.push({ snap, label: p.name + ' 请假 ' + lvSpan(days) + ' · ' + pairLabelOf(hh.id) + ' ' + hh.slotName + '←' + c.name, time: new Date().toTimeString().slice(0, 8) });
     recordFillsFromHole(hh, p, days, c, 'hole');
     lvReg = { pid, days: days.slice(), kind: 'leave', t: Date.now() };
     ui.hl = { pairings: new Set([hh.id]), pilots: new Set([pid, c.id]), days, ok: (typeof crewComplianceOk === 'function' ? crewComplianceOk(pr) : false) };
     leaveOpts = null; lvPlanIdx = -1;
     lvScan(); sum = C.summarize(st); renderKpis(); updateIssueBadge(); save(); rLeave();
     const left = leaveHoles && leaveHoles.holes ? leaveHoles.holes.length : 0;
-    toast('✔ ' + esc(hh.id) + ' ' + esc(hh.slotName) + '位：<b>' + esc(c.name) + '</b> 已补位' + (left ? ' · 还剩 ' + left + ' 个座位' : ' · <span class="okc">座位已补齐</span>'), 4200);
+    toast('✔ ' + escPairOf(hh.id) + ' ' + esc(hh.slotName) + '位：<b>' + esc(c.name) + '</b> 已补位' + (left ? ' · 还剩 ' + left + ' 个座位' : ' · <span class="okc">座位已补齐</span>'), 4200);
   }
 
   function lvApplyPlan(i) {

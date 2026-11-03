@@ -39,7 +39,8 @@ if (hard.length) {
 L.push('硬性违规 Top：');
 hard.forEach(v => L.push(`- [${v.pairing || '-'}] ${v.type || ''}：${v.msg || ''}${v.pilot? '（' + v.pilot + '）': ''}`));
 } else L.push('硬性违规：无');
-const ranked = (s.per || []).slice().sort((a, b) => b.hours - a.hours);
+const outerIds = new Set((st.pilots || []).filter(p => (typeof isOuterPilot === 'function' ? isOuterPilot(p) : (C.isOuterPilot && C.isOuterPilot(p)))).map(p => p.id));
+const ranked = (s.per || []).filter(x => !outerIds.has(x.id)).slice().sort((a, b) => b.hours - a.hours);
 if (ranked.length) {
 L.push('月工时最高5人：' + ranked.slice(0, 5).map(x => `${x.name}(${x.rank})${x.hours.toFixed(1)}h`).join('、'));
 L.push('月工时最低5人：' + ranked.slice(-5).reverse().map(x => `${x.name}(${x.rank})${x.hours.toFixed(1)}h`).join('、'));

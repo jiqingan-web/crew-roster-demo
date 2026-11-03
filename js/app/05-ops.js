@@ -8,7 +8,7 @@
     const big = rows.length > 60;
     return `<div style="margin-top:10px"><b>空洞诊断</b> <span class="mut">${rows.length} 个空位：</span>${Object.entries(cnt).map(([k, n]) => `<span class="dchip ${k === '数据问题' ? 'red' : k === '真实运力不足' ? 'warnc' : 'okc'}">${k} ${n}</span>`).join('')}
       <div class="scroll" style="max-height:260px;margin-top:6px"><table><tr><th>任务</th><th>座位</th><th>分类</th><th>原因</th><th>全员阻断分布</th></tr>
-      ${rows.slice(0, big ? 60 : rows.length).map(([pr, s, d]) => `<tr class="issueJump" data-pr="${pr.id}"><td>${pr.id}</td><td>${C.SLOT_NAME[s] || s}</td><td class="${d.cls === '数据问题' ? 'red' : d.cls === '真实运力不足' ? 'warnc' : 'okc'}">${d.cls}</td><td>${esc(d.why)}</td><td class="mut">${Object.entries(d.dist).sort((a, b) => b[1] - a[1]).map(([k, n]) => k + ' ' + n).join('、')}</td></tr>`).join('')}
+      ${rows.slice(0, big ? 60 : rows.length).map(([pr, s, d]) => `<tr class="issueJump" data-pr="${pr.id}"><td>${esc(pairLabel(pr))}</td><td>${C.SLOT_NAME[s] || s}</td><td class="${d.cls === '数据问题' ? 'red' : d.cls === '真实运力不足' ? 'warnc' : 'okc'}">${d.cls}</td><td>${esc(d.why)}</td><td class="mut">${Object.entries(d.dist).sort((a, b) => b[1] - a[1]).map(([k, n]) => k + ' ' + n).join('、')}</td></tr>`).join('')}
       </table></div>${big ? '<div class="mut">仅显示前 60 个</div>' : ''}</div>`;
   }
   function rReport() {
@@ -36,7 +36,7 @@
     const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 规章回测摘要 <small>R8 · 公司运行手册 · ${COM.re12 || 'RE12'}</small></h3>
       <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、4连续值勤日(执飞/主备份)后第5日不执飞，第5日置位=软提示、7日飞行执勤期≤${R.sevenDayFdpH}h、月飞行执勤期≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编）<br>
       <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/121回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
-    let h = demoFillBanner() + exportBarHtml() + ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${p.id}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
+    let h = demoFillBanner() + exportBarHtml() + ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${esc(pairLabel(p))}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
       + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
       ${card('任务覆盖率（满员）', (s.coverage * 100).toFixed(1) + '%', `${s.full}/${s.total} 个任务 · ${s.totalHours.toFixed(0)} 任务飞行小时`, s.coverage === 1 ? 'ok' : 'bad')}
       ${card('硬性规则违规', s.hard, s.hard ? '需处理，见下表' : '全部合规 ✔（座位搭配/特殊机场/休息/请假/≤${S.hardMaxHours || 100}h）', s.hard ? 'bad' : 'ok')}
@@ -134,10 +134,10 @@
         ${(() => {
           const alerts = [];
           mon.forEach(x => {
-            if (x.exceed) alerts.push({ sev: 'critical', msg: `${x.pr.id} 预计超 飞行执勤期 ${x.exceed.exceed || x.day.exceed} 分`, pr: x.pr.id });
-            else if (x.day.buffer < (S.fdpRiskHigh || 60)) alerts.push({ sev: 'high', msg: `${x.pr.id} 余量仅 ${x.day.buffer} 分`, pr: x.pr.id });
-            else if (x.day.buffer < (S.fdpRiskMed || 120)) alerts.push({ sev: 'med', msg: `${x.pr.id} 余量 ${x.day.buffer} 分（中）`, pr: x.pr.id });
-            x.downstream.forEach(d => alerts.push({ sev: 'med', msg: `${x.pr.id} 下游休息不足`, pr: x.pr.id }));
+            if (x.exceed) alerts.push({ sev: 'critical', msg: `${pairLabel(x.pr)} 预计超 飞行执勤期 ${x.exceed.exceed || x.day.exceed} 分`, pr: x.pr.id });
+            else if (x.day.buffer < (S.fdpRiskHigh || 60)) alerts.push({ sev: 'high', msg: `${pairLabel(x.pr)} 余量仅 ${x.day.buffer} 分`, pr: x.pr.id });
+            else if (x.day.buffer < (S.fdpRiskMed || 120)) alerts.push({ sev: 'med', msg: `${pairLabel(x.pr)} 余量 ${x.day.buffer} 分（中）`, pr: x.pr.id });
+            x.downstream.forEach(d => alerts.push({ sev: 'med', msg: `${pairLabel(x.pr)} 下游休息不足`, pr: x.pr.id }));
           });
           if (!alerts.length) return '<div class="okc">✔ 当日无告警</div>';
           const col = { critical: 'red', high: 'red', med: 'warnc' };
@@ -147,18 +147,18 @@
     if (dutyView === 'ac') h += rDutyAcHtml(mon, m, A);
     else {
       h += `<div class="dutyg">${mon.map(x => { const dy = x.day; const pr = x.pr; const pct = Math.min(130, dy.fdp / dy.limit * 100);
-        return `<div class="panel dutyc ${x.exceed ? 'dex' : ''}"><div class="flex"><b>${pr.id}</b><span class="mut">D${dy.d}/${pr.ndays} · ${crewTxt(pr, m)}</span>
+        return `<div class="panel dutyc ${x.exceed ? 'dex' : ''}"><div class="flex"><b>${esc(pairLabel(pr))}</b><span class="mut">D${dy.d}/${pr.ndays} · ${crewTxt(pr, m)}</span>
           <span style="margin-left:auto" class="${{ over: 'red', high: 'red', med: 'warnc', low: 'okc' }[dy.risk]}"><span class="rdot r-${dy.risk}"></span>${dy.nLanded ? `已落地 ${dy.nLanded}/${dy.legs.length} 段 · ` : ''}预计 飞行执勤期 ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '超 ' + dy.exceed + ' 分钟' : '剩余余量 ' + dy.buffer + ' 分钟'}</span></div>
           <div class="fdpbar"><i style="width:${pct / 1.3}%" class="r-${dy.risk}"></i><b style="left:${100 / 1.3}%"></b></div>
           <table class="dlt"><tr><th>航班</th><th>航段</th><th>机号</th><th>计划</th><th>实际/预计起飞</th><th>实际/预计落地</th><th>状态</th><th>偏差</th></tr>${dy.legs.map(l => { const k = C.legKey(l.leg); const a = A[k] || {}; return `<tr class="${dy.exLeg && l.arr > dy.start + dy.limit ? 'exrow' : ''}"><td>${l.leg.flt}</td><td>${apHtml(l.leg.from)}-${apHtml(l.leg.to)}</td><td class="mut">${esc(l.leg.reg || '—')}</td><td>${C.fmtT(l.leg.dep)}-${C.fmtT(l.leg.arr)}</td>
             <td><input type="datetime-local" class="atin" data-k="${k}" data-f="dep" value="${a.dep != null ? toDT(a.dep) : ''}" placeholder="${toDT(l.leg.dep)}"></td><td><input type="datetime-local" class="atin" data-k="${k}" data-f="arr" value="${a.arr != null ? toDT(a.arr) : ''}"></td><td><select class="atkind" data-k="${k}" ${l.known ? '' : 'disabled'}><option value="est" ${a.kind !== 'act' ? 'selected' : ''}>预计</option><option value="act" ${a.kind === 'act' ? 'selected' : ''}>实际</option></select></td><td class="${l.known ? (l.lateArr > 0 ? 'warnc' : 'okc') : 'mut'}">${l.known ? `${l.landed ? '✔' : ''}落地 ${l.lateArr >= 0 ? '+' : ''}${l.lateArr} 分` : '按计划'}${l.conflict ? `<div class="mut" title="前段落地晚于本段计划起飞">前段晚到 ${l.conflict} 分</div>` : ''}</td></tr>`; }).join('')}</table>
           ${dy.exLeg ? `<div class="red">✖ 自 ${dy.exLeg.leg.flt} ${C.apName(dy.exLeg.leg.from, st)}-${C.apName(dy.exLeg.leg.to, st)} 起超出 飞行执勤期限制 ${dy.exceed} 分钟（报到 ${C.fmtT(dy.start)}，限制至 ${C.fmtT(dy.start + dy.limit)}）</div>` : ''}
           ${dy.cascExceed ? `<div class="mut">ⓘ 若不追回将超限：前段延误按最短过站顺延，预计 ${dy.cascLeg.leg.flt} 落地 ${C.fmtT(dy.cascLeg.carr)}，超 ${dy.cascExceed} 分钟（提示，不计入超限）</div>` : ''}
-          ${x.downstream.map(d => `<div class="warnc">↳ ${d.overnight ? `D${d.d} 过夜休息压缩至 ${C.fmtH(d.restAfter)}（低于 ${S.minOvernightRestH}h，差 ${d.short} 分钟）` : `${esc(m[d.pilot].name)} 下一任务 ${d.next} 前休息仅 ${C.fmtH(d.gap)}（低于 ${S.minRestH}h，差 ${d.short} 分钟）`}</div>`).join('')}
+          ${x.downstream.map(d => `<div class="warnc">↳ ${d.overnight ? `D${d.d} 过夜休息压缩至 ${C.fmtH(d.restAfter)}（低于 ${S.minOvernightRestH}h，差 ${d.short} 分钟）` : `${esc(m[d.pilot].name)} 下一任务 ${escPairOf(d.next)} 前休息仅 ${C.fmtH(d.gap)}（低于 ${S.minRestH}h，差 ${d.short} 分钟）`}</div>`).join('')}
           ${x.exceed || x.downstream.length || x.day.buffer < (st.settings.fdpRiskHigh || 60) ? `<button class="btn sm ${x.exceed || x.day.buffer < (st.settings.fdpRiskHigh || 60) ? 'primary' : ''} dtGo" data-pr="${pr.id}">生成处置方案</button>` : ''}</div>`; }).join('') || '<div class="note">当日无执行任务</div>'}</div>`;
     }
     const o = dutyOpts;
-    if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${o.pairing.id} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 飞行执勤期 ${o.exceed.exceed} 分钟` : (o.downstream && o.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
+    if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${esc(pairLabel(o.pairing))} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 飞行执勤期 ${o.exceed.exceed} 分钟` : (o.downstream && o.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
       <button class="btn sm" id="dtExpSel" style="margin-left:auto" title="导出当前选中方案；若未选中则导出推荐方案">导出备选方案</button></div>
       <div class="note" style="margin:6px 0 8px">「导出此方案 / 导出备选方案」仅下载 JSON 与 CSV 摘要，<b>不会</b>改动当前排班；「确定应用」才会写入并高亮各甘特。</div>
       <div class="solgrid">${o.solutions.map(solCard).join('')}</div></div>
@@ -177,7 +177,7 @@
       cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(dutyOpts.pairing.crew).filter(Boolean), days: dutyOpts.days.map(d => d.date) }; rDuty(); const e = $('#dtSol'); if (e) e.scrollIntoView(); });
     if (o) {
       const expCtx = dutyExportCtx(o);
-      bindCards(o.solutions, sol => `${o.pairing.id} ${o.exceed ? '超执勤' : (o.downstream && o.downstream.length ? '休息不足' : '余量紧张')}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; }, expCtx);
+      bindCards(o.solutions, sol => `${pairLabel(o.pairing)} ${o.exceed ? '超执勤' : (o.downstream && o.downstream.length ? '休息不足' : '余量紧张')}处置 · 方案「${sol.name}」：${stepTxt(sol)}`, () => { dutyOpts = null; }, expCtx);
       if ($('#dtExpSel')) $('#dtExpSel').onclick = () => {
         let i = cardCtx.hover; if (i == null || i < 0 || !o.solutions[i]) i = o.solutions.findIndex(x => x.recommended);
         if (i < 0) i = 0; exportSolPlan(o.solutions[i], i, expCtx);
@@ -220,7 +220,7 @@
         const left = xOf(it.dep), w = Math.max(4, xOf(it.arr) - left);
         const pl = xOf(it.planDep), pw = Math.max(2, xOf(it.planArr) - pl);
         const sel = dutySel && dutySel.k === C.legKey(it.leg);
-        const tip = `${it.leg.flt} ${C.apName(it.leg.from, st)}-${C.apName(it.leg.to, st)}`;
+        const tip = `${pairLabel(it.pr)} · ${it.leg.flt} ${C.apName(it.leg.from, st)}-${C.apName(it.leg.to, st)}`;
         if (it.known && (it.lateDep || it.lateArr)) h += `<div class="acbar plan" style="left:${pl}px;width:${pw}px"></div>`;
         h += `<div class="acbar c-${it.color}${sel ? ' sel' : ''}" style="left:${left}px;width:${w}px" data-k="${C.legKey(it.leg)}" data-pr="${it.pr.id}" title="${esc(tip)}"><span class="acfl">${esc(it.leg.flt)}</span>${w >= 70 ? `<span class="acroute">${esc(C.apName(it.leg.from, st))}-${esc(C.apName(it.leg.to, st))}</span>` : ''}</div>`;
       }
@@ -235,7 +235,7 @@
     if (dutySel) {
       const leg = dutySel.leg; const k = C.legKey(leg); const a = A[k] || {};
       const pr = dutySel.pr; const dy = dutySel.dy;
-      h += `<div class="panel" id="acEdit"><div class="flex"><b>${esc(leg.reg || '')} · ${leg.flt}</b> ${apHtml(leg.from)}-${apHtml(leg.to)} · ${pr.id}
+      h += `<div class="panel" id="acEdit"><div class="flex"><b>${esc(leg.reg || '')} · ${leg.flt}</b> ${apHtml(leg.from)}-${apHtml(leg.to)} · ${esc(pairLabel(pr))}
         <span class="mut" style="margin-left:8px">${crewTxt(pr, m)}</span>
         ${dy ? `<span style="margin-left:auto" class="${{ over: 'red', high: 'red', med: 'warnc', low: 'okc' }[dy.risk]}">飞行执勤期 ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '超 ' + dy.exceed + ' 分' : '余量 ' + dy.buffer + ' 分'}</span>` : ''}
         <button class="btn sm" id="acEditX">关闭</button></div>
@@ -263,7 +263,7 @@
       b.onmousemove = e => {
         const it = find(b.dataset.k); if (!it) return;
         const t = $('#tip'); const dy = it.dy;
-        t.innerHTML = `<b>${esc(it.leg.reg)} · ${it.leg.flt}</b> ${apHtml(it.leg.from)}-${apHtml(it.leg.to)} · ${it.pr.id} · ${it.leg.ac}<br>
+        t.innerHTML = `<b>${esc(it.leg.reg)} · ${it.leg.flt}</b> ${apHtml(it.leg.from)}-${apHtml(it.leg.to)} · ${esc(pairLabel(it.pr))} · ${it.leg.ac}<br>
           计划 ${C.fmtT(it.planDep)}-${C.fmtT(it.planArr)}<br>
           ${it.known ? `${it.kind === 'act' ? '实际' : '预计'} ${C.fmtT(it.dep)}-${C.fmtT(it.arr)} <span class="${it.lateArr > 0 ? 'warnc' : 'okc'}">落地 ${it.lateArr >= 0 ? '+' : ''}${it.lateArr} 分</span>` : '<span class="mut">按计划（未录入）</span>'}
           <br><b>${crewTxt(it.pr, m)}</b>
@@ -315,8 +315,8 @@
         h += `<div class="mgd ${cell} ${inRange ? 'lvday' : ''} ${isHold && inRange ? 'hold-flash' : ''} ${[0, 6].includes(dow(d)) ? 'we' : ''}"></div>`;
       }
       const cur = idxA.sched[id] || [], old = idxB.sched[id] || [];
-      old.filter(o => !cur.some(c => c.id === o.id)).forEach(pr => h += `<div class="mgbar gone" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${pr.id} 移出</div>`);
-      cur.forEach(pr => { const isNew = !old.some(o => o.id === pr.id); h += `<div class="mgbar ${isNew ? 'add' : chg.has(pr.id) ? 'chg' : ''}" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${pr.id}${isNew ? ' 新增' : ''}</div>`; });
+      old.filter(o => !cur.some(c => c.id === o.id)).forEach(pr => h += `<div class="mgbar gone" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${esc(pairLabel(pr))} 移出</div>`);
+      cur.forEach(pr => { const isNew = !old.some(o => o.id === pr.id); h += `<div class="mgbar ${isNew ? 'add' : chg.has(pr.id) ? 'chg' : ''}" style="left:${nw + (pr.start - 1) * cw}px;width:${pr.ndays * cw - 2}px">${esc(pairLabel(pr))}${isNew ? ' 新增' : ''}</div>`; });
       h += '</div>'; }
     return h + '</div>';
   }
@@ -446,15 +446,15 @@
     dl(base + '.json', JSON.stringify(payload, null, 2), 'application/json;charset=utf-8');
     const rows = [['字段', '值'],
       ['方案', `方案${letter} · ${sol.name}`], ['推荐', sol.recommended ? '是' : '否'], ['评分', sol.score],
-      ['任务', ctx.pairingId || ''], ['机号', ctx.reg || ''], ['日期', dateStr],
+      ['任务', ctx.pairingId ? pairLabelOf(ctx.pairingId) : ''], ['机号', ctx.reg || ''], ['日期', dateStr],
       ['说明', sol.desc || ''], ['飞行执勤期仍超限日数', sol.fdpAfter != null ? sol.fdpAfter : ''],
       ['休息不足项', sol.restAfterV != null ? sol.restAfterV : ''], ['硬性违规', sol.hard || 0],
       ['未解决岗位', sol.unresolved || 0], ['导出说明', '未应用到当前排班']];
     rows.push([]); rows.push(['步骤类型', '任务', '详情']);
     steps.forEach(x => {
-      if (x.type === 'split') rows.push(['拆分', x.pairing, `${x.whole ? '整组' : '拆分'} → ${x.newPairing} @ ${x.stationName} ${x.timeTxt} · ${x.legsB} 段`]);
-      else if (x.type === 'manual') rows.push(['人工', x.pairing, (x.block && x.block.rules || []).join('；')]);
-      else rows.push([x.type, x.pairing, `${x.slotName || ''} ${(x.from && x.from.name) || '空'} → ${(x.to && x.to.name) || '空缺'}`]);
+      if (x.type === 'split') rows.push(['拆分', pairLabelOf(x.pairing), `${x.whole ? '整组' : '拆分'} → ${pairLabelOf(x.newPairing)} @ ${x.stationName} ${x.timeTxt} · ${x.legsB} 段`]);
+      else if (x.type === 'manual') rows.push(['人工', pairLabelOf(x.pairing), (x.block && x.block.rules || []).join('；')]);
+      else rows.push([x.type, pairLabelOf(x.pairing), `${x.slotName || ''} ${(x.from && x.from.name) || '空'} → ${(x.to && x.to.name) || '空缺'}`]);
     });
     rows.push([]); rows.push(['人员', '级别', '工时前', '工时后', '变化']);
     people.forEach(x => rows.push([x.name, x.rank, x.hoursBefore, x.hoursAfter, x.delta]));
@@ -474,9 +474,9 @@
     return `<div class="solc ${sol.recommended ? 'rec' : ''} ${i === cardCtx.hover ? 'sel' : ''} ${sol.unresolved ? 'bad' : ''}" data-i="${i}">
       <div class="solh"><b>方案 ${String.fromCharCode(65 + i)} · ${esc(sol.name)}</b>${sol.recommended ? '<span class="rtag">推荐</span>' : ''}${t ? `<span class="ttag ${t[1]}">${t[0]}</span>` : ''}<span class="score" title="综合评分（越低越好）">评分 ${sol.score}</span></div>
       <div class="note">${esc(sol.desc)}</div>
-      <table class="solt"><tr><th>任务</th><th>调整</th></tr>${sol.steps.map(x => x.type === 'split' ? `<tr><td>${x.pairing}</td><td><span class="ttag spt">${x.whole ? '整组替换' : '拆分'}</span> ${x.whole ? '' : `原机组飞至 ${esc(C.apName(x.station, st))} 下机；`}自 ${C.fmtT(x.time)} ${esc(C.apName(x.station, st))} 起 ${x.legsB} 段由新机组执行${x.whole ? '' : `（新任务 ${x.newPairing}）`}</td></tr>` : `<tr><td>${x.pairing}${x.slot ? `<br><span class="mut">${C.SLOT_NAME[x.slot]}位</span>` : ''}</td><td>
+      <table class="solt"><tr><th>任务</th><th>调整</th></tr>${sol.steps.map(x => x.type === 'split' ? `<tr><td>${escPairOf(x.pairing)}</td><td><span class="ttag spt">${x.whole ? '整组替换' : '拆分'}</span> ${x.whole ? '' : `原机组飞至 ${esc(C.apName(x.station, st))} 下机；`}自 ${C.fmtT(x.time)} ${esc(C.apName(x.station, st))} 起 ${x.legsB} 段由新机组执行${x.whole ? '' : `（新任务 ${escPairOf(x.newPairing)}）`}</td></tr>` : `<tr><td>${escPairOf(x.pairing)}${x.slot ? `<br><span class="mut">${C.SLOT_NAME[x.slot]}位</span>` : ''}</td><td>
         ${x.from ? `<span class="diff-del">${esc(m[x.from] ? m[x.from].name : x.from)}</span> → ` : ''}${x.why ? `<span class="mut">（${x.why}）</span>` : ''}${x.type === 'manual' ? '<span class="red">待人工</span>' : nm(x.to)} <span class="ttag ${TYPE_TXT[x.type][1]}">${TYPE_TXT[x.type][0]}</span>${x.prefWarn ? ` <span class="warnc">占${x.prefWarn}</span>` : ''}
-        ${x.chain ? `<div class="mut">↳ ${x.chain.pairing} ${C.SLOT_NAME[x.chain.slot]}位：<span class="diff-del">${nm(x.chain.from)}</span> → ${nm(x.chain.to)}${x.chain.fromStandby ? ' <span class="ttag sbt">备份</span>' : ''}</div>` : ''}
+        ${x.chain ? `<div class="mut">↳ ${escPairOf(x.chain.pairing)} ${C.SLOT_NAME[x.chain.slot]}位：<span class="diff-del">${nm(x.chain.from)}</span> → ${nm(x.chain.to)}${x.chain.fromStandby ? ' <span class="ttag sbt">备份</span>' : ''}</div>` : ''}
         ${x.block ? `<div class="red" style="font-size:11px">受阻规则：${x.block.rules.map(esc).join('；') || '—'}<br>候选人主要不满足：${x.block.top.map(esc).join('，')}</div>` : ''}</td></tr>`).join('')}</table>
       <div class="solk">
         <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.overHard ? 'red' : 'okc'}">${x.ha.toFixed(1)}h</b> ${x.overHard ? `<span class="red">超 ${st.settings.hardMaxHours || 100}h 系统月上限</span>` : ''}</div>`).join('') || '—'}</div>
@@ -484,7 +484,7 @@
         <div><span class="lab">意向休息 / 节奏</span>${sol.prefN ? `<span class="warnc">占用意向休息 ${sol.prefN} 天</span>` : '<span class="okc">不占意向休息</span>'} · ${sol.rhy ? `<span class="warnc">节奏扰动 +${sol.rhy}</span>` : '<span class="okc">节奏无扰动</span>'}</div>
         <div><span class="lab">当日剩余备份</span>${sol.sbLeft.map(x => `<span class="${x.n ? '' : 'warnc'}">${x.d}日:${x.n}</span>`).join(' ')}</div>
         ${sol.fdpAfter != null ? `<div><span class="lab">执勤 / 休息</span>${sol.fdpAfter ? `<span class="red">✖ 仍有 ${sol.fdpAfter} 个值勤日超限</span>` : '<span class="okc">✔ 预计 飞行执勤期不超限</span>'} · ${sol.restAfterV ? `<span class="red">休息不足 ${sol.restAfterV} 项</span>` : '<span class="okc">休息满足</span>'}</div>` : ''}
-        <div><span class="lab">合规检查</span>${sol.unresolved ? `<span class="red">✖ ${sol.unresolved} 个岗位需人工处理</span>` : sol.hard ? `<span class="red">✖ 硬性违规 ${sol.hard}</span>` : '<span class="okc">✔ 座位搭配 ✔ 特殊机场 ✔ 休息/工时 · 硬性违规 0</span>'}${sol.bp.length ? `<br><span class="warnc">血压测试仪：${sol.bp.join('、')} 始发站须配备</span>` : ''}</div>
+        <div><span class="lab">合规检查</span>${sol.unresolved ? `<span class="red">✖ ${sol.unresolved} 个岗位需人工处理</span>` : sol.hard ? `<span class="red">✖ 硬性违规 ${sol.hard}</span>` : '<span class="okc">✔ 座位搭配 ✔ 特殊机场 ✔ 休息/工时 · 硬性违规 0</span>'}${sol.bp.length ? `<br><span class="warnc">血压测试仪：${sol.bp.map(pairLabelOf).join('、')} 始发站须配备</span>` : ''}</div>
       </div>
       <div class="solbtns"><button class="btn sm solext" data-i="${i}" title="下载此方案 JSON/CSV，不修改当前排班">导出此方案</button>
         <button class="btn ${sol.recommended ? 'primary' : ''} sm solapply" data-i="${i}" ${!sol.state || (sol.unresolved && !sol.steps.some(x => x.to)) ? 'disabled' : ''}>${!sol.state ? '需运控人工处理' : sol.unresolved ? '确定（空缺待人工）' : '确定应用'}</button></div></div>`;
@@ -509,7 +509,7 @@
     });
   }
   const nmOf = (sol, id) => { const p = (sol.state || st).pilots.find(x => x.id === id); return p ? p.name : '空缺'; };
-  function stepTxt(sol) { return sol.steps.map(x => x.type === 'split' ? `${x.pairing}${x.whole ? '整组替换' : '在' + C.apName(x.station, st) + '拆分'}` : x.pairing + (x.to ? '→' + nmOf(sol, x.to) : '空缺') + (x.chain ? `（${x.chain.pairing}→${nmOf(sol, x.chain.to)}）` : '')).join('，'); }
+  function stepTxt(sol) { return sol.steps.map(x => x.type === 'split' ? `${pairLabelOf(x.pairing)}${x.whole ? '整组替换' : '在' + C.apName(x.station, st) + '拆分'}` : pairLabelOf(x.pairing) + (x.to ? '→' + nmOf(sol, x.to) : '空缺') + (x.chain ? `（${pairLabelOf(x.chain.pairing)}→${nmOf(sol, x.chain.to)}）` : '')).join('，'); }
 
   function rLeave() {
     const caps = st.pilots.filter(p => C.isCaptClass(p.rank)).concat(st.pilots.filter(p => C.isFO(p.rank)));
@@ -541,7 +541,7 @@
         ${leaveHist.length ? `<button class="btn" id="lvUndo">↶ 撤销（${leaveHist.length}）</button>` : ''}
         <span class="mut" id="lvQn"></span>
       </div>
-      <div class="note" style="margin-top:8px">任务 ${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${pr.id}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''})</a>`).join(' ') || '无'}
+      <div class="note" style="margin-top:8px">任务 ${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${esc(pairLabel(pr))}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''})</a>`).join(' ') || '无'}
         · 请假 ${(p.leave || []).join(',') || '无'} · 意向 ${(p.prefs || []).join(',') || '无'} · 占位 ${holdDaysNow.join(',') || '无'}</div>
       ${(() => {
         const daysPeek = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) daysPeek.push(d);
@@ -587,7 +587,7 @@
         ${holes.holes.map((x, i) => {
           const route = (x.legChips || []).map(l => `${esc(l.fromName)}→${esc(l.toName)}`).join(' · ') || esc(x.route || '');
           const left = (x.crewLeft || []).filter(c => c.id).map(c => `${C.SLOT_NAME[c.slot]} ${esc(c.name)}`).join(' · ') || '—';
-          return `<tr class="lv-flt ${i === hi ? 'sel' : ''}" data-hi="${i}"><td><b>${esc(x.id)}</b></td><td>${x.start}${x.ndays > 1 ? '–' + (x.start + x.ndays - 1) : ''} 日 · ${x.ndays}天</td><td>${route}</td>
+          return `<tr class="lv-flt ${i === hi ? 'sel' : ''}" data-hi="${i}"><td><b>${escPairOf(x.id)}</b></td><td>${x.start}${x.ndays > 1 ? '–' + (x.start + x.ndays - 1) : ''} 日 · ${x.ndays}天</td><td>${route}</td>
             <td class="cell-red">${esc(x.slotName)}位 · ${esc(holes.pilot.name)} 请假腾出</td><td>${left}</td><td><span class="badge-empty">空缺 1 座</span></td></tr>`;
         }).join('')}</tbody></table>`;
     } else {
@@ -596,7 +596,7 @@
         const chips = (x.legChips || []).map(l => `${esc(l.flt)} ${esc(l.fromName)}-${esc(l.toName)}`).join(' · ');
         const seats = `<div class="seat empty"><div class="role">${esc(x.slotName)}位 · 空缺</div><div class="name">${esc(holes.pilot.name)} 请假腾出</div></div>`
           + (x.crewLeft || []).map(c => c.id ? `<div class="seat"><div class="role">${C.SLOT_NAME[c.slot]}</div><div class="name">${esc(c.name)}</div></div>` : `<div class="seat mut"><div class="role">${C.SLOT_NAME[c.slot]}</div><div class="name">空</div></div>`).join('');
-        return `<div class="flight-row ${i === hi ? 'sel' : ''}" data-hi="${i}"><div><div class="flight-id">${esc(x.id)}</div><div class="flight-meta">${esc(meta)}<br>${chips}</div></div>
+        return `<div class="flight-row ${i === hi ? 'sel' : ''}" data-hi="${i}"><div><div class="flight-id">${escPairOf(x.id)}</div><div class="flight-meta">${esc(meta)}<br>${chips}</div></div>
           <div class="seats">${seats}</div><div class="badge-empty">空缺 1 座</div></div>`;
       }).join('')}</div>`;
     }
@@ -604,7 +604,7 @@
 
     // —— Step 3：替补 ——
     const subSeg = `<span class="seg" id="lvSubView"><button type="button" data-v="cards" class="${lvSubView === 'cards' ? 'on' : ''}">卡片</button><button type="button" data-v="table" class="${lvSubView === 'table' ? 'on' : ''}">表格</button></span>`;
-    h += `<div class="panel lv-panel" id="lvStep3"><div class="lv-h3row"><div class="lv-h3"><span class="lv-sn">③</span> 系统推荐替补（已排序） <small>${hh ? esc(hh.id) + ' · ' + esc(hh.slotName) + '位' : '请先点选上方航班'}</small></div>${subSeg}</div>
+    h += `<div class="panel lv-panel" id="lvStep3"><div class="lv-h3row"><div class="lv-h3"><span class="lv-sn">③</span> 系统推荐替补（已排序） <small>${hh ? escPairOf(hh.id) + ' · ' + esc(hh.slotName) + '位' : '请先点选上方航班'}</small></div>${subSeg}</div>
       `;
     if (!hh) {
       h += `<div class="note">无空洞 / 所选日期无执勤。</div>`;
@@ -772,14 +772,14 @@
     const pr = st.pairings.find(x => x.id === hh.id); if (!pr) return;
     pr.crew[hh.slot] = c.id;
     if (st.standby && st.standby[c.id]) st.standby[c.id] = st.standby[c.id].filter(d => !C.daysTouched(pr, st).includes(d));
-    leaveHist.push({ snap, label: `${p.name} 请假 ${days[0]}–${days[days.length - 1]} · ${hh.id}${hh.slotName}←${c.name}`, time: new Date().toTimeString().slice(0, 8) });
+    leaveHist.push({ snap, label: `${p.name} 请假 ${days[0]}–${days[days.length - 1]} · ${pairLabelOf(hh.id)}${hh.slotName}←${c.name}`, time: new Date().toTimeString().slice(0, 8) });
     recordFillsFromHole(hh, p, days, c, 'hole');
     leaveOpts = null; leaveHoles = null; holePrev = null;
     sum = C.summarize(st);
     const okNow = crewComplianceOk(pr);
     commitHighlight({
       pairings: [hh.id], pilots: [pid, c.id], days, ok: okNow,
-      toast: `✔ 已更新：${esc(hh.id)} ${esc(hh.slotName)} ${esc(fromName)}→<b>${esc(c.name)}</b>${okNow ? ' <span class="okc">● 合规</span>' : ''} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
+      toast: `✔ 已更新：${escPairOf(hh.id)} ${esc(hh.slotName)} ${esc(fromName)}→<b>${esc(c.name)}</b>${okNow ? ' <span class="okc">● 合规</span>' : ''} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
       undo: undoLeave
     });
   }

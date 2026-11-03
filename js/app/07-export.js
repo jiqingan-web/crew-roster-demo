@@ -187,9 +187,9 @@
           ${sec('未自 蓉/府 出发或未回 蓉/府', R.notReturn, x => `${x.id}：${x.msg}`, 'warnc')}
           ${sec('航段不衔接', R.broken, x => `${x.id} 第${x.row}行：${x.msg}`, 'warnc')}
           ${sec('超出排班月（不导入）', R.outOfMonth, x => `${x.id}：第 ${x.from}–${x.to} 日`, 'warnc')}
-          <div class="imsec"><b class="${iBlock.length ? 'red' : 'okc'}">任务本身无法合规排人：${iBlock.length}</b>${list(iBlock, x => `${x.id}：${x.blocking.join('；')}`)}
+          <div class="imsec"><b class="${iBlock.length ? 'red' : 'okc'}">任务本身无法合规排人：${iBlock.length}</b>${list(iBlock, x => `${pairLabelOf(x.id)}：${x.blocking.join('；')}`)}
             ${iBlock.length ? `<label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="imSkipB" ${skipBlock ? 'checked' : ''}> 导入时跳过这些任务</label>` : ''}</div>
-          <div class="imsec"><b class="${iFtl.length ? 'warnc' : 'okc'}">任何人执飞都超限（日飞行/执勤期，估算时刻）：${iFtl.length}</b>${list(iFtl, x => `${x.id}：${x.ftl.join('；')}`)}
+          <div class="imsec"><b class="${iFtl.length ? 'warnc' : 'okc'}">任何人执飞都超限（日飞行/执勤期，估算时刻）：${iFtl.length}</b>${list(iFtl, x => `${pairLabelOf(x.id)}：${x.ftl.join('；')}`)}
             ${iFtl.length ? `<label class="mut" style="display:block;margin-top:4px"><input type="checkbox" id="imSkipF" ${skipFtl ? 'checked' : ''}> 导入时也跳过这些任务</label>` : ''}</div>
           ${R.crewUnknown.length ? sec('预填机组未匹配（留空）', R.crewUnknown, x => `${x.id} 第${x.row}行 ${x.slot}：${x.who}`, 'warnc') : ''}
         </div>

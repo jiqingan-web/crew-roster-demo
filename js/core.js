@@ -68,7 +68,8 @@
   const RANK_VAL = { F1: 1, F2: 2, F3: 3, F4: 4, F5: 5, F6: 6, F7: 7, F8: 8,
     SPIC: 10, US: 11, J0: 12, '机长A': 12, '机长B': 12, J1: 13, J2: 14, J3: 15, TL: 20, TB: 21, TC: 22 };
   const RANKS = Object.keys(RANK_VAL);
-  const NEW_CAPT = ['SPIC', 'US', 'J0', '机长A', '机长B'];
+  // 机长A：可带双副驾，不强制陪飞（用户 2026-11-03）；机长B/SPIC/US/J0 须 J3+（含 TL/TB/TC）陪飞（用户更正：可配J3，非仅TL+）
+  const NEW_CAPT = ['SPIC', 'US', 'J0', '机长B'];
   const INSTR = ['TL', 'TB', 'TC'];
   const isFO = r => RANK_VAL[r] <= 8;
   const isCaptClass = r => RANK_VAL[r] >= 10;
@@ -90,7 +91,7 @@
   const RC = (RulesConfig && (RulesConfig.RULES_CONFIG || (RulesConfig.default && RulesConfig.default.RULES_CONFIG))) || null;
   const EO = (RC && RC.engine_options) || {};
   const CAPT_ORDER = (RC && RC.captain_levels && RC.captain_levels.order) || ['US', 'J0', 'J1', 'J2', 'J3', 'TL', 'TB', 'TC'];
-  const RANK_ALIAS = { '机长A': 'J0', '机长B': 'J0' }; // 公司“机长A/B”（新机长）按 J0 套矩阵
+  const RANK_ALIAS = { '机长A': 'J0', '机长B': 'J0' }; // 公司机长A/B 巡航矩阵仍按 J0；仅机长B 等计入 NEW_CAPT/CR-20
   const capKey = r => RANK_ALIAS[r] || r;
   const capLv = r => CAPT_ORDER.indexOf(capKey(r));
   const fNum = s => +String(s || 'F0').replace(/\D/g, '');
@@ -209,7 +210,7 @@
     tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
   // 公司运行手册核实值（公开页不展示手册代码）。月飞行公司=法规=100h；hardMaxHours 默认对齐 100h（用户拍板 2026-10-16）。
   const COM = { rev: '公司运行手册', re12: 'RE12', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
-    reportMinDomesticFlight: 95, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 };
+    reportMinDomesticFlight: 105, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 };
   // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
   function flightLimitMin(st, reportMin) {
     // 三人制运行：不启用扩编表A例外（即使用户旧存档曾打开 fdpAugmented）
@@ -217,13 +218,15 @@
   }
   function defaultSettings() {
     return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, releaseMin: 30, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, releaseMin: 30, honorPrefs: true,
       standbyPerDay: 2, maxStandbyPerPilot: 2, gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 硬规则仍为 144h 内连续 48h；软目标偏好更松的连续休息（默认 60h），避免卡在 48h 边缘
       softRest48H: 60,
       opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
       // 飞行值勤期（FDP）限制：默认值参考 CCAR-121 部（非扩编机组 表A），可按公司规定修改
       fdpTable: defaultFdpTable(), fdpAugmented: false, fdpAugLimitH: 16, fdpRiskHigh: 60, fdpRiskMed: 120, minTurnMin: 35, minOvernightRestH: 10,
+      // 长过站拆分飞行值勤期：默认≥5h 同站过站（外站或基地）则拆成两段 FDP，次段按 reportMin 重新报到；短过站不拆
+      fdpSplitLongGround: true, fdpSplitLongGroundH: 5,
       // 路演：默认关闭故意植入的【演示异常】；开启时最多植入 1 项
       highIntensity: false, hiTargetH: 85, // 高强度模式：机长线(J3+/教员)软目标上移；硬规则不变
       demoAnomalies: false,
@@ -240,11 +243,14 @@
     if (S) {
       delete S.minHours; delete S.maxHours; if (!S.fdpTable) S.fdpTable = defaultFdpTable();
       if (S.hardMaxHours === 90) S.hardMaxHours = 100;
+      if (S.reportMin === 95) S.reportMin = 105; // 航前准备：起飞前 1h45 报到
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
       if (S.demoHoles == null) S.demoHoles = 4;
       if (S.highIntensity == null) S.highIntensity = false; if (S.hiTargetH == null) S.hiTargetH = 85;
       if (S.softRest48H == null) S.softRest48H = 60; // 软目标；硬底仍 48h
+      if (S.fdpSplitLongGround == null) S.fdpSplitLongGround = true;
+      if (S.fdpSplitLongGroundH == null || S.fdpSplitLongGroundH === 8) S.fdpSplitLongGroundH = 5; // 过站≥5h 默认休息拆 FDP
       if (S.softTargetMin === 40 && S.softTargetMax === 60) { S.softTargetMin = 45; S.softTargetMax = 65; }
       if (S.standbyPerDay === 1 && S.maxStandbyPerPilot === 1) { S.standbyPerDay = 2; S.maxStandbyPerPilot = 2; }
       if (S.maxOffCapt != null && S.maxOffCapt <= 4) S.maxOffCapt = 999; // 取消机长类每日休息上限
@@ -956,10 +962,10 @@
           const a = icao[i], b = icao[i + 1];
           if (!AIRPORTS[a] || !AIRPORTS[b]) { i++; break; }
           const bm = blockMin(a, b);
-          // 预估 FDP：报到95 + 飞行 + 过站50*(n-1) + 退场30
+          // 预估 FDP：报到(settings/COM 国内) + 飞行 + 过站50*(n-1) + 退场30
           const nextFlight = flight + bm;
           const nextN = legs.length + 1;
-          const estFdp = 95 + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
+          const estFdp = (COM.reportMinDomesticFlight || 105) + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
           if (legs.length && (nextFlight > 450 || estFdp > 12.5 * 60)) break;
           const flt = flts[i] || flts[flts.length - 1] || 'EU0000';
           legs.push({ d: 0, flt, from: a, to: b, dep: tmin, arr: tmin + bm, ac, reg });
@@ -1181,10 +1187,91 @@
     return n;
   }
 
-  // 按值勤日拆分的值勤区间 [报到, 退场]（外站驻点休息日/过夜不计值勤）
-  function dutyIvs(p, st) { const rep = (st && st.settings.reportMin) || 60, rel = (st && st.settings.releaseMin) || 30; const by = new Map();
-    p.legs.forEach(l => { const x = by.get(l.d); if (!x) by.set(l.d, [l.dep - rep, l.arr + rel]); else { x[0] = Math.min(x[0], l.dep - rep); x[1] = Math.max(x[1], l.arr + rel); } });
-    return [...by.values()].sort((a, b) => a[0] - b[0]); }
+  // 成都基地（双流/天府）；外站长过站酒店休息不并入同一飞行值勤期
+  function isChengduBase(icao) { return icao === 'ZUUU' || icao === 'ZUTF'; }
+  function pairingHotelNote(pr) {
+    const t = [...((pr && pr.offRaw) || []), ...((pr && pr.offExtra) || []), (pr && pr.note) || '', (pr && pr.remark) || ''].join(' ');
+    return /酒店|过夜|宾馆|hotel|layover/i.test(t);
+  }
+  /** 机场单字简称（无全局频次表；蓉=双流、府=天府）— 供无 offRaw 时合成航线链 */
+  function apAbbrSimple(c, st) {
+    const n = String(apName(c, st) || c || '');
+    if (/双流/.test(n)) return '蓉';
+    if (/天府/.test(n)) return '府';
+    const bare = n.replace(/^成都/, '').replace(/[\s\d]/g, '');
+    return (bare && bare[0]) || (c && String(c)[0]) || '?';
+  }
+  /** 由 legs+dh 合成中文航线链：同日同置位段合并，置位加(随)，日内用 + ，跨日用 / */
+  function fmtOffFromLegs(pr, st) {
+    if (!pr || !pr.legs || !pr.legs.length) return '';
+    const byDay = {};
+    pr.legs.forEach(l => { (byDay[l.d] = byDay[l.d] || []).push(l); });
+    return Object.keys(byDay).map(Number).sort((a, b) => a - b).map(d => {
+      const ls = byDay[d], runs = [];
+      ls.forEach(l => {
+        const dh = !!l.dh;
+        if (!runs.length || runs[runs.length - 1].dh !== dh) runs.push({ dh, ls: [l] });
+        else runs[runs.length - 1].ls.push(l);
+      });
+      return runs.map(r => {
+        const chain = apAbbrSimple(r.ls[0].from, st) + r.ls.map(l => apAbbrSimple(l.to, st)).join('');
+        return chain + (r.dh ? '(随)' : '');
+      }).join(' + ');
+    }).filter(Boolean).join(' / ');
+  }
+  /** 从 offRaw 抽中文航线链（去航班号），如「府威春 + 春威府(随)」；无 offRaw 时由 legs 合成 */
+  function fmtOffRaw(pr, st) {
+    const raw = (pr && pr.offRaw) || [];
+    if (raw.length) {
+      const route = raw.map(line => String(line).split(/\s*\+\s*/).map(piece => {
+        const m = String(piece).trim().match(/^([\u4e00-\u9fff]+(?:\(随\))?)/);
+        return m ? m[1] : '';
+      }).filter(Boolean).join(' + ')).filter(Boolean).join(' / ');
+      if (route) return route;
+    }
+    return fmtOffFromLegs(pr, st);
+  }
+  /** 可见标签：OF289 府威春 + 春威府(随)；逻辑/统计仍用 pr.id */
+  function pairingLabel(pr, st) {
+    if (!pr) return '';
+    const route = fmtOffRaw(pr, st);
+    const id = pr.id != null ? String(pr.id) : '';
+    return route ? (id ? id + ' ' + route : route) : id;
+  }
+  function pairingLabelOf(st, id) {
+    if (id == null || id === '') return '';
+    const pr = st && st.pairings && st.pairings.find(p => p.id === id);
+    return pr ? pairingLabel(pr, st) : String(id);
+  }
+
+  // 设置：fdpSplitLongGround=false 关闭；阈值默认 5h。短过站绝不拆。
+  function fdpLongGroundSplitMin(S) {
+    if (!S || S.fdpSplitLongGround === false) return 0;
+    const h = S.fdpSplitLongGroundH; return Math.round((h == null || h === '' ? 5 : +h) * 60) || 0;
+  }
+  /** 两航段之间是否因长过站/休息而拆开 FDP（同站过站且 ground≥阈值；外站与基地均拆） */
+  function shouldSplitFdpBetween(prev, next, pr, st, groundMin) {
+    const thr = fdpLongGroundSplitMin(st && st.settings);
+    if (!thr || thr <= 0 || !prev || !next) return false;
+    if (prev.to !== next.from) return false;
+    const g = groundMin != null ? groundMin : (next.dep - prev.arr);
+    if (g < thr) return false;
+    return true;
+  }
+  // 按值勤日拆分的值勤区间 [报到, 退场]；长过站（休息）拆成多段，中间空隙计休息
+  function dutyIvs(p, st) {
+    const rep = (st && st.settings.reportMin) || 60, rel = (st && st.settings.releaseMin) || 30;
+    const out = []; let cur = null; let prev = null;
+    p.legs.forEach(l => {
+      const start = l.dep - rep, end = l.arr + rel;
+      if (!cur || l.d !== prev.d || shouldSplitFdpBetween(prev, l, p, st)) {
+        if (cur) out.push(cur); cur = [start, end];
+      } else { cur[0] = Math.min(cur[0], start); cur[1] = Math.max(cur[1], end); }
+      prev = l;
+    });
+    if (cur) out.push(cur);
+    return out.sort((a, b) => a[0] - b[0]);
+  }
   // 任务占用的全部日历日（含外站驻点休息日）——用于请假/备份/培训/意向冲突
   function spanDays(p, st) { const a = Math.floor(report(p, st) / DAY) + 1, b = Math.floor((release(p, st) - 1) / DAY) + 1; const r = []; for (let d = a; d <= b; d++) r.push(d); return r; }
   // 外站驻点休息日：任务跨度内无值勤的日历日（不计值勤日，计休息）
@@ -1215,8 +1302,8 @@
     // CR-22 帮扶对象：同任务机组至多 1 名（不完整机组也判，避免空座时漏拦）
     if (cs.filter(x => x.bangfu).length >= 2) return '[CR-22] 同航班不可有两名帮扶对象';
     if (cs.length < 3) return null; // 不完整机组不做其余组合判定
-    // 新机长执飞须组内有教员（教员可任执飞座之一）；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
-    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isInstr(x.rank))) return '[CR-20] 新机长执飞须有 TL 及以上教员同组（观察员位可为任意级别）';
+    // 新机长执飞须组内有 J3+（J3/TL/TB/TC）陪飞；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
+    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isJ3plus(x.rank))) return '[CR-20] 新机长执飞须有 J3 及以上（含教员）同组（观察员位可为任意级别）';
     if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '[CR-05] 机组无机长';
     const xr = extraCrewIssue(p, cs, st); if (xr) return xr;
     for (const leg of p.legs) {
@@ -1360,9 +1447,9 @@
         desc: '低级别副驾驶须由教员带飞同组。',
         source: '公司机型操作与搭配规定', example: 'F1+J3+F5 无教员 → 不合规。' },
       { id: 'CR-20', cat: '带飞', kind: '硬', status: '生效', legacyId: 'RE12-新机长',
-        title: '新机长须有教员同组', params: '新机长（含 SPIC/US/机长A/B 等）执飞须 TL+',
-        desc: '新机长担任机组成员时须有教员同组（观察员位级别不限）。',
-        source: '公司机型操作与搭配规定', example: '机长A 任机长位时须有 TL/TB/TC 同组。' },
+        title: '新机长须有 J3+ 同组', params: 'SPIC/US/J0/机长B 执飞须 J3+（可配J3/TL/TB/TC）；机长A 可带双副驾不强制',
+        desc: '须陪飞的新机长（SPIC/US/J0/机长B）同组须有 J3 或 TL/TB/TC；机长A 允许机长+双副驾（观察员位级别不限）。',
+        source: '公司机型操作与搭配规定 / 运控配班习惯', example: '机长B+J3+F5 → 合规；机长B+F4+F5 无J3+ → 不合规；机长A+双副驾 → 合规。' },
       { id: 'CR-21', cat: '模拟机', kind: '软+硬', status: '生效', legacyId: 'simulator_scheduling',
         title: '模拟机块编排', params: '约5%人员/月 · 连续2–4日 · 非执勤期 · 邻接≥24h（软）',
         desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入飞行执勤期/连续值勤日链；与相邻飞行或培训尽量保留≥24小时间隔。',
@@ -1402,16 +1489,32 @@
   }
   function opDays(pr) { const s = new Set(); pr.legs.forEach(l => { if (l.dh) return; const a = Math.floor(l.dep / DAY) + 1, b = Math.floor((l.arr - 1) / DAY) + 1; for (let d = a; d <= b; d++) s.add(d); }); return [...s]; }
   function dhOnlyDays(pr) { const op = new Set(opDays(pr)); const s = new Set(); pr.legs.forEach(l => { if (!l.dh) return; const d = Math.floor(l.dep / DAY) + 1; if (!op.has(d)) s.add(d); }); return [...s]; }
-  // 第 5 日置位：4 个连续值勤日后第 5 日只有置位(随)——合规但尽量避免（软）
+  // 第 5 日置位：4 个连续值勤日后第 5 日只有置位(随)——合规软提示；置位日计入连续值勤链（仅供软提示）
   function day5Deadheads(p, st, idx, excludeId, extraPairing) {
     const f = dutyDayFlags(p, st, idx, excludeId, extraPairing); const prs = (idx.sched[p.id] || []).filter(o => !excludeId || o.id !== excludeId).concat(extraPairing ? [extraPairing] : []);
-    const out = []; prs.forEach(o => dhOnlyDays(o).forEach(d => { if (!f[d] && d > 4 && [1, 2, 3, 4].every(k => f[d - k])) out.push({ pr: o, d }); })); return out; }
+    const out = []; prs.forEach(o => dhOnlyDays(o).forEach(d => { if (d > 4 && [1, 2, 3, 4].every(k => f[d - k])) out.push({ pr: o, d }); })); return out; }
+  // 第 5 日执飞：同上口径软提示（不阻断排班；硬规则已取消）
+  function day5Operatings(p, st, idx, excludeId, extraPairing) {
+    const f = dutyDayFlags(p, st, idx, excludeId, extraPairing);
+    const prs = (idx.sched[p.id] || []).filter(o => !excludeId || o.id !== excludeId).concat(extraPairing ? [extraPairing] : []);
+    const out = [];
+    prs.forEach(o => {
+      const days = new Set();
+      o.legs.forEach(l => { if (l.dh) return; const a = Math.floor(l.dep / DAY) + 1; if (a >= 1 && a <= DAYS) days.add(a); });
+      days.forEach(d => { if (d > 4 && [1, 2, 3, 4].every(k => f[d - k])) out.push({ pr: o, d }); });
+    });
+    return out;
+  }
   function dutyDayFlags(p, st, idx, excludeId, extraPairing) {
     const f = Array(DAYS + 2).fill(false);
-    // 121.495(b) 连续值勤日：当日以机组成员身份执飞（含跨日落地）或主备份才计；仅置位(随)的日子不计（用户确认口径）
-    // 模拟机 / 培训(飞技) 不是执勤期(FDP)，不计入连续值勤日链（第5日等）
-    (idx.sched[p.id] || []).forEach(o => { if (excludeId && o.id === excludeId) return; opDays(o).forEach(d => { if (d >= 1 && d <= DAYS) f[d] = true; }); });
-    if (extraPairing) opDays(extraPairing).forEach(d => { if (d >= 1 && d <= DAYS) f[d] = true; });
+    // 121.495(b) 连续值勤日（用户 2026-11-02 口径）：执飞日(含跨日落地)、仅置位(随)日、或主备份日均计；
+    // 置位仍不计飞行小时、不拉长 FDP 窗（见 pairingHours / fdpDays）。模拟机/培训不计连续值勤日。
+    const mark = o => {
+      opDays(o).forEach(d => { if (d >= 1 && d <= DAYS) f[d] = true; });
+      dhOnlyDays(o).forEach(d => { if (d >= 1 && d <= DAYS) f[d] = true; });
+    };
+    (idx.sched[p.id] || []).forEach(o => { if (excludeId && o.id === excludeId) return; mark(o); });
+    if (extraPairing) mark(extraPairing);
     ((st.standby || {})[p.id] || []).forEach(d => { if (d >= 1 && d <= DAYS) f[d] = true; });
     return f;
   }
@@ -1442,7 +1545,7 @@
     const already = (idx.sched[p.id] || []).includes(pr);
     const ex = opt.excludeId || '';
     const extra = already ? null : pr;
-    // 合并后日程（含本任务）：须对整份结果做 144h/第5日/累积检查（含前向影响）
+    // 合并后日程（含本任务）：须对整份结果做 144h/累积检查（含前向影响；第5日已非硬禁）
     // 注意：已排任务校验时不得把 pr 自身排除，否则连续日/144h 会漏报
     const others = (idx.sched[p.id] || []).filter(o => o.id !== ex);
     const allPr = extra ? others.concat([pr]) : others.slice();
@@ -1460,18 +1563,8 @@
       const iv = []; ivD.forEach(a => a.forEach(v => iv.push(v))); ivS.forEach((v, k) => { if (k !== si) iv.push(v); });
       if (!has48hRestBefore(iv, ivS[si][0])) { rs.push('主备份前144h内无连续48h休息(121.495/3.6.10)'); break; }
     }
-    // 2) 任一飞行日：若前 4 个日历日均为飞行值勤或主备份，则违规
-    const flags = dutyDayFlags(p, st, idx, ex, extra);
-    const flew = Array(DAYS + 2).fill(false);
-    // CCAR-121.495(b)：值勤+主备份达 4 个连续日历日后，第 5 个日历日不得「执行任何飞行任务」。
-    // 第 5 日只看执飞航段（置位(随)回基地不是飞行任务；前日航班落地/放行跨入当日也不算当日执行飞行任务）
-    allPr.forEach(o => o.legs.forEach(l => { if (l.dh) return; const a = Math.floor(l.dep / DAY) + 1, b = Math.floor((l.arr - 1) / DAY) + 1; for (let d = a; d <= b; d++) if (d >= 1 && d <= DAYS) flew[d] = true; }));
-    for (let d = 1; d <= DAYS; d++) {
-      if (!flew[d]) continue;
-      let prior4 = true;
-      for (let k = 1; k <= 4; k++) { const dd = d - k; if (dd < 1 || !flags[dd]) { prior4 = false; break; } }
-      if (prior4) rs.push('连续4值勤日后第5日不得执飞(121.495(b),D' + d + ')');
-    }
+    // 2) 第5日执飞：用户 2026-11-02 确认——只要休息/FDP/任务间隔等时间条件满足即可，不再硬禁。
+    //    （软提示见 day5Operatings / validate「第5日执飞」；置位仍不计飞行小时、不拉 FDP 窗）
     // 3) 任意连续 7 日历日飞行值勤期 ≤60h；4) 月飞行值勤期 ≤210h
     const fdp = pilotFdpByDay(p, st, idx, ex, extra);
     let monthFdp = 0; for (let d = 1; d <= DAYS; d++) monthFdp += fdp[d];
@@ -1671,7 +1764,7 @@
     if (!A || !B) return { ok: false, issues: ['人员不存在'], moves: [] };
     if (A.rank !== B.rank) issues.push(`级别不同：${A.rank} ≠ ${B.rank}（同级别换班要求级别一致）`);
     const moves = swapMoves(st, aId, bId, aPrs, bPrs); if (!moves.length) issues.push('未选择要交换的任务');
-    moves.forEach(m => { const pr = st.pairings.find(x => x.id === m.pairing); if (Object.values(pr.crew).includes(m.to) && !moves.some(n => n.pairing === m.pairing && n.from === m.to)) issues.push(`${m.to === aId ? A.name : B.name} 已在 ${pr.id}`); });
+    moves.forEach(m => { const pr = st.pairings.find(x => x.id === m.pairing); if (Object.values(pr.crew).includes(m.to) && !moves.some(n => n.pairing === m.pairing && n.from === m.to)) issues.push(`${m.to === aId ? A.name : B.name} 已在 ${pairingLabel(pr, st)}`); });
     const rel = (s, ids) => validate(s).filter(v => (v.level === 'hard' && !INTRINSIC_TYPES.has(v.type) || v.type === '第5日置位') && (v.pilot === aId || v.pilot === bId || (!v.pilot && ids.has(v.pairing))));
     const ids = new Set(moves.map(m => m.pairing)); const before = rel(st, ids); const bset = new Set(before.map(v => v.msg));
     const w = Object.assign({}, st, { pairings: st.pairings.map(x => Object.assign({}, x, { crew: Object.assign({}, x.crew) })) });
@@ -1837,7 +1930,7 @@
           else if (s === 'F') cand = sortR0(pool.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')));
           else {
             const needInstr = pr.crew.C && idx.pm[pr.crew.C] && isNew(idx.pm[pr.crew.C].rank);
-            cand = sortR0(pool.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank))));
+            cand = sortR0(pool.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isJ3plus(p.rank))));
           }
           const pick = cand[0];
           if (!pick) continue;
@@ -1862,7 +1955,7 @@
         const Fl = free('F') ? fos.filter(x => x !== c).slice(0, FON) : [cur.F];
         let Tl;
         if (!free('T')) Tl = [cur.T];
-        else if (isNew(c.rank)) Tl = capT.filter(x => isInstr(x.rank) && x !== c).slice(0, TN);
+        else if (isNew(c.rank)) Tl = capT.filter(x => isJ3plus(x.rank) && x !== c).slice(0, TN);
         else Tl = fos.slice(0, FON + 2).concat(capT.filter(x => x !== c).slice(0, big ? 3 : 6));
         for (const f of Fl) for (const t of Tl) {
           if (!f || !t || f === t || t === c) continue;
@@ -2054,7 +2147,7 @@
         }
         if (free('T') && pr.crew.C && pr.crew.F) {
           const needInstr = isNew(idx.pm[pr.crew.C].rank);
-          let ts = st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank)));
+          let ts = st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isJ3plus(p.rank)));
           if (ts.some(p => primary[p.id] && idx.hours[p.id] < (SM(p) - 5))) ts = ts.filter(p => primary[p.id]);
           const t = sortR(ts)[0];
           if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) { pr.crew.T = t.id; idx.sched[t.id].push(pr); idx.hours[t.id] += pairingHours(pr); } }
@@ -2094,7 +2187,7 @@
         if (!slotTaken(pr, 'F')) { const f = sortR(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F')))[0]; if (f) put('F', f); }
         if (!slotTaken(pr, 'T') && pr.crew.C && pr.crew.F) {
           const needInstr = isNew(idx.pm[pr.crew.C].rank);
-          const t = sortR(st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isInstr(p.rank))))[0];
+          const t = sortR(st.pilots.filter(p => !inCrew(p.id) && ok(p, 'T') && (!needInstr || isJ3plus(p.rank))))[0];
           if (t) { const crew = [idx.pm[pr.crew.C], idx.pm[pr.crew.F], t]; if (!crewIssue(pr, crew, st)) put('T', t); }
         }
       }
@@ -2182,7 +2275,7 @@
       if (!slotTaken(pr, 'F')) { const f = pick(st.pilots.filter(p => isFO(p.rank) && !inCrew(p.id) && ok(p, 'F'))); if (f) put('F', f); }
       if (!slotTaken(pr, 'T') && pr.crew.C && pr.crew.F) {
         const needInstr = isNew(idx.pm[pr.crew.C].rank);
-        const pool = st.pilots.filter(p => !inCrew(p.id) && (!needInstr || isInstr(p.rank)) && idx.hours[p.id] < SM(p) + 6);
+        const pool = st.pilots.filter(p => !inCrew(p.id) && (!needInstr || isJ3plus(p.rank)) && idx.hours[p.id] < SM(p) + 6);
         const band = p => { const h = idx.hours[p.id]; return h >= 12 && h < SM(p) - 2 ? 0 : h < 12 ? 1 : 2; };
         pool.sort((a, b) => band(a) - band(b) || idx.hours[a.id] - idx.hours[b.id]);
         let bt = null, bs = Infinity, nv = 0;
@@ -2224,7 +2317,7 @@
           const gain0 = gapCost(p, sc, st) - gapCost(p, without, st);
           if (gain0 <= 0.2) continue;
           const pool = st.pilots.filter(q => q.id !== p.id && !Object.values(pr.crew).includes(q.id)
-            && (slot === 'C' ? isCaptClass(q.rank) && (!isNew(q.rank) || idx.hours[q.id] + h <= softCapOf(q, slot)) : slot === 'F' ? isFO(q.rank) : (isNew((idx.pm[pr.crew.C] || {}).rank) ? isInstr(q.rank) : true))
+            && (slot === 'C' ? isCaptClass(q.rank) && (!isNew(q.rank) || idx.hours[q.id] + h <= softCapOf(q, slot)) : slot === 'F' ? isFO(q.rank) : (isNew((idx.pm[pr.crew.C] || {}).rank) ? isJ3plus(q.rank) : true))
             && idx.hours[q.id] > 0.5 && idx.hours[q.id] + h <= softCapOf(q, slot) && (rankGroup(q.rank) === rankGroup(p.rank) || (slot !== 'F' && isCaptClass(q.rank) && isCaptClass(p.rank) && !isNew(q.rank) && !isNew(p.rank))));
           let best = null, bs = -0.25;
           for (const q of pool) {
@@ -2331,7 +2424,7 @@
           for (const r of pool2) { if (!pcOK(r, X, st, idx, 'T')) continue; const crew = [tX, idx.pm[X.crew.F], r]; if (crewIssue(X, crew, st)) continue;
             assign(r, X, 'T'); assign(q, pr, slot); return true; }
           unassign(tX, X, 'C'); assign(tX, X, 'T'); } }
-        const need = xs === 'C' ? (r => isCaptClass(r.rank) && !isNew(r.rank)) : xs === 'F' ? (r => isFO(r.rank)) : (r => isNew((idx.pm[X.crew.C] || {}).rank) ? isInstr(r.rank) : !isNew(r.rank));
+        const need = xs === 'C' ? (r => isCaptClass(r.rank) && !isNew(r.rank)) : xs === 'F' ? (r => isFO(r.rank)) : (r => isNew((idx.pm[X.crew.C] || {}).rank) ? isJ3plus(r.rank) : !isNew(r.rank));
         const pool = st.pilots.filter(r => r !== q && need(r) && !Object.values(X.crew).includes(r.id) && !Object.values(pr.crew).includes(r.id) && idx.hours[r.id] + hx <= softCapOf(r, xs) + 4).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         for (const r of pool) { if (!pcOK(r, X, st, idx, xs)) continue; const crew = ['C', 'F', 'T'].map(k => k === xs ? r : idx.pm[X.crew[k]]); if (crew.every(Boolean) && crewIssue(X, crew, st)) continue;
           assign(r, X, xs); assign(q, pr, slot); return true; } }
@@ -2342,7 +2435,7 @@
       for (const pr of st.pairings.filter(x => x.crew.C && x.crew.F && !slotTaken(x, 'T') && isNew((idx.pm[x.crew.C] || {}).rank))) {
         const c0 = idx.pm[pr.crew.C], f = idx.pm[pr.crew.F];
         // A：教员进 T
-        const instrs = st.pilots.filter(q => isInstr(q.rank) && q !== c0 && q !== f).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
+        const instrs = st.pilots.filter(q => isJ3plus(q.rank) && q !== c0 && q !== f).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         if (instrs.some(q => relocate(q, pr, 'T', q2 => !crewIssue(pr, [c0, f, q2], st)))) { fixed++; continue; }
         // B：非新机长替换 C（新机长让出），T 由任意合格者（可链式让位）补
         unassign(c0, pr, 'C'); let done = false;
@@ -3345,6 +3438,7 @@
     const idx = buildIndex(st); const S = st.settings; const out = [];
     const add = (type, level, msg, pr, pid) => out.push({ type, level, msg, pairing: pr && pr.id, pilot: pid });
     for (const pr of st.pairings) {
+      const plabel = pairingLabel(pr, st);
       const crew = ['C', 'F', 'T'].map(s => pr.crew[s] && idx.pm[pr.crew[s]]);
       if (crew.some(x => !x)) {
         // 正式班表只含本中队：源表(srcCrew)里本来就没有的座位 = 外中队搭档未入表 → 信息级，不是可纠错空洞。
@@ -3352,22 +3446,25 @@
         const isOfficial = !!(pr.official || (pr.srcCrew && st.official));
         const ext = [], real = [];
         ['C', 'F', 'T'].forEach((s, i) => { if (crew[i]) return; if (isOfficial && pr.srcCrew && pr.srcCrew[s] == null) ext.push(s); else real.push(s); });
-        if (real.length) add('未满员', 'hard', `${pr.id} 缺 ${real.map(s => SLOT_NAME[s]).join('/')}`, pr);
-        if (ext.length) add('外中队缺位', 'info', `${pr.id} 缺 ${ext.map(s => SLOT_NAME[s]).join('/')}（源表仅本中队，外中队搭档未入表）`, pr);
+        if (real.length) add('未满员', 'hard', `${plabel} 缺 ${real.map(s => SLOT_NAME[s]).join('/')}`, pr);
+        if (ext.length) add('外中队缺位', 'info', `${plabel} 缺 ${ext.map(s => SLOT_NAME[s]).join('/')}（源表仅本中队，外中队搭档未入表）`, pr);
       }
       ['C', 'F', 'T'].forEach((s, i) => { const p = crew[i]; if (!p) return;
-        if (!slotRankOK(s, p.rank, s === 'F' && pr.crew.C && idx.pm[pr.crew.C] ? idx.pm[pr.crew.C].rank : null)) add('岗位级别不符', 'hard', `${pr.id} ${SLOT_NAME[s]}位 ${p.name}(${p.rank}) 级别不符`, pr, p.id);
+        if (!slotRankOK(s, p.rank, s === 'F' && pr.crew.C && idx.pm[pr.crew.C] ? idx.pm[pr.crew.C].rank : null)) add('岗位级别不符', 'hard', `${plabel} ${SLOT_NAME[s]}位 ${p.name}(${p.rank}) 级别不符`, pr, p.id);
         const [ok, rs] = personCheck(p, pr, st, idx, { ignorePrefs: true, skipFtl: true, slot: s });
-        rs.forEach(r => { const t = r.startsWith('请假') ? '请假冲突' : r.startsWith('时间') ? '时间重叠' : r.startsWith('休息') ? '休息不足'
-            : (r.includes('144h') ? '144h内48h休息' : r.includes('第5日') ? '连续4日后第5日飞行' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : (r.includes('月飞行小时') || r.includes('个人月飞行上限')) ? '月小时超法规上限' : null);
-          if (t) add(t, 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
-          else if (r.includes('帮扶')) add('帮扶对象', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
-          else if (r.includes('不适飞') || r.includes('体检已过期') || r.includes('不能作为唯一机长')) add('健康限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id);
-          else if (r.includes('限制高原') || r.includes('限制夜间')) add('健康限制', 'soft', `${pr.id} ${p.name}：${r}`, pr, p.id);
-          else if (/144h|第5日|连续7日|月飞行值勤|年飞行/.test(r)) add('飞行时间限制', 'hard', `${pr.id} ${p.name}：${r}`, pr, p.id); });
-        day5Deadheads(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日置位', 'soft', `${pr.id} ${p.name} 连续4个值勤日后第5日(${x.d}日)仅置位(随)：合规但尽量避免`, pr, p.id));
+        rs.forEach(r => {
+          if (/第5日/.test(r)) return; // 第5日执飞/置位仅走下方 soft
+          const t = r.startsWith('请假') ? '请假冲突' : r.startsWith('时间') ? '时间重叠' : r.startsWith('休息') ? '休息不足'
+            : (r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : (r.includes('月飞行小时') || r.includes('个人月飞行上限')) ? '月小时超法规上限' : null);
+          if (t) add(t, 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('帮扶')) add('帮扶对象', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('不适飞') || r.includes('体检已过期') || r.includes('不能作为唯一机长')) add('健康限制', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
+          else if (r.includes('限制高原') || r.includes('限制夜间')) add('健康限制', 'soft', `${plabel} ${p.name}：${r}`, pr, p.id);
+          else if (/144h|连续7日|月飞行值勤|年飞行/.test(r)) add('飞行时间限制', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id); });
+        day5Deadheads(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日置位', 'soft', `${plabel} ${p.name} 连续4个值勤日后第5日(${x.d}日)仅置位(随)：合规但尽量避免`, pr, p.id));
+        day5Operatings(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日执飞', 'soft', `${plabel} ${p.name} 连续4个值勤日后第5日(${x.d}日)执飞：时间满足即可（软提示）`, pr, p.id));
         const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
-        if (pf.length) add('意向休息日未满足', 'soft', `${pr.id} ${p.name} 意向休息日 ${pf.join(',')} 日被排班`, pr, p.id);
+        if (pf.length) add('意向休息日未满足', 'soft', `${plabel} ${p.name} 意向休息日 ${pf.join(',')} 日被排班`, pr, p.id);
       });
       {
         const iss = crewIssue(pr, crew, st);
@@ -3375,16 +3472,16 @@
         if (iss && (crew.every(Boolean) || iss.includes('帮扶'))) {
           const t = iss.includes('帮扶') ? '帮扶对象' : iss.includes('新机长') ? '新机长无教员' : iss.includes('restriction_table') ? '搭配限制表' : iss.includes('fo_combination_matrix') ? 'FO搭配矩阵' : iss.includes('17.1.') ? '高高原机组' : iss.includes('senior_pilot_rule') ? '58岁带队' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
           const demo = pr.demoAnomaly ? '【演示异常】' : '';
-          add(t, 'hard', `${demo}${pr.id} ${iss}`, pr); }
+          add(t, 'hard', `${demo}${plabel} ${iss}`, pr); }
       }
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
-      if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${pr.id} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
-      fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${pr.id} D${dy.d} 计划飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
-        if (dy.fltOver > 0) add('日飞行时间超限', 'hard', `${pr.id} D${dy.d} 计划飞行时间 ${fmtH(dy.planFlt)} > 表A限制 ${fmtH(dy.fltLimit)}（CCAR-121.483(a)）`, pr);
-        if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${pr.id} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
+      if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${plabel} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
+      fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${plabel} D${dy.d}${dy.part > 1 ? '-' + dy.part : ''}${dy.splitFrom ? '(拆)' : ''} 计划飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
+        if (dy.fltOver > 0) add('日飞行时间超限', 'hard', `${plabel} D${dy.d} 计划飞行时间 ${fmtH(dy.planFlt)} > 表A限制 ${fmtH(dy.fltLimit)}（CCAR-121.483(a)）`, pr);
+        if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${plabel} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
       const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
-      if (tl.length && crew.some(Boolean)) add('需血压测试仪', 'info', `${pr.id} 自 ${[...new Set(tl.map(l => apName(l.from, st)))].join('、')} 出港（${tl.map(l => 'D' + l.d + ' ' + l.flt).join('，')}），始发站须配备血压测试仪`, pr);
-      crew.forEach(p => { if (p && p.health && p.health.bpNote && tl.length) add('血压健康备注', 'info', `${pr.id} ${p.name}：${p.health.bpNote}`, pr, p.id); });
+      if (tl.length && crew.some(Boolean)) add('需血压测试仪', 'info', `${plabel} 自 ${[...new Set(tl.map(l => apName(l.from, st)))].join('、')} 出港（${tl.map(l => 'D' + l.d + ' ' + l.flt).join('，')}），始发站须配备血压测试仪`, pr);
+      crew.forEach(p => { if (p && p.health && p.health.bpNote && tl.length) add('血压健康备注', 'info', `${plabel} ${p.name}：${p.health.bpNote}`, pr, p.id); });
     }
     // 时间重叠会被两边各报一次，去重
     const seen = new Set(); const ded = out.filter(v => { if (v.type !== '时间重叠' && v.type !== '休息不足') return true;
@@ -3426,9 +3523,12 @@
       if (ytd + h > CCAR121.yearFlightH + 1e-9) addFtl('年飞行超限', `${p.name} YTD+本月 ${(ytd + h).toFixed(1)}h > ${CCAR121.yearFlightH}h`, null, p.id);
       const sched = idx.sched[p.id] || [];
       if (sched.length) {
+        // 按人汇总 FTL（第5日执飞已降为软提示，见上方 day5Operatings；此处不再硬报）
         ftlCheckPerson(p, sched[0], st, idx, {}).forEach(r => {
-          const type = r.includes('144h') ? '144h内48h休息' : r.includes('第5日') ? '连续4日后第5日飞行' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : '飞行时间限制';
-          addFtl(type, `${p.name}：${r}`, sched[0], p.id);
+          if (/第5日/.test(r)) return; // soft only
+          const type = r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : '飞行时间限制';
+          const plabel = pairingLabel(sched[0], st);
+          addFtl(type, `${plabel} ${p.name}：${r}`, sched[0], p.id);
         });
       }
       ((st.standby || {})[p.id] || []).forEach(d => {
@@ -3446,7 +3546,7 @@
           ((st.standby || {})[p.id] || []).forEach(d => { if (d >= 1 && d <= DAYS) iv.push([(d - 1) * DAY, d * DAY]); });
           const t0 = report(pr, st);
           if (hasContinuousRestBefore(iv, t0, 48 * 60) && !hasContinuousRestBefore(iv, t0, softNeed)) {
-            ded.push({ type: '48h休息偏紧', level: 'soft', msg: `${pr.id} ${p.name}：${softLabel}`, pairing: pr.id, pilot: p.id });
+            ded.push({ type: '48h休息偏紧', level: 'soft', msg: `${pairingLabel(pr, st)} ${p.name}：${softLabel}`, pairing: pr.id, pilot: p.id });
           }
         });
         ((st.standby || {})[p.id] || []).forEach(d => {
@@ -3517,7 +3617,7 @@
     const unk = [...new Set(pr.legs.flatMap(l => [l.from, l.to]).filter(c => !AIRPORTS[c] && !(st.airports && st.airports[c] && !/\(导入\)$/.test(st.airports[c][0]))))]; if (unk.length) out.push({ code: 'airport', msg: '未知机场：' + unk.join('、'), soft: true });
     const ds = [...new Set(pr.legs.filter(l => !l.dh).map(l => Math.floor(l.dep / DAY)))].sort((a, b) => a - b); let run = ds.length ? 1 : 0, mx = run;
     for (let i = 1; i < ds.length; i++) { run = ds[i] === ds[i - 1] + 1 ? run + 1 : 1; mx = Math.max(mx, run); }
-    if (mx >= 5) out.push({ code: 'consec', msg: `任务内连续 ${mx} 个执飞日（121.495(b) 4 个连续值勤日后第 5 日不得执飞），任何人都无法合规` });
+    if (mx >= 5) out.push({ code: 'consec', soft: true, msg: `任务内连续 ${mx} 个执飞日（第5日执飞已改为软提示；请确认休息/FDP 时间）` });
     for (const slot of ['C', 'F']) {
       const ghost = { id: '__ghost' + slot, name: '虚拟', rank: slot === 'C' ? 'TC' : 'F5', squad: '', fleet: pr.ac === 'C909' ? 'C909' : 'A320', auth: [...new Set(pr.legs.flatMap(l => [l.from, l.to]))], prefs: [], leave: [], health: defaultHealth() };
       const gs = Object.assign({}, st, { pilots: [ghost], pairings: [Object.assign({}, pr, { crew: { C: null, F: null, T: null } })], standby: null, training: null, sim: null, fills: [] });
@@ -3639,7 +3739,7 @@
     const init = p => { if (!use.has(p.id)) { use.set(p.id, []); hrs.set(p.id, 0); } };
     pool().forEach(init);
     const rankOf = id => { const p = id && st.pilots.find(x => x.id === id); return p ? p.rank : null; };
-    const crewHasInstr = pr => ['C', 'F', 'T'].some(x => pr.crew[x] && INSTR.includes(rankOf(pr.crew[x])));
+    const crewHasInstr = pr => ['C', 'F', 'T'].some(x => pr.crew[x] && isJ3plus(rankOf(pr.crew[x])));
     const daySetOf = ivs => { const s = new Set(); ivs.forEach(o => { for (let d = Math.floor(o[0] / DAY) + 1; d <= Math.floor((o[1] - 1) / DAY) + 1; d++) s.add(d); }); return s; };
     const fits = (p, pr) => {
       const sp = span(pr); const ivs = use.get(p.id) || [];
@@ -3647,11 +3747,7 @@
       // 144h 内连续 48h 休息（硬底）
       const t0 = sp[0] - (S.reportMin || 75);
       if (!hasContinuousRestBefore(ivs.slice().sort((a, b) => a[0] - b[0]), t0, 48 * 60)) return false;
-      // 连续 4 个值勤日后第 5 日不得执飞（CCAR-121.495(b)）——仅在启用 opt.strictDutyDays 时拦截
-      if (opt.strictDutyDays !== false) {
-        const days = daySetOf(ivs); for (let k = 0; k < pr.ndays; k++) days.add(pr.start + k);
-        for (const d of days) { if (days.has(d) && [1, 2, 3, 4].every(k2 => days.has(d - k2))) return false; }
-      }
+      // 第5日执飞不再硬拦（2026-11-02）；仍卡任务间隔 restMin + 144h/48h
       return true;
     };
     const okFor = (p, pr, slot) => {
@@ -3663,7 +3759,7 @@
       if (other) {
         const or = rankOf(pr.crew[other]);
         if (or && isFO(p.rank) && isFO(or) && !foComboAllowed(p.rank, or)) return false;
-        if ((slot === 'F' || slot === 'T') && rankOf(pr.crew.C) && isNew(rankOf(pr.crew.C)) && !INSTR.includes(p.rank)) return false;
+        if ((slot === 'F' || slot === 'T') && rankOf(pr.crew.C) && isNew(rankOf(pr.crew.C)) && !isJ3plus(p.rank)) return false;
       }
       // 高高原任务：T 位补机长（凑够双机长）
       if (slot === 'T' && isPlateau(pr) && !isCapRank(p.rank)) return false;
@@ -4084,7 +4180,7 @@
     if (pr.legs.some(l => l.to === 'ZULS' || l.from === 'ZULS')) rules.push('拉萨航段须两名 J3 及以上');
     if (sp.length) rules.push('特殊机场 ' + sp.map(c => apName(c, w)).join('、') + ' 须授权/级别搭配');
     const crew = ['C', 'F', 'T'].map(x => pr.crew[x] && w.pilots.find(p => p.id === pr.crew[x])).filter(Boolean);
-    if (crew.some(x => isNew(x.rank)) && slot !== 'F') rules.push('新机长所在机组须有 TL 及以上教员');
+    if (crew.some(x => isNew(x.rank)) && slot !== 'F') rules.push('新机长所在机组须有 J3 及以上（含教员）');
     const bp = pr.legs.filter(l => (w.settings.bpTesterAirports || []).includes(l.from)); if (bp.length) rules.push('始发站 ' + [...new Set(bp.map(l => apName(l.from, w)))].join('、') + ' 须配备血压测试仪（提醒）');
     return { top: Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => k + '×' + n), rules };
   }
@@ -4193,30 +4289,58 @@
       const dep = a.dep != null ? a.dep : l.dep; const arr = a.arr != null ? a.arr : (a.dep != null ? a.dep + blk : l.arr);
       const known = a.dep != null || a.arr != null;
       // 级联（不追回）推算：录入值优先，否则受前段级联落地 + 最短过站约束
-      let cdep = known ? dep : l.dep; if (!known && prevC && prevC.leg.d === l.d) cdep = Math.max(cdep, prevC.carr + Math.min(turn, l.dep - prevC.leg.arr));
+      // 同值勤日且未因长过站拆分时才级联延误；拆分后的新 FDP 窗不继承前段延误
+      const splitHere = prevC && (l.d !== prevC.leg.d || shouldSplitFdpBetween(prevC.leg, l, pr, st, dep - (prevC.arr)));
+      const sameFdp = prevC && prevC.leg.d === l.d && !splitHere;
+      let cdep = known ? dep : l.dep; if (!known && sameFdp) cdep = Math.max(cdep, prevC.carr + Math.min(turn, l.dep - prevC.leg.arr));
       const carr = known ? arr : cdep + blk;
       const x = { i, leg: l, dep, arr, known, kind: known ? (a.kind || 'est') : 'plan', landed: a.arr != null && a.kind === 'act', departed: a.dep != null && a.kind === 'act',
-        late: dep - l.dep, lateArr: arr - l.arr, cdep, carr, conflict: prevC && prevC.leg.d === l.d && dep < prevC.arr && !known ? prevC.arr - dep : 0 };
+        late: dep - l.dep, lateArr: arr - l.arr, cdep, carr, conflict: sameFdp && dep < prevC.arr && !known ? prevC.arr - dep : 0 };
       x.dly = Math.max(0, x.late); // 兼容
-      let day = out[out.length - 1]; if (!day || day.d !== l.d) { day = { d: l.d, legs: [] }; out.push(day); }
+      // 值勤日切换，或同日内外站长过站/酒店休息 → 新 FDP 窗（次段重新报到）
+      let day = out[out.length - 1];
+      if (!day || splitHere) {
+        if (day && splitHere && l.d === day.d) day.splitNext = true;
+        const part = (!day || l.d !== (day && day.d) ? 1 : (day.part || 1) + 1);
+        day = { d: l.d, part, legs: [], splitFrom: !!(prevC && l.d === prevC.leg.d && splitHere) };
+        out.push(day);
+      }
       day.legs.push(x); prevC = x; });
-    out.forEach((dy, k) => { const f = dy.legs[0];
-      dy.date = Math.floor(f.leg.dep / DAY) + 1;
-      dy.start = (pr.freshAt && pr.freshAt === legKey(f.leg)) ? f.dep - rep : f.leg.dep - rep;
-      dy.end = Math.max(...dy.legs.map(x => x.arr)); dy.planEnd = dy.legs[dy.legs.length - 1].leg.arr;
-      dy.cascEnd = Math.max(...dy.legs.map(x => x.carr));
-      dy.fdp = dy.end - dy.start; dy.planFdp = dy.planEnd - (f.leg.dep - rep);
-      dy.limit = fdpLimit(st, f.leg.dep - rep, dy.legs.length); dy.buffer = dy.limit - dy.fdp; dy.planBuffer = dy.limit - dy.planFdp;
-      dy.planFlt = dy.legs.reduce((a, x) => a + (x.leg.dh ? 0 : x.leg.arr - x.leg.dep), 0); dy.fltLimit = flightLimitMin(st, f.leg.dep - rep); dy.fltOver = Math.max(0, dy.planFlt - dy.fltLimit);
-      dy.exceed = Math.max(0, -dy.buffer);
-      dy.cascExceed = dy.exceed ? 0 : Math.max(0, dy.cascEnd - dy.start - dy.limit);
-      dy.cascLeg = dy.cascExceed ? dy.legs.find(x => x.carr > dy.start + dy.limit) : null;
-      dy.exLeg = dy.exceed ? dy.legs.find(x => x.arr > dy.start + dy.limit) : null;
+    out.forEach((dy, k) => { const f = dy.legs[0]; const lastAny = dy.legs[dy.legs.length - 1];
+      const op = dy.legs.filter(x => !x.leg.dh); const fOp = op[0] || null; const lastOp = op.length ? op[op.length - 1] : null;
+      dy.date = Math.floor(f.leg.dep / DAY) + 1; dy.dhOnly = !op.length; dy.nOpLegs = op.length;
+      // 飞行执勤期窗口仅按执飞段：报到=首个执飞起飞前 reportMin，结束=末个执飞落地；两端(随)置位不拉窗
+      // 休息/退场仍按本窗实际首末段（含置位）+ releaseMin（与 report()/release() 占用一致）
+      const restart = dy.splitFrom || (pr.freshAt && (fOp ? pr.freshAt === legKey(fOp.leg) : pr.freshAt === legKey(f.leg)));
+      if (fOp) {
+        dy.start = restart ? fOp.dep - rep : fOp.leg.dep - rep;
+        dy.end = Math.max(...op.map(x => x.arr)); dy.planEnd = lastOp.leg.arr;
+        dy.cascEnd = Math.max(...op.map(x => x.carr));
+        dy.fdp = dy.end - dy.start; dy.planFdp = dy.planEnd - (fOp.leg.dep - rep);
+        dy.limit = fdpLimit(st, fOp.leg.dep - rep, op.length); dy.buffer = dy.limit - dy.fdp; dy.planBuffer = dy.limit - dy.planFdp;
+        dy.planFlt = op.reduce((a, x) => a + (x.leg.arr - x.leg.dep), 0); dy.fltLimit = flightLimitMin(st, fOp.leg.dep - rep); dy.fltOver = Math.max(0, dy.planFlt - dy.fltLimit);
+        dy.exceed = Math.max(0, -dy.buffer);
+        dy.cascExceed = dy.exceed ? 0 : Math.max(0, dy.cascEnd - dy.start - dy.limit);
+        dy.cascLeg = dy.cascExceed ? op.find(x => x.carr > dy.start + dy.limit) : null;
+        dy.exLeg = dy.exceed ? op.find(x => x.arr > dy.start + dy.limit) : null;
+      } else {
+        dy.start = restart ? f.dep - rep : f.leg.dep - rep;
+        dy.end = lastAny.arr; dy.planEnd = lastAny.leg.arr; dy.cascEnd = lastAny.carr;
+        dy.fdp = 0; dy.planFdp = 0; dy.limit = fdpLimit(st, f.leg.dep - rep, 0); dy.buffer = dy.limit; dy.planBuffer = dy.limit;
+        dy.planFlt = 0; dy.fltLimit = flightLimitMin(st, f.leg.dep - rep); dy.fltOver = 0;
+        dy.exceed = 0; dy.cascExceed = 0; dy.cascLeg = null; dy.exLeg = null;
+      }
+      dy.relEnd = lastAny.arr; dy.planRelEnd = lastAny.leg.arr; // 含置位的实际退场锚点（休息用）
       dy.nLanded = dy.legs.filter(x => x.landed).length; dy.nKnown = dy.legs.filter(x => x.known).length;
       dy.risk = dy.buffer < 0 ? 'over' : dy.buffer < (S.fdpRiskHigh || 60) ? 'high' : dy.buffer < (S.fdpRiskMed || 120) ? 'med' : 'low';
       dy.planRisk = dy.planBuffer < 0 ? 'over' : dy.planBuffer < (S.fdpRiskHigh || 60) ? 'high' : dy.planBuffer < (S.fdpRiskMed || 120) ? 'med' : 'low';
-      const nx = out[k + 1]; if (nx) { const req = (S.minOvernightRestH || 10) * 60; dy.restAfter = (nx.legs[0].dep - rep) - (dy.end + rel); dy.planRest = (nx.legs[0].leg.dep - rep) - (dy.planEnd + rel);
-        dy.restShort = dy.restAfter < dy.planRest ? Math.max(0, req - dy.restAfter) : 0; dy.planRestShort = Math.max(0, req - dy.planRest); } });
+      const nx = out[k + 1]; if (nx) { const req = (S.minOvernightRestH || 10) * 60;
+        // 休息按含置位的实际末段退场 → 次窗首段报到（置位仍占时间，只是不计入 FDP 长度）
+        dy.restAfter = (nx.legs[0].dep - rep) - (dy.relEnd + rel); dy.planRest = (nx.legs[0].leg.dep - rep) - (dy.planRelEnd + rel);
+        // 同日内外站拆分（酒店休息中断 FDP）不按过夜最低休息硬卡
+        const dutyBreak = !!(dy.splitNext || nx.splitFrom);
+        dy.restShort = dutyBreak ? 0 : (dy.restAfter < dy.planRest ? Math.max(0, req - dy.restAfter) : 0);
+        dy.planRestShort = dutyBreak ? 0 : Math.max(0, req - dy.planRest); } });
     return out;
   }
   // 旧版 st.delays {legKey: 分钟} → st.actuals：仅对该段本身设预计起飞/落地（不再级联）
@@ -4237,7 +4361,7 @@
   // 机组成员的下一个任务休息是否被延误压缩
   function downstream(st, pr, days, idx) {
     idx = idx || buildIndex(st); const S = st.settings; const rel = S.releaseMin || 30; const out = [];
-    const last = days[days.length - 1]; const end = last.end + rel;
+    const last = days[days.length - 1]; const end = (last.relEnd != null ? last.relEnd : last.end) + rel;
     ['C', 'F', 'T'].forEach(s => { const id = pr.crew[s]; if (!id) return;
       const nx = idx.sched[id].filter(o => o !== pr && o.id !== pr.id && report(o, st) >= release(pr, st)).sort((a, b) => report(a, st) - report(b, st))[0];
       if (!nx) return; const gap = report(nx, st) - end;
@@ -4599,25 +4723,25 @@
       const seatPr = st.pairings.find(pr => {
         const c = pr.crew.C && idx.pm[pr.crew.C];
         if (!c || !isNew(c.rank)) return false;
-        return ['C', 'F', 'T'].some(s => { const q = pr.crew[s] && idx.pm[pr.crew[s]]; return q && isInstr(q.rank); });
+        return ['C', 'F', 'T'].some(s => { const q = pr.crew[s] && idx.pm[pr.crew[s]]; return q && isJ3plus(q.rank); });
       });
       if (seatPr) {
         for (const s of ['T', 'F']) {
           const q = seatPr.crew[s] && idx.pm[seatPr.crew[s]];
-          if (!q || !isInstr(q.rank)) continue;
+          if (!q || !isJ3plus(q.rank)) continue;
           const fo = st.pilots.find(p => isFO(p.rank) && !Object.values(seatPr.crew).includes(p.id)
             && personCheck(p, seatPr, st, idx, { ignorePrefs: true, slot: s })[0]);
           if (fo) { seatPr.crew[s] = fo.id; break; }
         }
         ['T', 'F'].forEach(s => {
           const q = seatPr.crew[s] && idx.pm[seatPr.crew[s]];
-          if (q && isInstr(q.rank)) {
+          if (q && isJ3plus(q.rank)) {
             const fo = st.pilots.find(p => isFO(p.rank) && !Object.values(seatPr.crew).includes(p.id));
             if (fo) seatPr.crew[s] = fo.id;
           }
         });
         seatPr.demoAnomaly = 'seat';
-        seatPr.demoAnomalyNote = '演示异常：新机长机组故意缺少教员（座位规则，路演用例）';
+        seatPr.demoAnomalyNote = '演示异常：新机长机组故意缺少 J3+ 陪飞（座位规则，路演用例）';
         out.push({ kind: 'seat', pairingId: seatPr.id, note: seatPr.demoAnomalyNote });
       }
     }
@@ -4635,7 +4759,7 @@
             const target = 35;
             const add = Math.max(0, fdpRow.buffer - target);
             last.arr += add;
-            const note = `演示异常：${pr.id} D${fdpRow.d} 执勤余量压至约 ${target} 分（易超限，路演用例）`;
+            const note = `演示异常：${pairingLabel(pr, st)} D${fdpRow.d} 执勤余量压至约 ${target} 分（易超限，路演用例）`;
             pr.demoAnomaly = 'fdp';
             pr.demoAnomalyNote = note;
             out.push({ kind: 'fdp', pairingId: pr.id, d: fdpRow.d, note });
@@ -4900,9 +5024,9 @@
 
     const api = { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
-    transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
-    isFO, isCaptClass, isInstr, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
-    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf,
+    transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
+    isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
+    generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
     crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });

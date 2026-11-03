@@ -20,7 +20,8 @@
     const nm = id => id && pm[id] ? pm[id].name : '空缺';
     const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, pm)} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
     const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} 飞行执勤期 ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
-    const noteOf = pr => `${pr.id} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
+    const plabel = pr => (C.pairingLabel ? C.pairingLabel(pr, st) : String(pr.id || ''));
+    const noteOf = pr => `${plabel(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
     const rich = (head, codes, tail) => { const r = [{ text: head + ' ', font: { color: { argb: 'FFFFFFFF' }, bold: true, size: 9 } }];
       codes.forEach((c, i) => { if (i) r.push({ text: '-', font: { color: { argb: 'FFFFFFFF' }, size: 9 } }); const sp = C.isSpecial(c, st); r.push({ text: AB[c] + (sp ? '★' : ''), font: { color: { argb: sp ? 'FFFFC2C2' : 'FFFFFFFF' }, bold: sp, size: 9 } }); });
       if (tail) r.push({ text: ' ' + tail, font: { color: { argb: 'FFE0E8F5' }, size: 8 } }); return { richText: r }; };
@@ -50,7 +51,7 @@
       const taken = []; const sch = (idx.sched[p.id] || []).slice().sort((a, b) => a.start - b.start);
       sch.forEach(pr => { const slot = ['C', 'F', 'T'].find(s => pr.crew[s] === p.id); const nt = noteOf(pr);
         segs(pr).forEach((g, j) => { const codes = [g.ls[0].from, ...g.ls.map(l => l.to)];
-          put(ws, r, L, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(j ? pr.id.replace(/^PR/, '') : pr.id + (slot === 'T' ? '[观]' : ''), codes, `${g.ls.some(l => l.dh) ? '(随)' : ''}${C.fmtT(g.ls[0].dep)}-${C.fmtT(g.ls[g.ls.length - 1].arr)}`), COL[slot] || COL.C, nt); }); });
+          put(ws, r, L, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(j ? plabel(pr).replace(/^PR/, '') : plabel(pr) + (slot === 'T' ? '[观]' : ''), codes, `${g.ls.some(l => l.dh) ? '(随)' : ''}${C.fmtT(g.ls[0].dep)}-${C.fmtT(g.ls[g.ls.length - 1].arr)}`), COL[slot] || COL.C, nt); }); });
       const sb = (st.standby || {})[p.id] || [], tr = (st.training || {})[p.id] || [], sim = (st.sim || {})[p.id] || [], ctl = (st.control || {})[p.id] || [];
       for (let d = 1; d <= D; d++) { const s0 = (d - 1) * SLOTS, s1 = s0 + SLOTS - 1;
         if ((p.leave || []).includes(d)) put(ws, r, L, taken, s0, s1, '请假', COL.lv, '请假/休假', '7A2E3B');
@@ -63,17 +64,17 @@
     ws.autoFilter = { from: { row: 2, column: 1 }, to: { row: 2, column: L } };
     // ---- 任务甘特 ----
     const pids = new Set(pilots.map(p => p.id)); const prs = st.pairings.filter(pr => !opt.pilotIds || ['C', 'F', 'T'].some(s => pids.has(pr.crew[s])));
-    const wt = wb.addWorksheet('任务甘特'); const L2 = grid(wt, '任务甘特（按任务）', ['任务', '天数', '机型', '机组'], [8, 5, 6, 22]);
+    const wt = wb.addWorksheet('任务甘特'); const L2 = grid(wt, '任务甘特（按任务）', ['任务', '天数', '机型', '机组'], [28, 5, 6, 22]);
     prs.forEach((pr, i) => { const r = 3 + i; wt.getRow(r).height = 26; const full = (typeof RosterCore !== 'undefined' && RosterCore.pairingFull) ? RosterCore.pairingFull(pr) : (pr.crew.C && pr.crew.F && pr.crew.T);
-      [pr.id, pr.ndays, pr.ac, ['C', 'F', 'T'].map(s => nm(pr.crew[s])).join('/')].forEach((v, k) => { const c = wt.getCell(r, k + 1); c.value = v; c.border = B; c.alignment = { vertical: 'middle' }; if (!full) c.font = { color: { argb: 'FFC0392B' }, bold: k === 0 }; });
-      const taken = []; segs(pr).forEach(g => put(wt, r, L2, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(pr.id, [g.ls[0].from, ...g.ls.map(l => l.to)], ''), full ? COL.C : 'C0392B', noteOf(pr))); });
+      [plabel(pr), pr.ndays, pr.ac, ['C', 'F', 'T'].map(s => nm(pr.crew[s])).join('/')].forEach((v, k) => { const c = wt.getCell(r, k + 1); c.value = v; c.border = B; c.alignment = { vertical: 'middle' }; if (!full) c.font = { color: { argb: 'FFC0392B' }, bold: k === 0 }; });
+      const taken = []; segs(pr).forEach(g => put(wt, r, L2, taken, Math.floor(g.a / SH), Math.floor((g.b - 1) / SH), rich(plabel(pr), [g.ls[0].from, ...g.ls.map(l => l.to)], ''), full ? COL.C : 'C0392B', noteOf(pr))); });
     // ---- 图例与统计 ----
     const wl = wb.addWorksheet('图例与统计'); wl.columns = [{ width: 12 }, { width: 10 }, { width: 8 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }, { width: 10 }];
     const sum = C.summarize(st); let r = 1; const hdr = (t) => { const c = wl.getCell(r, 1); c.value = t; c.font = { bold: true, size: 12 }; r++; };
     hdr('方案信息'); [['方案', opt.plan || '当前方案'], ['导出范围', opt.label || '全部人员'], ['人数', pilots.length], ['任务数', prs.length], ['满员率', (sum.coverage != null ? (sum.coverage * (sum.coverage <= 1 ? 100 : 1)).toFixed(1) + '%' : '')], ['硬违规', sum.hard], ['导出时间', new Date().toLocaleString('zh-CN')], ['时间格', '每日 8 格 × 3 小时；色块 = 报到(首段前 ' + rep + ' 分) → 退场(末段后 ' + rel + ' 分)']].forEach(x => { wl.getCell(r, 1).value = x[0]; wl.getCell(r, 2).value = x[1]; wl.getCell(r, 1).font = { bold: true }; r++; });
     r++; hdr('图例');
     [['机长/左座', COL.C, 'FFFFFF'], ['副驾驶', COL.F, 'FFFFFF'], ['观察员', COL.T, 'FFFFFF'], ['培训', COL.tr, 'FFFFFF'], ['模拟机', COL.sim, 'FFFFFF'], ['备份', COL.sb, 'FFFFFF'], ['意向休息', COL.pref, '2E6B45'], ['请假', COL.lv, '7A2E3B'], ['★/红字 = 特殊机场', 'FFFFFF', 'C0392B']].forEach(x => { const c = wl.getCell(r, 1); c.value = x[0]; c.fill = fill(x[1]); c.font = { color: { argb: 'FF' + x[2] }, bold: true }; c.border = B; r++; });
-    wl.getCell(r, 1).value = '色块内文字：任务号 + 当日机场单字简称链 + 首段起飞-末段落地；悬停批注查看完整机组/航班/城市/飞行执勤期'; r += 2;
+    wl.getCell(r, 1).value = '色块内文字：任务标签（OF### + 中文航线链，如 OF289 府威春 + 春威府(随)）+ 当日机场简称 + 时刻；悬停批注查看完整机组/航班/城市/飞行执勤期'; r += 2;
     hdr('机场简称'); Object.keys(AB).forEach(code => { wl.getCell(r, 1).value = AB[code]; wl.getCell(r, 2).value = C.apName(code, st); wl.getCell(r, 3).value = code; if (C.isSpecial(code, st)) wl.getCell(r, 2).font = { color: { argb: 'FFC0392B' }, bold: true }; r++; });
     r++; hdr('人员统计'); const hr0 = r; ['员工号', '姓名', '级别', '本月小时', '值勤天数', '任务数', '备份天', '培训天', '模拟机天'].forEach((h, k) => { const c = wl.getCell(r, k + 1); c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill(COL.hd); c.border = B; }); r++;
     pilots.forEach(p => { const dd = new Set(); (idx.sched[p.id] || []).forEach(pr => pr.legs.forEach(l => dd.add(Math.floor(l.dep / C.DAY) + 1)));

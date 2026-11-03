@@ -18,16 +18,13 @@
     for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return PA_COLORS[Math.abs(h) % PA_COLORS.length];
   }
-  /** 任务机场单字简称链（复用 apAbbr：蓉/府…），压缩无横线，如 蓉府蓉 */
+  /** 任务机场单字简称链（复用 fmtOffRaw：府威春 + 春威府(随)） */
   function paRouteChain(pr) {
-    if (!pr || !pr.legs || !pr.legs.length) return '';
-    const codes = [pr.legs[0].from, ...pr.legs.map(l => l.to)];
-    return codes.map(c => apAbbr(c)).join('');
+    return (C.fmtOffRaw && C.fmtOffRaw(pr, st)) || '';
   }
-  /** 列表标签：OF008 蓉府蓉 · D1… */
+  /** 列表标签：OF289 府威春 + 春威府(随) · D1… */
   function paPairLabel(pr, dayBit) {
-    const chain = paRouteChain(pr);
-    const head = chain ? `${pr.id} ${chain}` : String(pr.id || '');
+    const head = (C.pairingLabel && C.pairingLabel(pr, st)) || String((pr && pr.id) || '');
     return dayBit ? `${head} · ${dayBit}` : head;
   }
 
@@ -394,7 +391,7 @@
           + '<td>' + (l.dh ? '置位' : (h ? h.toFixed(2) + 'h' : '—')) + '</td></tr>';
       }).join('') : '<tr><td colspan="4" class="mut">无航段</td></tr>';
       return '<div class="pa-pr' + (touchSel ? ' on' : '') + '" data-pid="' + esc(pr.id) + '">'
-        + '<div class="pa-prhd"><b>' + esc(pr.id) + '(' + dayBit + ')</b>'
+        + '<div class="pa-prhd"><b>' + esc(pairLabel(pr)) + '(' + dayBit + ')</b>'
         + (chain ? ' <span class="mut">' + esc(chain) + '</span>' : '')
         + (role ? ' <span class="pill-lite">' + esc(role) + '</span>' : '')
         + ' <span class="mut">' + hrs + 'h · ' + legs.length + ' 段</span></div>'

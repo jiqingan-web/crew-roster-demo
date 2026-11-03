@@ -7,7 +7,7 @@ for (const seed of [20261101, 7, 42]) {
   const capt = st.pilots.filter(p => C.RANK_VAL[p.rank] >= 9 || C.NEW_CAPT.includes(p.rank) || C.INSTR.includes(p.rank) || p.rank === 'J3').length;
   chk(seed + ' size', st.lite && st.pilots.filter(p => !p.reserve).length === 101 && st.pilots.filter(p => p.reserve).length === 40 && st.pilots.filter(p => p.reserve).every(p => p.squad === '外中队候补·演示' && p.outer && p.external && C.isOuterPilot(p)) && st.pilots.filter(p => !p.reserve).every(p => !p.outer && !p.external && !C.isOuterPilot(p) && p.squad === '演示中队') && [...new Set(st.pilots.map(p => p.squad))].sort().join('|') === '外中队候补·演示|演示中队', st.pilots.length + ' pilots');
   { const rc = st.pilots.filter(p => p.reserve && p.outerRole === '机长'); chk(seed + ' outer captains tagged', rc.length === 20 && rc.every(p => p.outer && p.rank), rc.length + ' ' + [...new Set(rc.map(p => p.rank))].join(',')); }
-  { const own = st.pilots.filter(p => !p.reserve); chk(seed + ' mix', own.filter(p => C.INSTR.includes(p.rank)).length === 14 && own.filter(p => C.NEW_CAPT.includes(p.rank)).length === 7, ''); }
+  { const own = st.pilots.filter(p => !p.reserve); chk(seed + ' mix', own.filter(p => C.INSTR.includes(p.rank)).length === 14 && own.filter(p => C.NEW_CAPT.includes(p.rank)).length === 5 && own.filter(p => p.rank === '机长A').length === 2, ''); }
   chk(seed + ' demoFill', st.pairings.every(p => p.demoFill));
   const t = Date.now(); C.autoFill(st); C.leaveDemoHoles(st); const ms = Date.now() - t;
   chk(seed + ' speed<4s(node)', ms < 4000, ms + 'ms');
@@ -36,12 +36,17 @@ for (const seed of [20261101, 7, 42]) {
   const b5 = Object.entries(bl).filter(([k]) => +k >= 5).reduce((a, [, v]) => a + v, 0) / bt;
   chk(seed + ' block mode 3', mode === 3, JSON.stringify(bl));
   chk(seed + ' rest3-4 >=40% & > rest2', g34 >= 0.4 && g34 > g2, (100 * g34).toFixed(0) + '% vs ' + (100 * g2).toFixed(0) + '%');
-  // 121.495(b)：4 个连续值勤日后第 5 日不得执飞 → 只要求无「第5日执飞」；第 5 日置位(随)回基地允许
-  // 连续值勤日 = 执飞日(含跨日落地) 或 主备份；仅置位的日子不计
-  const ix5 = C.buildIndex(st); let op5 = 0; const D5 = []; st.pilots.forEach(p => { const fl = {}, du = {}; (ix5.sched[p.id] || []).forEach(o => { o.legs.forEach(l => { if (!l.dh) fl[Math.floor(l.dep / C.DAY) + 1] = 1; }); C.opDays(o).forEach(d => du[d] = 1); });
+  // 第5日执飞已非硬禁（2026-11-02）；仍统计 op5 供观察，不作为失败条件
+  // 连续值勤日 = 执飞/置位/主备份（软提示用）
+  const ix5 = C.buildIndex(st); let op5 = 0; const D5 = []; st.pilots.forEach(p => { const fl = {}, du = {}; (ix5.sched[p.id] || []).forEach(o => {
+      const op = new Set(C.opDays(o)); C.opDays(o).forEach(d => du[d] = 1);
+      o.legs.forEach(l => { if (!l.dh) fl[Math.floor(l.dep / C.DAY) + 1] = 1; else { const d = Math.floor(l.dep / C.DAY) + 1; if (!op.has(d)) du[d] = 1; } });
+    });
     ((st.standby || {})[p.id] || []).forEach(d => du[d] = 1);
     for (let d = 5; d <= C.DAYS; d++) if (fl[d] && [1, 2, 3, 4].every(k => du[d - k])) { op5++; D5.push(p.id + '@' + d); } });
-  chk(seed + ' rest0-1 <=10%, no day-5 operating', g01 <= 0.1 && op5 === 0, (100 * g01).toFixed(0) + '% 5+blocks ' + (100 * b5).toFixed(1) + '% op5 ' + op5 + ' ' + D5.slice(0, 3));
+  chk(seed + ' rest0-1 <=10% (day5 fly allowed)', g01 <= 0.1, (100 * g01).toFixed(0) + '% 5+blocks ' + (100 * b5).toFixed(1) + '% op5 ' + op5 + ' ' + D5.slice(0, 3));
+  const hard5 = C.validate(st).filter(v => v.level === 'hard' && (v.type === '连续4日后第5日飞行' || /第5日/.test(v.msg || '')));
+  chk(seed + ' no hard day5 ban', hard5.length === 0, hard5.slice(0, 2).map(v => v.msg).join('|'));
   const tr = st.pilots.filter(p => ix.hours[p.id] > 0.5).map(p => ((st.training || {})[p.id] || []).length);
 
   // 值勤连续性：日内衔接；任务起讫成都；日间要么同站过夜要么两端均在成都

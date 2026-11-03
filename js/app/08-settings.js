@@ -6,7 +6,7 @@
     const cats = ['NONE', 'LHASA', 'HIGH', 'PLATEAU', 'ZBCF', 'J1', 'US'];
     $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>排班参数</h3>
       ${num('minRestH', '两任务间最短休息', '小时')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
-      ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('softRest48H', '144h内连续休息软目标', '小时')}${num('reportMin', '首段起飞前报到（公司国内飞行组95）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
+      ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（机长类/副驾驶交替）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('softRest48H', '144h内连续休息软目标', '小时')}${num('reportMin', '首段起飞前报到（公司国内飞行组105=1h45）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
       <h3 style="margin-top:14px">高强度模式</h3>
       <label class="flex"><input type="checkbox" id="hiMode" ${S.highIntensity ? 'checked' : ''}> 高强度模式：允许把工时集中到机长线（J3+/教员），普通模式软目标 ≤70–75h</label>
@@ -31,8 +31,11 @@
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <h3 style="margin-top:16px">飞行执勤期限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>
       <table class="fdpt"><tr><th>报到时间（本地）</th>${C.LEG_COLS.map(c => `<th>${c}</th>`).join('')}</tr>${S.fdpTable.map((r, ri) => `<tr><td>${r.label}</td>${r.lim.map((v, ci) => `<td><input type="number" step="0.5" class="fdpin" data-r="${ri}" data-c="${ci}" value="${v}"> h</td>`).join('')}</tr>`).join('')}</table>
-      <div class="note">飞行执勤期 = 当日首段计划起飞前报到（${S.reportMin} 分钟）至末段落地（挡轮挡）；按报到时刻与当日航段数查表。</div>
+      <div class="note">飞行执勤期 = 当日<strong>首个执飞段</strong>起飞前报到（${S.reportMin} 分钟）至<strong>末个执飞段</strong>落地；两端置位(随)不拉长窗口（置位仍占休息/占用，不计飞行小时与执勤期长度）。按报到时刻与当日<strong>执飞</strong>段数查表。</div>
       <div class="note" style="margin-top:6px">三人制运行：不启用扩编机组 / 表C（公司手册 3.6.3 表C留白；用户拍板关闭）。</div>
+      <label class="flex" style="margin-top:8px"><input type="checkbox" id="fdpSplitLG" ${S.fdpSplitLongGround !== false ? 'checked' : ''}> 长过站拆分飞行值勤期（过站≥阈值默认休息；合肥式早出晚归；短过站不拆）</label>
+      ${num('fdpSplitLongGroundH', '拆分阈值：同站过站 ≥', '小时（默认5；外站与基地均拆）')}
+      <div class="note" style="margin-top:4px">拆分后次段按 reportMin 重新报到，不与前段并成一个连续 FDP。含成都双流/天府基地长过站（如湘府湘）。</div>
       ${num('fdpRiskHigh', '高风险：延误余量 <', '分钟')}${num('fdpRiskMed', '中风险：延误余量 <', '分钟')}${num('minTurnMin', '延误推算最短过站', '分钟')}${num('minOvernightRestH', '任务内过夜最低休息', '小时')}
       <div style="margin-top:6px"><button class="btn sm" id="fdpReset">恢复默认 飞行执勤期表</button></div>
       <div style="margin-top:12px"><button class="btn primary" id="saveS">保存设置并重新校验</button></div></div>
@@ -41,7 +44,7 @@
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);
       document.querySelectorAll('.fdpin').forEach(i => S.fdpTable[+i.dataset.r].lim[+i.dataset.c] = +i.value); S.fdpAugmented = false;
-      S.honorPrefs = $('#hp').checked; S.highIntensity = $('#hiMode').checked; S.hiTargetH = Math.min(+S.hiTargetH || 85, S.hardMaxHours || 100); S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
+      S.honorPrefs = $('#hp').checked; S.fdpSplitLongGround = $('#fdpSplitLG').checked; S.highIntensity = $('#hiMode').checked; S.hiTargetH = Math.min(+S.hiTargetH || 85, S.hardMaxHours || 100); S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
       st.airports = {}; document.querySelectorAll('[data-cat]').forEach(s => { const a = C.AIRPORTS[s.dataset.cat].slice(0, 3); if (s.value !== 'NONE') a[3] = s.value; st.airports[s.dataset.cat] = a; });
       refresh(); toast('设置已保存，校验结果已更新');
     };

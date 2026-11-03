@@ -239,3 +239,25 @@ engine_options:
   age_rules_require_age_data: true    # 无年龄数据时年龄类规则不生效（规则库显示“待年龄数据”）
   senior_pilot_rule_active: false     # 用户 2026-10 指示：暂不执行 58 周岁带队规则
   restriction_table_hard: true        # 搭配限制表（不可同机）为硬约束
+
+# =============================================================================
+# 飞行值勤期 · 长过站拆分（排班助手；用户确认运控口径 2026-11-01）
+# =============================================================================
+# 例：蓉皖蓉 / 府皖府（合肥）— 早飞出、酒店休息、晚飞回；中间航段由另一套机组执行。
+# 过夜机组的早段与晚段不得并成一个连续 FDP；晚段按 reportMin 重新报到。
+# 用户补充：过站超过 5 小时默认下去休息 → 阈值 5h；基地（湘府湘天府长过站）同样按休息拆。
+fdp_long_ground_split:
+  enabled_default: true
+  threshold_hours: 5          # 同站过站地面时间 ≥ 此值才拆；短过站/短折返不拆
+  outstation_only: false      # 外站与成都双流(ZUUU)/天府(ZUTF)基地长过站均拆
+  hotel_note_override: true   # 保留：笔记含 酒店/过夜 时也可拆（现阈值已覆盖基地长过站）
+  restart_report: true        # 次段起飞前按 settings.reportMin 重新起算 FDP
+  remark: "对应设置 fdpSplitLongGround / fdpSplitLongGroundH（默认5h）；关闭则恢复整段连续计 FDP"
+# 飞行执勤期窗口口径（用户确认 2026-11-01）：仅执飞段拉窗——报到=首个非(随)起飞前 reportMin，结束=末个非(随)落地；
+# 两端置位(随)不延长 FDP；置位仍不计飞行小时、不拉长 FDP 窗；置位日可计入连续值勤软提示链。第5日执飞不硬禁（2026-11-02，时间满足即可）。休息/占用仍按含置位的实际首末段。
+fdp_window:
+  operating_legs_only: true
+  report: first_operating_dep_minus_reportMin
+  end: last_operating_arr
+  deadhead_extends_window: false
+  release_for_rest: last_leg_including_dh_plus_releaseMin
