@@ -4066,7 +4066,22 @@
     let legs = 0; st.pairings.forEach(p => { legs += p.legs.length; });
     const legsPerAcDay = flyingN ? legs / (flyingN * DAYS) : 0;
     const usedPct = capacityTotal ? assigned / capacityTotal : 0;
-    const resili = capacityTotal ? remain / capacityTotal : 0;
+    // 旧口径（小时汇总）：恒 ≈ 100 − 饱和度，与"谁飞了什么"无关，仅保留作参考
+    const resiliHours = capacityTotal ? remain / capacityTotal : 0;
+    // 新口径：最薄弱日可调用人数占比。每天统计本中队可调用人员（当日空闲或备份、
+    // 前后一日无执勤、剩余可排 ≥ resiliMinHeadroomH），取全月最少的一天 ÷ 本中队可飞人数。
+    // 同一任务集换一套班表，这个值会随排班分布变化。
+    const dsR = dayStatus(st, idx); const minHead = S.resiliMinHeadroomH == null ? 8 : S.resiliMinHeadroomH;
+    const poolR = st.pilots.filter(p => !isOuterPilot(p) && !(p.health && p.health.noFly));
+    const headOK = new Set(poolR.filter(p => pilotHardCap(p, st) - (idx.hours[p.id] || 0) >= minHead).map(p => p.id));
+    const benchByDay = []; let worstDay = 1, worstN = Infinity;
+    for (let d = 1; d <= DAYS; d++) {
+      let n = 0;
+      poolR.forEach(p => { const a = dsR[p.id]; if (headOK.has(p.id) && (a[d] === '' || a[d] === 'S') && a[d - 1] !== 'D' && a[d + 1] !== 'D') n++; });
+      benchByDay.push(n); if (n < worstN) { worstN = n; worstDay = d; }
+    }
+    if (!isFinite(worstN)) worstN = 0;
+    const resili = poolR.length ? worstN / poolR.length : 0;
     const satPct = +(usedPct * 100).toFixed(1);
     const resiliPct = +(resili * 100).toFixed(1);
     const zone = opsZone(satPct, resiliPct);
@@ -4077,6 +4092,7 @@
       blockHours: +blockH.toFixed(1), assignedHours: +assigned.toFixed(1),
       capacityTotal, remainHours: +remain.toFixed(1), usedPct,
       satPct, resiliPct, sat: usedPct, resili,
+      resiliHoursPct: +(resiliHours * 100).toFixed(1), benchByDay, benchWorstDay: worstDay, benchWorstN: worstN, benchPool: poolR.length,
       zone: zone.id, zoneLabel: zone.label, zoneHint: zone.hint,
       overHardPilots: overN,
       pilotsPerAircraft: flyingN ? +(nPilots / flyingN).toFixed(2) : 0,
@@ -4097,7 +4113,7 @@
       bySquadron,
       formulas: {
         sat: '饱和度 = 已排飞行小时 ÷ Σ个人硬上限（≈ usedPct；人天口径演示中用小时等价）',
-        resili: '韧性度 = Σ max(0, 个人硬上限 − 已排) ÷ Σ个人硬上限（可排冗余运力占比）',
+        resili: '韧性度 = 全月最薄弱日的可调用人数 ÷ 本中队可飞人数（可调用：当日空闲或备份、前后一日无执勤、剩余可排 ≥ 8h）',
         zone: '理想：饱和80–90%且韧性≥10%；低效：饱和<80%；警戒：饱和>90%；高危：饱和>90%且韧性<5%',
         remain: 'Σ max(0, 法规月上限 − 已排飞行小时)',
         pilotsPerAc: '飞行员人数 ÷ 本月出现过的机号数',

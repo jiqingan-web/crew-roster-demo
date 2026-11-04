@@ -385,7 +385,11 @@
     const H = st.solHist || []; const h = H[i]; if (!h) return;
     st.pairings.forEach((p, k) => { p.crew = Object.assign({}, h.crews[k]); delete p.demoHole; }); const dh = new Set(h.demoHoles || []);
     st.pairings.forEach(p => { if (dh.has(p.id)) p.demoHole = true; });
-    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; if (h.control !== undefined) st.control = h.control; if (h.trainingKind !== undefined) st.trainingKind = h.trainingKind; st.solIdx = i; refresh(); toast(h.name ? `已切换到「${h.name}」（真实导入）` : `已切换到自动填人结果` + (h.seed != null ? `（seed ${h.seed}）` : ''));
+    st.standby = h.standby; st.training = h.training; st.sim = h.sim || null; if (h.simHold) st.simHold = h.simHold; if (h.control !== undefined) st.control = h.control; if (h.trainingKind !== undefined) st.trainingKind = h.trainingKind; st.solIdx = i;
+    // 换班表后清掉基于旧班表算出的方案缓存（与 pilotsChanged 同口径）
+    try { dutyOpts = null; dutySel = null; } catch (e) {}
+    try { leaveOpts = null; leaveHoles = null; holePrev = null; leaveHover = null; } catch (e) {}
+    refresh(); toast(h.name ? `已切换到「${h.name}」（真实导入）` : `已切换到自动填人结果` + (h.seed != null ? `（seed ${h.seed}）` : ''));
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];

@@ -169,7 +169,7 @@ console.log('leave changes from standby', r.changes.filter(c=>c.fromStandby).len
   chk('ops util', m.aircraftUtilPct > 0 && m.aircraftUtilPct < 100, m.aircraftUtilPct);
   chk('ops pilotsPerAc', m.pilotsPerAircraft > 1, m.pilotsPerAircraft);
   chk('ops formulas', m.formulas && m.formulas.util && m.formulas.sat && m.formulas.resili);
-  chk('ops sat/resili', m.satPct >= 0 && m.resiliPct >= 0 && Math.abs(m.satPct + m.resiliPct - 100) < 1.5, 'sat=' + m.satPct + ' resili=' + m.resiliPct);
+  chk('ops sat/resili', m.satPct >= 0 && m.resiliPct >= 0 && m.resiliPct <= 100 && Math.abs(m.satPct + m.resiliHoursPct - 100) < 1.5 && m.resiliPct === +(100 * m.benchWorstN / m.benchPool).toFixed(1), 'sat=' + m.satPct + ' resili=' + m.resiliPct + ' (小时口径 ' + m.resiliHoursPct + ')');
   chk('ops zone', ['ideal', 'idle', 'alert', 'critical'].includes(m.zone) && m.zoneLabel, m.zone + '/' + m.zoneLabel);
   chk('ops brief', m.briefText && m.briefText.indexOf('今日简报') >= 0 && m.briefText.indexOf('饱和度') >= 0, (m.briefText || '').slice(0, 40));
   chk('ops day strip', m.day && 'pendingFills' in m.day && 'standbyGap' in m.day && 'fdpHigh' in m.day, JSON.stringify(m.day));
