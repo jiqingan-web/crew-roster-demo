@@ -867,3 +867,7 @@ body.pa-on .story{display:none}
 .fc-t i{position:absolute;top:0;bottom:0;border-radius:4px;background:var(--fc);opacity:.55}
 .fc-t em{position:absolute;top:-3px;width:2px;height:14px;margin-left:-1px;background:currentColor}
 .fcard{--fc:#4f8cff;border-top-color:rgba(140,170,220,.35)}.fcard .fc-h small{font-size:11px}
+.fc-dots{width:100%;height:auto;display:block}.fc-dots circle{fill:#4f8cff;fill-opacity:.75}.fc-dots circle:hover{fill:#f5a524;fill-opacity:1}
+.fc-dots .fd-ax{stroke:rgba(140,170,220,.3);stroke-width:1}.fc-dots .fd-md{stroke:currentColor;stroke-width:1.5;opacity:.8}
+.fc-sum{display:flex;justify-content:space-between;font-size:11px;opacity:.85}.fc-sum b{font-variant-numeric:tabular-nums}
+.fc-nm{font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}

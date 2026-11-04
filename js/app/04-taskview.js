@@ -200,19 +200,21 @@
     const DIM = [['hours', '飞行小时', 'h'], ['duty', '值勤天数', '天'], ['night', '夜航 + 晚到早', '次'], ['early', '早班（06:00 前报到）', '次'], ['away', '外站过夜', '晚'], ['dh', '置位', '段'], ['rest', '连休 ≥3 天', '次']];
     const qt = (xs, q) => { const s = xs.slice().sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(q * (s.length - 1) + 0.5))] : 0; };
     const fmt = (x, u) => (u === 'h' ? x.toFixed(0) : x.toFixed(1));
-    const dims = DIM.map(([key, name, unit]) => { let wcv = 0, wn = 0; const groups = C.GROUPS.map(g => { const xs = rows.filter(r => r.g === g).map(r => r.v[key]); if (xs.length < 2) return null;
-        const mean = xs.reduce((s, x) => s + x, 0) / xs.length; const sd = Math.sqrt(xs.reduce((s, x) => s + (x - mean) ** 2, 0) / xs.length); const cv = mean > 0.05 ? sd / mean : 0; wcv += cv * xs.length; wn += xs.length;
-        return { g, n: xs.length, min: Math.min(...xs), max: Math.max(...xs), med: qt(xs, 0.5), mean }; }).filter(Boolean);
-      const score = Math.round(100 * Math.max(0, 1 - (wn ? wcv / wn : 0))); const top = rows.slice().sort((x, y) => y.v[key] - x.v[key]);
-      return { key, name, unit, score, groups, hi: top.slice(0, 3), lo: top.slice(-3).reverse() }; });
-    const overall = Math.round(dims.reduce((s, d) => s + d.score, 0) / dims.length); const worst = dims.slice().sort((x, y) => x.score - y.score)[0];
-    const wg = worst && worst.groups.slice().sort((x, y) => (y.max - y.min) - (x.max - x.min))[0];
-    const lvl = s => s >= 80 ? 'ok' : s >= 60 ? 'warn' : 'bad';
-    const card = dm => { const mx = Math.max(0.1, ...dm.groups.map(g => g.max)); const X = v => (v / mx * 100).toFixed(1);
-      const tip = `每 30 个可上班日折算 · 最高：${dm.hi.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}；最低：${dm.lo.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}`;
-      return `<div class="fcard" title="${esc(tip)}"><div class="fc-h"><span>${esc(dm.name)}</span><small class="mut">每 30 天 · ${dm.unit}</small></div>${dm.groups.map(g => `<div class="fc-r"><span class="fc-g">${esc(g.g)}</span><span class="fc-t"><i style="left:${X(g.min)}%;width:${Math.max(1, X(g.max) - X(g.min))}%"></i><em style="left:${X(g.med)}%"></em></span><span class="fc-v">${fmt(g.min, dm.unit)}–${fmt(g.max, dm.unit)}${dm.unit}</span></div>`).join('')}</div>`; };
-    return `<div class="fairb"><div class="fb-h"><b>公平性</b><span class="mut">同职级比较 · 按可上班天数折算到每 30 天 · 参与 ${rows.length} 人（可上班不足区间 30% 的不计）</span></div>
-      <div class="fcards">${dims.map(card).join('')}</div><div class="mut sm">每行一个职级组：横条为最低到最高，竖线为中位数；鼠标停留看最高/最低人员。</div></div>`;
+    // 全员一张分布图：每人一个点（不分职级），竖线为中位数；纵向按序错开避免重叠
+    const card = ([key, name, unit]) => { const xs = rows.map(r => r.v[key]); const mn = Math.min(...xs), mx = Math.max(...xs), md = qt(xs, 0.5);
+      const W = 300, H = 46, P = 6; const sc = v => P + (mx > mn ? (v - mn) / (mx - mn) : 0.5) * (W - 2 * P);
+      const sorted = rows.slice().sort((x, y) => x.v[key] - y.v[key]);
+      const NB = 46, bw = (W - 2 * P) / NB, cnt = {}; // 分箱堆叠（蜂群图）：同一箱内的人往上叠
+      const pos = sorted.map(r => { const b = Math.min(NB - 1, Math.floor((sc(r.v[key]) - P) / bw)); const k = cnt[b] = (cnt[b] || 0) + 1; return [P + (b + 0.5) * bw, k]; });
+      const HH = Math.max(H, 10 + Math.max(...pos.map(x => x[1])) * 6.4);
+      const dots = sorted.map((r, i) => `<circle cx="${pos[i][0].toFixed(1)}" cy="${(HH - 7 - (pos[i][1] - 1) * 6.4).toFixed(1)}" r="2.8"><title>${esc(r.p.name)} ${esc(r.p.rank)} · ${fmt(r.v[key], unit)}${unit}</title></circle>`).join('');
+      const lo = sorted.slice(0, 2).map(r => r.p.name).join('、'), hi = sorted.slice(-2).reverse().map(r => r.p.name).join('、');
+      return `<div class="fcard"><div class="fc-h"><span>${esc(name)}</span><small class="mut">每 30 天 · ${unit}</small></div>
+        <svg class="fc-dots" viewBox="0 0 ${W} ${HH}" role="img" aria-label="${esc(name)}分布"><line x1="${P}" x2="${W - P}" y1="${HH - 3}" y2="${HH - 3}" class="fd-ax"/><line x1="${sc(md).toFixed(1)}" x2="${sc(md).toFixed(1)}" y1="2" y2="${HH - 2}" class="fd-md"/>${dots}</svg>
+        <div class="fc-sum"><span>最低 <b>${fmt(mn, unit)}</b></span><span>中位 <b>${fmt(md, unit)}</b></span><span>最高 <b>${fmt(mx, unit)}</b></span></div>
+        <div class="fc-nm mut">最低：${esc(lo)} · 最高：${esc(hi)}</div></div>`; };
+    return `<div class="fairb"><div class="fb-h"><b>公平性</b><span class="mut">全员一起比较 · 按可上班天数折算到每 30 天 · 参与 ${rows.length} 人（可上班不足区间 30% 的不计）</span></div>
+      <div class="fcards">${DIM.map(card).join('')}</div><div class="mut sm">每个点是一个人，竖线为中位数；点越集中越均衡。鼠标停在点上看是谁。</div></div>`;
   }
   function rOverview() {
     const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx);
