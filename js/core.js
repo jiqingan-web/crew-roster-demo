@@ -212,15 +212,16 @@
     tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
   // 公司运行手册核实值（公开页不展示手册代码）。月飞行公司=法规=100h；hardMaxHours 默认对齐 100h（用户拍板 2026-10-16）。
   const COM = { rev: '公司运行手册', re12: 'RE12', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
-    reportMinDomesticFlight: 105, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 };
+    reportMinDomesticFlight: 95, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 }; // 公司运行手册 Re07-10 3.6.1 3)(1)a / 4)(1)a：飞行机组国内 95、国际及地区 115 分钟报到；休息期自关车后 40 分钟起、至下次报到前 25 分钟止
   // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
   function flightLimitMin(st, reportMin) {
     // 三人制运行：不启用扩编表A例外（即使用户旧存档曾打开 fdpAugmented）
     const h = (((reportMin % DAY) + DAY) % DAY) / 60; const r = CCAR121.tableA.find(x => h >= x.from && h < x.to) || CCAR121.tableA[2]; return r.h * 60;
   }
   function defaultSettings() {
-    return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, releaseMin: 30, honorPrefs: true,
+    // 休息/报到口径按《公司运行手册》Re07-10 3.6.1、3.6.10 4)：两次飞行值勤期之间至少连续 10h 休息期（关车+40 分钟 → 报到−25 分钟）
+    return { minRestH: 10, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, reportMinIntl: 115, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
       standbyPerDay: 0, maxStandbyPerPilot: 2, // 每日备份人数：用户 2026-11-04 取消该设置（中队无固定每日备份）
       gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 144h 内连续 48h 按法规硬卡；软目标取消（用户 2026-11-04：按法规来卡），=48 即不再出「48h休息偏紧」
@@ -246,7 +247,9 @@
     if (S) {
       delete S.minHours; delete S.maxHours; if (!S.fdpTable) S.fdpTable = defaultFdpTable();
       if (S.hardMaxHours === 90) S.hardMaxHours = 100;
-      if (S.reportMin === 95) S.reportMin = 105; // 航前准备：起飞前 1h45 报到
+      // 手册 Re07-10：飞行机组国内 95 分钟报到（105 是客舱机组口径）；最低休息 10h；休息期自关车后 40 分钟起、至报到前 25 分钟止
+      if (S.reportMin === 105) S.reportMin = 95; if (S.reportMinIntl == null) S.reportMinIntl = 115;
+      if (S.minRestH === 12) S.minRestH = 10; if (S.releaseMin === 30) S.releaseMin = 40; if (S.restBeforeReportMin == null) S.restBeforeReportMin = 25;
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
       if (S.demoHoles == null) S.demoHoles = 4;
@@ -969,7 +972,7 @@
           // 预估 FDP：报到(settings/COM 国内) + 飞行 + 过站50*(n-1) + 退场30
           const nextFlight = flight + bm;
           const nextN = legs.length + 1;
-          const estFdp = (COM.reportMinDomesticFlight || 105) + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
+          const estFdp = (COM.reportMinDomesticFlight || 95) + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
           if (legs.length && (nextFlight > 450 || estFdp > 12.5 * 60)) break;
           const flt = flts[i] || flts[flts.length - 1] || 'EU0000';
           legs.push({ d: 0, flt, from: a, to: b, dep: tmin, arr: tmin + bm, ac, reg });
@@ -1263,8 +1266,12 @@
     return true;
   }
   // 按值勤日拆分的值勤区间 [报到, 退场]；长过站（休息）拆成多段，中间空隙计休息
+  // 国际/地区航班（任一航段非 Z 字头机场，如 VTBS/VVNB/UHWW/VHHH）按 reportMinIntl 报到
+  const isIntlPairing = p => !!(p && p.legs && p.legs.some(l => !l.dh && ((l.from && !/^Z|^X/.test(l.from)) || (l.to && !/^Z|^X/.test(l.to)))));
+  const repMinOf = (p, st) => { const S = (st && st.settings) || {}; return isIntlPairing(p) ? (S.reportMinIntl || 115) : (S.reportMin || 60); };
   function dutyIvs(p, st) {
-    const rep = (st && st.settings.reportMin) || 60, rel = (st && st.settings.releaseMin) || 30;
+    // 休息期占用区间：[报到 − restBeforeReportMin, 关车 + releaseMin]（手册：休息期自关车后 40 分钟起，至下次报到前 25 分钟止）
+    const rep = repMinOf(p, st) + ((st && st.settings.restBeforeReportMin) || 0), rel = (st && st.settings.releaseMin) || 30;
     const out = []; let cur = null; let prev = null;
     p.legs.forEach(l => {
       const start = l.dep - rep, end = l.arr + rel;
@@ -1280,7 +1287,7 @@
   function spanDays(p, st) { const a = Math.floor(report(p, st) / DAY) + 1, b = Math.floor((release(p, st) - 1) / DAY) + 1; const r = []; for (let d = a; d <= b; d++) r.push(d); return r; }
   // 外站驻点休息日：任务跨度内无值勤的日历日（不计值勤日，计休息）
   function offAwayDays(p, st) { const t = new Set(daysTouched(p, st)); return spanDays(p, st).filter(d => !t.has(d)); }
-  function report(p, st) { return p.legs[0].dep - ((st && st.settings.reportMin) || 60); }
+  function report(p, st) { return p.legs[0].dep - repMinOf(p, st); }
   function release(p, st) { return p.legs[p.legs.length - 1].arr + ((st && st.settings.releaseMin) || 30); }
   function daysTouched(p, st) { if (!p.offAway) { const a = Math.floor(report(p, st) / DAY) + 1, b = Math.floor((release(p, st) - 1) / DAY) + 1; const r = []; for (let d = a; d <= b; d++) r.push(d); return r; }
     const s = new Set(); dutyIvs(p, st).forEach(([a, b]) => { for (let d = Math.floor(a / DAY) + 1; d <= Math.floor((b - 1) / DAY) + 1; d++) s.add(d); }); return [...s].sort((x, y) => x - y); }
@@ -1614,7 +1621,7 @@
     const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d) || ((st.simHold || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.join(',') + '日)');
     if (!opt.ignorePrefs) { const pf = dt.filter(d => (p.prefs || []).includes(d)); if (pf.length) rs.push('意向休息日(' + pf.join(',') + '日)'); }
     if (!opt.ignorePrefs && !opt.skipFtl) { const d5 = day5Deadheads(p, st, idx, opt.excludeId, idx.sched[p.id].includes(pr) ? null : pr).filter(x => x.pr === pr); if (d5.length) rs.push('第5日置位(尽量避免,D' + d5.map(x => x.d).join(',') + ')'); }
-    const a = report(pr, st), b = release(pr, st), rest = S.minRestH * 60;
+    const a = report(pr, st), b = release(pr, st), rest = S.minRestH * 60 + (S.restBeforeReportMin || 0); // 休息期止于报到前 restBeforeReportMin
     for (const o of idx.sched[p.id]) { if (o === pr || o.id === (opt.excludeId || '')) continue;
       const oa = report(o, st), ob = release(o, st);
       if (oa < b && a < ob) { rs.push('时间冲突(' + o.id + ')'); continue; }
@@ -4312,7 +4319,7 @@
     return fdpDaysRaw(pr, st, acts);
   }
   function fdpDaysRaw(pr, st, acts) {
-    acts = acts || {}; const S = st.settings; const rep = S.reportMin || 60, rel = S.releaseMin || 30, turn = S.minTurnMin || 35;
+    acts = acts || {}; const S = st.settings; const rep = repMinOf(pr, st), rel = S.releaseMin || 30, turn = S.minTurnMin || 35;
     const out = []; let prevC = null;
     pr.legs.forEach((l, i) => { const a = acts[legKey(l)] || {}; const blk = l.arr - l.dep;
       const dep = a.dep != null ? a.dep : l.dep; const arr = a.arr != null ? a.arr : (a.dep != null ? a.dep + blk : l.arr);
@@ -4394,7 +4401,7 @@
     ['C', 'F', 'T'].forEach(s => { const id = pr.crew[s]; if (!id) return;
       const nx = idx.sched[id].filter(o => o !== pr && o.id !== pr.id && report(o, st) >= release(pr, st)).sort((a, b) => report(a, st) - report(b, st))[0];
       if (!nx) return; const gap = report(nx, st) - end;
-      if (gap < S.minRestH * 60) out.push({ pilot: id, slot: s, next: nx.id, nextSlot: ['C', 'F', 'T'].find(k => nx.crew[k] === id), gap, short: S.minRestH * 60 - gap }); });
+      const need = S.minRestH * 60 + (S.restBeforeReportMin || 0); if (gap < need) out.push({ pilot: id, slot: s, next: nx.id, nextSlot: ['C', 'F', 'T'].find(k => nx.crew[k] === id), gap, short: need - gap }); });
     days.forEach(dy => { if (dy.restShort > 0) out.push({ overnight: true, d: dy.d, short: dy.restShort, restAfter: dy.restAfter }); });
     return out;
   }
