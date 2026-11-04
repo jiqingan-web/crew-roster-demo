@@ -3652,7 +3652,7 @@
           const t = iss.includes('帮扶') ? '帮扶对象' : iss.includes('新机长') ? '新机长无教员' : iss.includes('restriction_table') ? '搭配限制表' : iss.includes('fo_combination_matrix') ? 'FO搭配矩阵' : iss.includes('17.1.') ? '高高原机组' : iss.includes('senior_pilot_rule') ? '58岁带队' : iss.includes('特殊机场') ? '特殊机场授权/搭配' : '座位搭配规则';
           const demo = pr.demoAnomaly ? '【演示异常】' : '';
           // 用户 2026-11-04：特殊机场资质/搭配、新机长陪飞先作软提示（资质表待更新）；软类命中时再查一次其余硬规则，避免被遮蔽
-          const SOFT_CREW = ['特殊机场授权/搭配', '新机长无教员'];
+          const SOFT_CREW = ['新机长无教员']; // 特殊机场资质/搭配：用户 2026-11-04 晚确认改回硬规则（上座两人都须持资质）
           if (SOFT_CREW.includes(t)) { add(t, 'soft', `${demo}${plabel} ${iss}`, pr);
             const iss2 = crewIssue(pr, crew, Object.assign({}, st, { _skipAuth: true, _skipNewCapt: true }));
             if (iss2 && crew.every(Boolean)) add(iss2.includes('部门管控') ? '部门管控搭配' : '座位搭配规则', 'hard', `${demo}${plabel} ${iss2}`, pr); }
@@ -3661,7 +3661,7 @@
       // 个人特殊机场授权（操纵座 C/F；观察员不要求）：系统排班判硬违规；导入的真实班表座位为推断，降为软提示（用户 2026-11-04）
       // 机组齐全时只看组合（任两人可上座即可，见 crewIssue）；不全时才逐人检查
       if (!crew.every(Boolean)) { const need = needAuthAirports(pr, st); if (need.length) ['C', 'F'].forEach((s0, i0) => { const p0 = crew[i0]; if (!p0) return; const miss = need.filter(c => !(p0.auth || []).includes(c));
-        if (miss.length) add('个人特殊机场授权', 'soft', `${plabel} ${SLOT_NAME[s0]}位 ${p0.name}(${p0.rank}) 无 ${miss.map(c => apName(c, st)).join('、')} 资质${(pr.official || st.official) ? '（导入班表座位为推断，需核对）' : ''}`, pr, p0.id); }); }
+        if (miss.length) add('个人特殊机场授权', (pr.official || st.official) ? 'soft' : 'hard', `${plabel} ${SLOT_NAME[s0]}位 ${p0.name}(${p0.rank}) 无 ${miss.map(c => apName(c, st)).join('、')} 资质${(pr.official || st.official) ? '（导入班表座位为推断，需核对）' : ''}`, pr, p0.id); }); }
       if (crew.every(Boolean) && crew.some(x => x.rank === 'F1' || x.rank === 'F2') && !crew.some(x => isInstr(x.rank))) add('F1/F2无教员', 'soft', `${plabel} [CR-19] F1/F2 未与教员同组（非必须，提示）`, pr);
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${plabel} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
