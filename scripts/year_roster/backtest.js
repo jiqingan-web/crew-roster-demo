@@ -1,9 +1,12 @@
-// 用现有规则回测全年真实班表：node scripts/year_roster/backtest.js <state.json> [输出 violations.json]
+// 用现有规则回测全年真实班表：node scripts/year_roster/backtest.js <state.json> [输出 violations.json] [外站车程.csv]
+// 外站车程 CSV：每行「ICAO,车程分钟」（可由《外站车程填写表.xlsx》A、E 两列另存为 CSV）→ settings.carMin
 'use strict';
 const path = require('path'); const fs = require('fs');
 const C = require(path.join(__dirname, '..', '..', 'js', 'core.js'));
 const st = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 C.setPeriod(st.grid); st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings));
+if (process.argv[4]) { const m = {}; fs.readFileSync(process.argv[4], 'utf8').split(/\r?\n/).forEach(line => { const [ap, v] = line.split(',').map(x => (x || '').trim()); if (/^[A-Z0-9]{4}$/.test(ap) && v !== '' && !isNaN(+v)) m[ap] = +v; });
+  st.settings.carMin = Object.assign({}, st.settings.carMin || {}, m); console.log('外站车程', Object.keys(m).length, '个机场'); }
 const t0 = Date.now(); const v = C.validate(st);
 const pm = Object.fromEntries(st.pairings.map(p => [p.id, p]));
 const mb = C.monthBuckets(); const monOf = d => { const b = mb.find(x => x.days.includes(d)); return b ? b.label : '?'; };

@@ -221,7 +221,7 @@
   function defaultSettings() {
     // 休息/报到口径按《公司运行手册》Re07-10 3.6.1、3.6.10 4)：两次飞行值勤期之间至少连续 10h 休息期（关车+40 分钟 → 报到−25 分钟）
     return { minRestH: 10, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 125, dhBoardMin: 45, night48Required: true, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 125, dhBoardMin: 45, night48Required: true, carMinBase: 25, carMinDefault: 25, carMin: {}, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
       standbyPerDay: 0, maxStandbyPerPilot: 2, // 每日备份人数：用户 2026-11-04 取消该设置（中队无固定每日备份）
       gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 144h 内连续 48h 按法规硬卡；软目标取消（用户 2026-11-04：按法规来卡），=48 即不再出「48h休息偏紧」
@@ -249,7 +249,7 @@
       if (S.hardMaxHours === 90) S.hardMaxHours = 100;
       // 报到：现行国内 105 分钟（用户确认）；最低休息 10h、休息期自关车后 40 分钟起至报到前 25 分钟止（手册 Re07-10 3.6.1 4)、3.6.10 4)）
       if (S.reportMin === 95) S.reportMin = 105; if (S.reportMinIntl == null || S.reportMinIntl === 115) S.reportMinIntl = 125; // 《飞行部手册》Re10-08 2.2.3 4)(1)：国际航班在各机场报到时间前再提前 20 分钟
-      if (S.dhBoardMin == null) S.dhBoardMin = 45; if (S.night48Required == null) S.night48Required = true;
+      if (S.dhBoardMin == null) S.dhBoardMin = 45; if (S.carMinBase == null) S.carMinBase = 25; if (S.carMinDefault == null) S.carMinDefault = 25; if (!S.carMin) S.carMin = {}; if (S.night48Required == null) S.night48Required = true;
       if (S.minRestH === 12) S.minRestH = 10; if (S.releaseMin === 30) S.releaseMin = 40; if (S.restBeforeReportMin == null) S.restBeforeReportMin = 25;
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
@@ -1275,13 +1275,26 @@
   const isIntlPairing = p => legKind(p).intl;
   // 仅有置位的任务：休息期止于置位开始前 70 分钟（航前车程 25 + 登机 45，《飞行部手册》Re10-08 2.2.3 5)(1)）→ 「报到」取登机时间 dhBoardMin
   const isAllDh = p => legKind(p).allDh;
-  const repMinOf = (p, st) => { const S = (st && st.settings) || {}; if (isAllDh(p)) return S.dhBoardMin == null ? 45 : S.dhBoardMin; return isIntlPairing(p) ? (S.reportMinIntl || 125) : (S.reportMin || 60); };
+  // 报到 / 休息期按机场车程（排班员 2026-11-04；《飞行部手册》Re10-08 2.2.3、2.2.4）：
+  //  报到 = 地面准备 20 + 准备室→机场车程 Y + 机上 60（成都 Y=25 → 105，即 settings.reportMin）；国际航班再 +20
+  //  休息期开始 = 关车 + 离场 15 + 车程 Y（成都 40 = settings.releaseMin）
+  //  休息期截止：成都基地为报到前 25 分钟（restBeforeReportMin）；外站报到地点即发车点、报到已含车程 → 0；仅置位任务为登机前 + 车程
+  //  Y 取 settings.carMin[机场]，未配置的外站用 carMinDefault（默认 25，与成都相同）
+  const BASE_APS = ['ZUUU', 'ZUTF'];
+  const carOf = (ap, S) => { const m = S.carMin || {}; if (m[ap] != null) return +m[ap]; return BASE_APS.includes(ap) ? (S.carMinBase == null ? 25 : S.carMinBase) : (S.carMinDefault == null ? 25 : S.carMinDefault); };
+  const baseCar = S => (S.carMinBase == null ? 25 : S.carMinBase);
+  const repAt = (ap, p, st) => { const S = (st && st.settings) || {}; if (isAllDh(p)) return S.dhBoardMin == null ? 45 : S.dhBoardMin;
+    const dom = (S.reportMin || 60) - baseCar(S) + carOf(ap, S); return isIntlPairing(p) ? dom + ((S.reportMinIntl || 125) - (S.reportMin || 105)) : dom; };
+  const repMinOf = (p, st) => { const l = (p.legs || []).find(x => !x.dh) || (p.legs || [])[0]; return repAt(l ? l.from : 'ZUUU', p, st); };
+  const preCommuteOf = (p, st) => { const S = (st && st.settings) || {}; const ap = p.legs[0].from;
+    if (BASE_APS.includes(ap)) return S.restBeforeReportMin || 0; return isAllDh(p) ? carOf(ap, S) : 0; };
+  const relAt = (ap, st) => { const S = (st && st.settings) || {}; return ((S.releaseMin || 40) - baseCar(S)) + carOf(ap, S); };
   function dutyIvs(p, st) {
     // 休息期占用区间：[报到 − restBeforeReportMin, 关车 + releaseMin]（手册：休息期自关车后 40 分钟起，至下次报到前 25 分钟止）
-    const rep = repMinOf(p, st) + ((st && st.settings.restBeforeReportMin) || 0), rel = (st && st.settings.releaseMin) || 30;
+    const pre = preCommuteOf(p, st);
     const out = []; let cur = null; let prev = null;
     p.legs.forEach(l => {
-      const start = l.dep - rep, end = l.arr + rel;
+      const start = l.dep - repAt(l.from, p, st) - pre, end = l.arr + relAt(l.to, st);
       if (!cur || l.d !== prev.d || shouldSplitFdpBetween(prev, l, p, st)) {
         if (cur) out.push(cur); cur = [start, end];
       } else { cur[0] = Math.min(cur[0], start); cur[1] = Math.max(cur[1], end); }
@@ -1310,7 +1323,7 @@
     const fdp = ground >= splitMin ? (eLast.arr - start) + (end - opStart) : end - start;
     return fdp <= fdpLimit(st, start, ops.length) ? 'pre-ok' : 'pre-over';
   }
-  function release(p, st) { return p.legs[p.legs.length - 1].arr + ((st && st.settings.releaseMin) || 30); }
+  function release(p, st) { const l = p.legs[p.legs.length - 1]; return l.arr + relAt(l.to, st); }
   function daysTouched(p, st) { if (!p.offAway) { const a = Math.floor(report(p, st) / DAY) + 1, b = Math.floor((release(p, st) - 1) / DAY) + 1; const r = []; for (let d = a; d <= b; d++) r.push(d); return r; }
     const s = new Set(); dutyIvs(p, st).forEach(([a, b]) => { for (let d = Math.floor(a / DAY) + 1; d <= Math.floor((b - 1) / DAY) + 1; d++) s.add(d); }); return [...s].sort((x, y) => x - y); }
   const isNightLeg = l => { const a = ((l.dep % DAY) + DAY) % DAY, b = ((l.arr % DAY) + DAY) % DAY; return a < 360 || b < 360 || l.arr - Math.floor(l.dep / DAY) * DAY >= DAY; };
@@ -1665,11 +1678,12 @@
     const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d) || ((st.simHold || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.join(',') + '日)');
     if (!opt.ignorePrefs) { const pf = dt.filter(d => (p.prefs || []).includes(d)); if (pf.length) rs.push('意向休息日(' + pf.join(',') + '日)'); }
     if (!opt.ignorePrefs && !opt.skipFtl) { const d5 = day5Deadheads(p, st, idx, opt.excludeId, idx.sched[p.id].includes(pr) ? null : pr).filter(x => x.pr === pr); if (d5.length) rs.push('第5日置位(尽量避免,D' + d5.map(x => x.d).join(',') + ')'); }
-    const a = report(pr, st), b = release(pr, st), rest = S.minRestH * 60 + (S.restBeforeReportMin || 0); // 休息期止于报到前 restBeforeReportMin
+    const a = report(pr, st), b = release(pr, st), restPr = S.minRestH * 60 + preCommuteOf(pr, st); // 休息期止于报到前（基地 25 分钟、外站 0）
     for (const o of idx.sched[p.id]) { if (o === pr || o.id === (opt.excludeId || '')) continue;
       const oa = report(o, st), ob = release(o, st);
       if (oa < b && a < ob) { rs.push('时间冲突(' + o.id + ')'); continue; }
-      if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) {
+      const restO = S.minRestH * 60 + preCommuteOf(o, st);
+      if ((oa >= b && oa - b < restO) || (a >= ob && a - ob < restPr)) {
         const dhNote = dhAdjacentRest(oa >= b ? pr : o, oa >= b ? o : pr, st);
         if (dhNote === 'post') continue;              // 航后置位：不算值勤期也不算休息期（手册 3.7.6 注2(8)）→ 与前一值勤期之间不要求休息期
         if (dhNote === 'pre-ok') continue;            // 航前置位：计入后续飞行值勤期（手册 3.6.1 3)(1)c），合并后未超限
@@ -4367,7 +4381,7 @@
     return fdpDaysRaw(pr, st, acts);
   }
   function fdpDaysRaw(pr, st, acts) {
-    acts = acts || {}; const S = st.settings; const rep = repMinOf(pr, st), rel = S.releaseMin || 30, turn = S.minTurnMin || 35;
+    acts = acts || {}; const S = st.settings; const rep0 = repMinOf(pr, st), repOf = l => (l && l.leg ? repAt(l.leg.from, pr, st) : rep0), rel = S.releaseMin || 30, turn = S.minTurnMin || 35;
     const out = []; let prevC = null;
     pr.legs.forEach((l, i) => { const a = acts[legKey(l)] || {}; const blk = l.arr - l.dep;
       const dep = a.dep != null ? a.dep : l.dep; const arr = a.arr != null ? a.arr : (a.dep != null ? a.dep + blk : l.arr);
@@ -4397,7 +4411,7 @@
       // 休息/退场仍按本窗实际首末段（含置位）+ releaseMin（与 report()/release() 占用一致）
       const restart = dy.splitFrom || (pr.freshAt && (fOp ? pr.freshAt === legKey(fOp.leg) : pr.freshAt === legKey(f.leg)));
       if (fOp) {
-        dy.start = restart ? fOp.dep - rep : fOp.leg.dep - rep;
+        const rep = repOf(fOp); dy.start = restart ? fOp.dep - rep : fOp.leg.dep - rep;
         dy.end = Math.max(...op.map(x => x.arr)); dy.planEnd = lastOp.leg.arr;
         dy.cascEnd = Math.max(...op.map(x => x.carr));
         dy.fdp = dy.end - dy.start; dy.planFdp = dy.planEnd - (fOp.leg.dep - rep);
@@ -4408,7 +4422,7 @@
         dy.cascLeg = dy.cascExceed ? op.find(x => x.carr > dy.start + dy.limit) : null;
         dy.exLeg = dy.exceed ? op.find(x => x.arr > dy.start + dy.limit) : null;
       } else {
-        dy.start = restart ? f.dep - rep : f.leg.dep - rep;
+        const rep = repOf(f); dy.start = restart ? f.dep - rep : f.leg.dep - rep;
         dy.end = lastAny.arr; dy.planEnd = lastAny.leg.arr; dy.cascEnd = lastAny.carr;
         dy.fdp = 0; dy.planFdp = 0; dy.limit = fdpLimit(st, f.leg.dep - rep, 0); dy.buffer = dy.limit; dy.planBuffer = dy.limit;
         dy.planFlt = 0; dy.fltLimit = flightLimitMin(st, f.leg.dep - rep); dy.fltOver = 0;
@@ -4420,7 +4434,8 @@
       dy.planRisk = dy.planBuffer < 0 ? 'over' : dy.planBuffer < (S.fdpRiskHigh || 60) ? 'high' : dy.planBuffer < (S.fdpRiskMed || 120) ? 'med' : 'low';
       const nx = out[k + 1]; if (nx) { const req = (S.minOvernightRestH || 10) * 60;
         // 休息按含置位的实际末段退场 → 次窗首段报到（置位仍占时间，只是不计入 FDP 长度）
-        dy.restAfter = (nx.legs[0].dep - rep) - (dy.relEnd + rel); dy.planRest = (nx.legs[0].leg.dep - rep) - (dy.planRelEnd + rel);
+        const nRep = repOf(nx.legs[0]) + (BASE_APS.includes(nx.legs[0].leg.from) ? (S.restBeforeReportMin || 0) : 0), dRel = relAt(dy.legs[dy.legs.length - 1].leg.to, st);
+        dy.restAfter = (nx.legs[0].dep - nRep) - (dy.relEnd + dRel); dy.planRest = (nx.legs[0].leg.dep - nRep) - (dy.planRelEnd + dRel);
         // 同日内外站拆分（酒店休息中断 FDP）不按过夜最低休息硬卡
         const dutyBreak = !!(dy.splitNext || nx.splitFrom);
         dy.restShort = dutyBreak ? 0 : (dy.restAfter < dy.planRest ? Math.max(0, req - dy.restAfter) : 0);
@@ -4444,12 +4459,12 @@
   }
   // 机组成员的下一个任务休息是否被延误压缩
   function downstream(st, pr, days, idx) {
-    idx = idx || buildIndex(st); const S = st.settings; const rel = S.releaseMin || 30; const out = [];
+    idx = idx || buildIndex(st); const S = st.settings; const rel = relAt(pr.legs[pr.legs.length - 1].to, st); const out = [];
     const last = days[days.length - 1]; const end = (last.relEnd != null ? last.relEnd : last.end) + rel;
     ['C', 'F', 'T'].forEach(s => { const id = pr.crew[s]; if (!id) return;
       const nx = idx.sched[id].filter(o => o !== pr && o.id !== pr.id && report(o, st) >= release(pr, st)).sort((a, b) => report(a, st) - report(b, st))[0];
       if (!nx) return; const gap = report(nx, st) - end;
-      const need = S.minRestH * 60 + (S.restBeforeReportMin || 0); if (gap < need) out.push({ pilot: id, slot: s, next: nx.id, nextSlot: ['C', 'F', 'T'].find(k => nx.crew[k] === id), gap, short: need - gap }); });
+      const need = S.minRestH * 60 + preCommuteOf(nx, st); if (gap < need) out.push({ pilot: id, slot: s, next: nx.id, nextSlot: ['C', 'F', 'T'].find(k => nx.crew[k] === id), gap, short: need - gap }); });
     days.forEach(dy => { if (dy.restShort > 0) out.push({ overnight: true, d: dy.d, short: dy.restShort, restAfter: dy.restAfter }); });
     return out;
   }
