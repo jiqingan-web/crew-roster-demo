@@ -128,7 +128,7 @@
       </table><div class="mut sm">人工班表硬违规：${esc(ht(a))}；一键排班：${esc(ht(b))}。人工表只录了本中队人员（外中队座位未入表），一键排班中外中队候补承担 ${b.extSeats} 个座位，故平均月工时 ${f1(a.meanMonth)}h → ${f1(b.meanMonth)}h。</div></div>`;
   }
   // ---- 席位监控小方块：选定日期（默认 10/15，可切换）----
-  function seatDayDefault() { if (!C.dayLabel) return 1; for (let d = 1; d <= C.DAYS; d++) { const L = C.dayLabel(d); if (L.m === 10 && L.d === 15) return d; } return Math.ceil(C.DAYS / 2); }
+  function seatDayDefault() { const [a, b] = ovRange(); let r = Math.ceil(C.DAYS / 2); if (C.dayLabel) for (let d = 1; d <= C.DAYS; d++) { const L = C.dayLabel(d); if (L.m === 10 && L.d === 15) { r = d; break; } } return r >= a && r <= b ? r : a; }
   function seatTiles(idx, om, ds) {
     if (!st.pairings.some(p => p.crew.C || p.crew.F || p.crew.T)) return '';
     let d = ui.seatDay; if (!d || d < 1 || d > C.DAYS) d = ui.seatDay = seatDayDefault();
@@ -174,84 +174,102 @@
     sel.onchange = () => go(+sel.value); $('#seatPrev').onclick = () => go(ui.seatDay - 1); $('#seatNext').onclick = () => go(ui.seatDay + 1);
     document.querySelectorAll('.stile[data-go]').forEach(b => { b.onclick = () => { if (b.dataset.go === 'gantt') { const L = C.dayLabel(ui.seatDay); setUiMonth(C.YEAR + '-' + String(L.m).padStart(2, '0')); } goTab(b.dataset.go); }; });
   }
+  // ---- 总览区间：所有总览数据按所选时间段（按任务起始日）统计 ----
+  function ovRange() { let r = ui.ovRange; if (!r || r[0] < 1 || r[1] > C.DAYS || r[0] > r[1]) r = ui.ovRange = [1, C.DAYS]; return r; }
+  function rangeBar(a, b) {
+    const opt = sel => Array.from({ length: C.DAYS }, (_, i) => i + 1).map(k => `<option value="${k}" ${k === sel ? 'selected' : ''}>${dayText(k)}</option>`).join('');
+    const mb = (C.monthBuckets && C.monthBuckets()) || []; const chips = [['全周期', 1, C.DAYS]].concat(mb.map(x => [x.label, x.days[0], x.days[x.days.length - 1]]));
+    return `<div class="ovrange"><span class="mut">审核区间</span><select id="ovFrom" aria-label="开始日期">${opt(a)}</select><span class="mut">至</span><select id="ovTo" aria-label="结束日期">${opt(b)}</select>
+      <span class="seg">${chips.map(c => `<button type="button" data-ovr="${c[1]},${c[2]}" class="${c[1] === a && c[2] === b ? 'on' : ''}">${esc(c[0])}</button>`).join('')}</span><span class="mut">${b - a + 1} 天 · 按任务起始日统计</span></div>`;
+  }
+  // ---- 公平性看板：同职级组内比较，按可上班天数折算到每 30 天 ----
+  function fairBoard(a, b, prs, ds) {
+    const own = st.pilots.filter(p => !C.isOuterPilot(p)); const len = b - a + 1; const OFF = new Set(['L', 'N', 'M', 'K']);
+    const legsBy = {}; const away = {}, dh = {}, hrs = {};
+    prs.forEach(pr => { const ids = ['C', 'F', 'T'].map(k => pr.crew[k]).filter(Boolean); const h = C.pairingHours(pr);
+      ids.forEach(id => { hrs[id] = (hrs[id] || 0) + h; away[id] = (away[id] || 0) + Math.max(0, pr.ndays - 1); dh[id] = (dh[id] || 0) + pr.legs.filter(l => l.dh).length;
+        pr.legs.forEach(l => { const d = Math.floor(l.dep / 1440) + 1; ((legsBy[id] = legsBy[id] || {})[d] = legsBy[id][d] || []).push(l); }); }); });
+    const tod = t => ((t % 1440) + 1440) % 1440;
+    const rows = []; own.forEach(p => { const s = ds[p.id]; let avail = 0, duty = 0, rest3 = 0, run = 0;
+      for (let d = a; d <= b; d++) { if (!OFF.has(s[d])) avail++; if (s[d] === 'D') duty++; if (s[d] === '' || s[d] === 'P') run++; else { if (run >= 3) rest3++; run = 0; } } if (run >= 3) rest3++;
+      if (avail < len * 0.3) return;
+      const L = legsBy[p.id] || {}; let night = 0, early = 0, lateEarly = 0;
+      Object.keys(L).map(Number).filter(d => d >= a && d <= b).forEach(d => { const ls = L[d].sort((x, y) => x.dep - y.dep); if (ls.some(l => C.isNightLeg(l))) night++; if (tod(ls[0].dep) < 465) early++;
+        const nx = L[d + 1]; if (nx && nx.length && tod(ls[ls.length - 1].arr) >= 1200 && tod(Math.min(...nx.map(l => l.dep))) < 420) lateEarly++; });
+      const k = 30 / avail; rows.push({ p, g: C.rankGroup(p.rank), avail, v: { hours: (hrs[p.id] || 0) * k, duty: duty * k, night: (night + lateEarly) * k, early: early * k, away: (away[p.id] || 0) * k, dh: (dh[p.id] || 0) * k, rest: rest3 * k } }); });
+    const DIM = [['hours', '飞行小时', 'h'], ['duty', '值勤天数', '天'], ['night', '夜航 + 晚到早', '次'], ['early', '早班（06:00 前报到）', '次'], ['away', '外站过夜', '晚'], ['dh', '置位', '段'], ['rest', '连休 ≥3 天', '次']];
+    const qt = (xs, q) => { const s = xs.slice().sort((x, y) => x - y); return s.length ? s[Math.min(s.length - 1, Math.floor(q * (s.length - 1) + 0.5))] : 0; };
+    const fmt = (x, u) => (u === 'h' ? x.toFixed(0) : x.toFixed(1));
+    const dims = DIM.map(([key, name, unit]) => { let wcv = 0, wn = 0; const groups = C.GROUPS.map(g => { const xs = rows.filter(r => r.g === g).map(r => r.v[key]); if (xs.length < 2) return null;
+        const mean = xs.reduce((s, x) => s + x, 0) / xs.length; const sd = Math.sqrt(xs.reduce((s, x) => s + (x - mean) ** 2, 0) / xs.length); const cv = mean > 0.05 ? sd / mean : 0; wcv += cv * xs.length; wn += xs.length;
+        return { g, n: xs.length, min: Math.min(...xs), max: Math.max(...xs), med: qt(xs, 0.5), mean }; }).filter(Boolean);
+      const score = Math.round(100 * Math.max(0, 1 - (wn ? wcv / wn : 0))); const top = rows.slice().sort((x, y) => y.v[key] - x.v[key]);
+      return { key, name, unit, score, groups, hi: top.slice(0, 3), lo: top.slice(-3).reverse() }; });
+    const overall = Math.round(dims.reduce((s, d) => s + d.score, 0) / dims.length); const worst = dims.slice().sort((x, y) => x.score - y.score)[0];
+    const wg = worst && worst.groups.slice().sort((x, y) => (y.max - y.min) - (x.max - x.min))[0];
+    const lvl = s => s >= 80 ? 'ok' : s >= 60 ? 'warn' : 'bad';
+    const card = dm => { const mx = Math.max(0.1, ...dm.groups.map(g => g.max)); const X = v => (v / mx * 100).toFixed(1);
+      const tip = `每 30 个可上班日折算 · 偏高：${dm.hi.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}；偏低：${dm.lo.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}`;
+      return `<div class="fcard ${lvl(dm.score)}" title="${esc(tip)}"><div class="fc-h"><span>${esc(dm.name)}</span><b>${dm.score}</b></div>${dm.groups.map(g => `<div class="fc-r"><span class="fc-g">${esc(g.g)}</span><span class="fc-t"><i style="left:${X(g.min)}%;width:${Math.max(1, X(g.max) - X(g.min))}%"></i><em style="left:${X(g.med)}%"></em></span><span class="fc-v">${fmt(g.min, dm.unit)}–${fmt(g.max, dm.unit)}${dm.unit}</span></div>`).join('')}</div>`; };
+    return `<div class="fairb"><div class="fb-h"><b>公平性</b><span class="fb-s ${lvl(overall)}">公平指数 ${overall}</span><span class="mut">同职级比较 · 按可上班天数折算到每 30 天 · 参与 ${rows.length} 人（可上班不足区间 30% 的不计）${worst && wg ? ` · 最需关注：${esc(worst.name)}（${esc(wg.g)}组 ${fmt(wg.min, worst.unit)}–${fmt(wg.max, worst.unit)}${worst.unit}）` : ''}</span></div>
+      <div class="fcards">${dims.map(card).join('')}</div><div class="mut sm">每行一个职级组：横条为最低到最高，竖线为中位数；条越短越公平。分数 = 100 ×（1 − 组内变异系数），鼠标停留看偏高/偏低人员。</div></div>`;
+  }
   function rOverview() {
-    const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx); const N = st.pilots.length;
-    const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
+    const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx);
+    const [a, b] = ovRange(); const len = b - a + 1;
+    if (ui.seatDay && (ui.seatDay < a || ui.seatDay > b)) ui.seatDay = a;
+    const days = Array.from({ length: len }, (_, i) => a + i);
+    const prs = st.pairings.filter(pr => pr.start >= a && pr.start <= b); const prSet = new Set(prs.map(p => p.id));
+    const own = st.pilots.filter(p => !C.isOuterPilot(p)); const N = own.length;
     const V = violByPairing(); const onDay = d => st.pairings.filter(pr => pr.start <= d && pr.start + pr.ndays - 1 >= d);
-    const cov = days.map(d => { const a = onDay(d); return a.length ? a.filter(p => C.pairingFull(p)).length / a.length * 100 : 100; });
+    const cov = days.map(d => { const x = onDay(d); return x.length ? x.filter(p => C.pairingFull(p)).length / x.length * 100 : 100; });
     const vio = days.map(d => onDay(d).filter(p => V[p.id]).length);
     const holes = days.map(d => onDay(d).filter(p => !C.pairingFull(p)).length);
-    const duty = days.map(d => st.pilots.filter(p => ds[p.id][d] === 'D').length);
+    const duty = days.map(d => own.filter(p => ds[p.id][d] === 'D').length);
     const sb = days.map(d => Object.values(st.standby || {}).filter(x => (x || []).includes(d)).length);
     const tasks = days.map(d => st.pairings.filter(pr => pr.legs.some(l => Math.floor(l.dep / 1440) + 1 === d)).length);
-    const hrsCum = days.map(d => { let s = 0; st.pairings.forEach(pr => pr.legs.forEach(l => { if (Math.floor(l.dep / 1440) + 1 <= d) s += ['C', 'F', 'T'].filter(k => pr.crew[k]).length * (l.arr - l.dep) / 60; })); return s / N; });
-    const satD = duty.map(v => v / N * 100);
-    const hardN = sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length;
+    const full = prs.filter(p => C.pairingFull(p)).length, total = prs.length, coverage = total ? full / total : 1;
+    const vIn = sum.violations.filter(v => v.pairing && prSet.has(v.pairing));
+    const hardN = vIn.filter(v => v.level === 'hard' && v.type !== '未满员').length, softN = vIn.filter(v => v.level === 'soft').length;
+    const hrs = {}; prs.forEach(pr => { const h = C.pairingHours(pr); ['C', 'F', 'T'].forEach(k => { const id = pr.crew[k]; if (id) hrs[id] = (hrs[id] || 0) + h; }); });
+    const flyH = own.map(p => hrs[p.id] || 0).filter(h => h > 0.5); const avg = flyH.length ? flyH.reduce((s, x) => s + x, 0) / flyH.length : 0; const topH = Math.max(0, ...flyH);
+    const cap = (st.settings.hardMaxHours || 100) * (len <= 31 ? len / 30.44 : len / 30.44);
+    const satPct = +(Object.values(hrs).reduce((s, x) => s + x, 0) / Math.max(1, st.pilots.length * cap) * 100).toFixed(1);
+    const bench = (om.benchByDay || []).slice(a - 1, b); const bw = bench.length ? Math.min(...bench) : 0; const resPct = +(om.benchPool ? bw / om.benchPool * 100 : 0).toFixed(1);
+    const zone = C.opsZone ? C.opsZone(satPct, resPct) : { label: '', hint: '' };
+    const hrsCum = []; { let s = 0; days.forEach(d => { st.pairings.forEach(pr => pr.legs.forEach(l => { if (Math.floor(l.dep / 1440) + 1 === d) s += ['C', 'F', 'T'].filter(k => pr.crew[k]).length * (l.arr - l.dep) / 60; })); hrsCum.push(s / N); }); }
     const kc = (lab, val, sub, vals, color) => `<div class="bkpi" style="--c:${color}"><div class="bk-l">${lab}<i></i></div><div class="bk-v">${val}</div><div class="bk-s">${sub}</div>${spark(vals, color)}</div>`;
-    // 维度
-    const G = {}; const GH = {}; st.pilots.filter(p => !(C.isOuterPilot && C.isOuterPilot(p))).forEach(p => { const g = C.rankGroup(p.rank); G[g] = (G[g] || 0) + 1; GH[g] = (GH[g] || 0) + (idx.hours[p.id] || 0); });
-    const slotN = SLOTS.map(([n, a, b]) => [n, st.pairings.filter(pr => { const t = ((pr.legs[0].dep % 1440) + 1440) % 1440 / 60; return t >= a && t < b; }).length]);
-    const cls = {}; st.pairings.forEach(pr => pr.legs.forEach(l => { const k = C.apClass(l.to, st); const lab = k ? k.label : '普通'; cls[lab] = (cls[lab] || 0) + 1; }));
-    const clsOrder = ['一类·高高原', '二类', '三类', '四类', '复杂', '普通']; const clsCol = ['#ef5d6c', '#f5a524', '#8b6cf6', '#3cc4f0', '#21c7a8', '#4f6a90'];
-    // 个人月工时排行：按自然月桶（monthHours / monthBuckets）排序，可切换 9月/10月
-    const buckets = (sum.monthMeta && sum.monthMeta.length) ? sum.monthMeta : ((C.monthBuckets && C.monthBuckets()) || []);
-    const curCalKey = C.YEAR + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
-    let mk = ui.ovMonth;
-    if (!mk || !buckets.some(b => b.key === mk)) {
-      // 默认：当前日历月（须是完整月）；否则取最后一个完整月（≥20 天），避免落在只含几天的尾月显示 0h
-      const fullB = buckets.filter(b => !b.days || b.days.length >= 20);
-      mk = (fullB.find(b => b.key === curCalKey) || fullB[fullB.length - 1] || buckets[0] || {}).key || null;
-      ui.ovMonth = mk;
-    }
-    const mhOf = id => {
-      const per = (sum.per || []).find(x => x.id === id);
-      if (per && per.monthHours && mk) return per.monthHours[mk] || 0;
-      if (C.monthHoursOf) { const m = C.monthHoursOf(st.pilots.find(p => p.id === id), st, idx, null); return (m && mk) ? (m[mk] || 0) : (idx.hours[id] || 0); }
-      return idx.hours[id] || 0;
-    };
-    // 公平性排行仅本中队真实人员（排除外中队/候补）；全假 0h 仍可垫底
-    const homePilots = st.pilots.filter(p => !(typeof isOuterPilot === 'function' ? isOuterPilot(p) : (C.isOuterPilot && C.isOuterPilot(p))));
-    const ranked = homePilots.map(p => ({ p, h: mhOf(p.id) })).sort((a, b) => b.h - a.h || a.p.id.localeCompare(b.p.id));
-    const flyM = ranked.filter(x => x.h > 0.5); const avg = flyM.length ? flyM.reduce((a, x) => a + x.h, 0) / flyM.length : 0;
-    const top = ranked.slice(0, 8), bot = ranked.slice(-8).reverse(); const hmx = Math.max(1, ranked[0] ? ranked[0].h : 0, 0.1);
-    const nHome = ranked.length;
-    // 低工时原因：当月请假 / 培训 / 模拟机天数（解释 0h 不是排班不公）
-    const mDays = new Set(((buckets.find(b => b.key === mk) || {}).days) || []);
-    const cntIn = arr => (arr || []).filter(d => mDays.has(d)).length;
-    const offTag = x => { if (x.h > 20) return ''; const lv = cntIn(x.p.leave), tr = cntIn((st.training || {})[x.p.id]), sm = cntIn((st.sim || {})[x.p.id]);
-      const t = lv ? '假' + lv : tr ? '训' + tr : sm ? '模' + sm : ''; return t ? ` · <span title="当月请假/培训/模拟机天数" style="color:#f5a524">${t}</span>` : ''; };
-    const bar = (x, rankLab, col, tip) => `<div class="rk" title="${esc(tip || '')}"><span class="rk-i">${esc(String(rankLab))}</span><span class="rk-n">${esc(x.p.name)}<small>${esc(x.p.rank)}${offTag(x)}</small></span><span class="rk-b"><i style="width:${(x.h / hmx * 100).toFixed(1)}%;background:${col}"></i></span><b>${x.h.toFixed(1)}h</b></div>`;
-    const monthSeg = buckets.length > 1
-      ? `<span class="seg" id="ovMonthSeg" style="margin-left:8px;vertical-align:middle">${buckets.map(b => `<button type="button" data-ovm="${esc(b.key)}" class="${b.key === mk ? 'on' : ''}">${esc(b.label)}</button>`).join('')}</span>`
-      : '';
-    const monthLab = (buckets.find(b => b.key === mk) || {}).label || '';
-    // 事件流
+    const G = {}; const GH = {}; own.forEach(p => { const g = C.rankGroup(p.rank); G[g] = (G[g] || 0) + 1; GH[g] = (GH[g] || 0) + (hrs[p.id] || 0); });
+    const slotN = SLOTS.map(([n, x, y]) => [n, prs.filter(pr => { const t = ((pr.legs[0].dep % 1440) + 1440) % 1440 / 60; return t >= x && t < y; }).length]);
     const ev = [];
     (st.fills || []).slice(-8).reverse().forEach(f => ev.push(['调整', `${f.time || ''}`, `${esc(f.pairingId)} ${esc(f.slotName || '')}：${esc(f.fromName || '空缺')} → ${esc(f.toName || '')}${f.source === 'leave' ? '（请假替换）' : ''}`, 'ev-a']));
     (st.solHist || []).slice(-3).reverse().forEach(hh => ev.push(['方案', new Date(hh.at || Date.now()).toTimeString().slice(0, 8), `${st.demo ? '一键排班完成' : '自动排班生成方案 #' + hh.n}${hh.seed != null ? '（seed ' + hh.seed + '）' : ''} 满员 ${(hh.kpi.coverage * 100).toFixed(1)}%`, 'ev-s']));
-    sum.violations.filter(v => v.level === 'hard').slice(0, 8).forEach(v => ev.push([v.type === '未满员' ? '缺员' : '违规', '', esc(v.msg).slice(0, 80), v.type === '未满员' ? 'ev-w' : 'ev-r']));
-    st.pilots.filter(p => (p.leave || []).length).slice(0, 4).forEach(p => ev.push(['请假', '', `${esc(p.name)} 请假 ${dayText(p.leave[0])}–${dayText(p.leave[p.leave.length - 1])}（${p.leave.length} 天）`, 'ev-l']));
-    // 四象限
-    const qx = v => 20 + v / 100 * 220, qy = v => 180 - v / 100 * 160;
+    vIn.filter(v => v.level === 'hard').slice(0, 8).forEach(v => ev.push([v.type === '未满员' ? '缺员' : '违规', '', esc(v.msg).slice(0, 80), v.type === '未满员' ? 'ev-w' : 'ev-r']));
+    own.filter(p => (p.leave || []).some(d => d >= a && d <= b)).slice(0, 6).forEach(p => { const lv = p.leave.filter(d => d >= a && d <= b); ev.push(['请假', '', `${esc(p.name)} 请假 ${dayText(lv[0])}–${dayText(lv[lv.length - 1])}（区间内 ${lv.length} 天）`, 'ev-l']); });
+    const qx = v => 20 + Math.min(100, v) / 100 * 220, qy = v => 180 - Math.min(100, v) / 100 * 160;
     const quad = `<svg viewBox="0 0 260 200" class="quad"><rect x="20" y="20" width="${qx(80) - 20}" height="160" class="q-idle"/><rect x="${qx(80)}" y="20" width="${qx(90) - qx(80)}" height="${qy(10) - 20}" class="q-ideal"/><rect x="${qx(90)}" y="20" width="${240 - qx(90)}" height="160" class="q-alert"/><rect x="${qx(90)}" y="${qy(5)}" width="${240 - qx(90)}" height="${180 - qy(5)}" class="q-crit"/>
       <line x1="20" y1="180" x2="240" y2="180" class="gl"/><line x1="20" y1="20" x2="20" y2="180" class="gl"/><text x="130" y="197" class="ax" text-anchor="middle">饱和度 %</text><text x="8" y="100" class="ax" transform="rotate(-90 8 100)" text-anchor="middle">韧性度 %</text>
       <text x="60" y="40" class="ax">低效</text><text x="${qx(80) + 2}" y="40" class="ax">理想</text><text x="${qx(90) + 4}" y="40" class="ax">警戒</text><text x="${qx(90) + 4}" y="176" class="ax">高危</text>
-      ${om.bySquadron.map(s => `<circle cx="${qx(s.satPct)}" cy="${qy(s.resiliPct)}" r="7" class="q-pt"><title>${esc(s.squad)} 饱和 ${s.satPct}% 韧性 ${s.resiliPct}%</title></circle>`).join('')}</svg>`;
-    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} ${DEMO ? '' : '<button class="btn primary" data-auto="1">⚡ 调整排班</button>'}</div></div>
-      <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
-        ${kc('平均工时' + (monthLab ? ' · ' + monthLab : ''), avg.toFixed(1) + 'h', (monthLab ? monthLab + ' · ' : '') + `有飞 ${flyM.length} 人 · Top ${hmx.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
-        ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, om.benchByDay || [], '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
+      <circle cx="${qx(satPct)}" cy="${qy(resPct)}" r="7" class="q-pt"><title>所选区间 饱和 ${satPct}% 韧性 ${resPct}%</title></circle></svg>`;
+    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div>${rangeBar(a, b)}</div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${DEMO ? '' : (solBadge() || '<span class="mut">尚未生成方案</span>') + ' <button class="btn primary" data-auto="1">⚡ 调整排班</button>'}</div></div>
+      <div class="bkpis">${kc('满员率', (coverage * 100).toFixed(1) + '%', `${full}/${total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${softN}</small>`, '不含缺员', vio, '#ef5d6c')}
+        ${kc('人均飞行小时', avg.toFixed(1) + 'h', `区间内 · 有飞 ${flyH.length} 人 · 最高 ${topH.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', satPct + '%', esc(zone.label) + ' · 已排/上限', duty.map(v => v / N * 100), '#8b6cf6')}
+        ${kc('韧性度', resPct + '%', `区间最紧张日可调 ${bw} 人`, bench, '#3cc4f0')}${kc('空位', total - full, '未满员任务', holes, '#f5a524')}</div>
       ${seatTiles(idx, om, ds)}
-      <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比 <small class="mut">本中队</small></h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), Object.values(G).reduce((a, b) => a + b, 0), '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
-        <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div>${fdpWatch()}</div>
-      <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8 · 本中队 ${nHome} 人${monthLab ? ' · ' + esc(monthLab) : ''}</small>${monthSeg}</h4><div class="rks">${top.map((x, i) => bar(x, i + 1, 'linear-gradient(90deg,#f5a524,#ef5d6c)', `本中队第 ${i + 1} 名 / ${nHome}`)).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => { const fromBottom = i + 1; const abs = nHome - i; return bar(x, '末' + fromBottom, 'linear-gradient(90deg,#2b6fd6,#4f8cff)', `倒数第 ${fromBottom} 名 · 本中队第 ${abs}/${nHome}`); }).join('')}</div></div>
-        <div class="bpanel"><h4>实时事件 <span class="live">● LIVE</span></h4><div class="feed">${ev.length ? ev.slice(0, 16).map(e => `<div class="ev ${e[3]}"><span class="ev-t">${e[1] || '—'}</span><span class="ev-k">${e[0]}</span><span>${e[2]}</span></div>`).join('') : '<div class="tempty">暂无事件</div>'}</div></div>
-        <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => C.dayLabel ? C.dayLabel(d).text : String(d).padStart(2, '0')))}
-          <h4 style="margin-top:8px">四象限 · 饱和 × 韧性</h4>${quad}<div class="mut sm">${esc(om.zoneHint)}</div></div></div>
-      <div class="mut sm">渲染 <span id="ovMs"></span> ms · 指标沿用运营看板口径（${esc(om.formulas.sat)}）</div></div>`;
+      <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比 <small class="mut">本中队 · 区间内</small></h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), N, '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((s, x) => s + x, 0)), '机组小时')}</div></div>
+        <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), total, '任务')}</div>${fdpWatch()}</div>
+      ${fairBoard(a, b, prs, ds)}
+      <div class="bgrid2"><div class="bpanel"><h4>实时事件 <span class="live">● LIVE</span></h4><div class="feed">${ev.length ? ev.slice(0, 16).map(e => `<div class="ev ${e[3]}"><span class="ev-t">${e[1] || '—'}</span><span class="ev-k">${e[0]}</span><span>${e[2]}</span></div>`).join('') : '<div class="tempty">暂无事件</div>'}</div></div>
+        <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => dayText(d)))}
+          <h4 style="margin-top:8px">四象限 · 饱和 × 韧性</h4>${quad}<div class="mut sm">${esc(zone.hint || '')}</div></div></div>
+      <div class="mut sm">渲染 <span id="ovMs"></span> ms · 饱和度 = 区间已排飞行小时 ÷（人数 × 月上限 × 区间月数）· 韧性度 = 区间内最紧张一天可临时调用人数 ÷ 本中队可飞人数</div></div>`;
     $('#main').innerHTML = h; tickClock(); ui.lastRenderMs = Math.round(performance.now() - t0); $('#ovMs').textContent = ui.lastRenderMs;
-    document.querySelectorAll('#ovMonthSeg button').forEach(b => { b.onclick = () => { ui.ovMonth = b.dataset.ovm; rOverview(); }; }); bindSeatTiles();
+    const setR = (x, y) => { if (x > y) [x, y] = [y, x]; ui.ovRange = [x, y]; ui.seatDay = null; rOverview(); };
+    $('#ovFrom').onchange = () => setR(+$('#ovFrom').value, ui.ovRange[1]); $('#ovTo').onchange = () => setR(ui.ovRange[0], +$('#ovTo').value);
+    document.querySelectorAll('[data-ovr]').forEach(btn => { btn.onclick = () => { const [x, y] = btn.dataset.ovr.split(',').map(Number); setR(x, y); }; });
+    bindSeatTiles();
   }
+
   function tickClock() { const c = $('#ovClock'); if (!c) return; const n = new Date(); c.textContent = n.toTimeString().slice(0, 8); const dd = $('#ovDate'); if (dd) dd.textContent = n.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }); }
   setInterval(tickClock, 1000);
   document.addEventListener('click', e => { const a = e.target.closest && e.target.closest('[data-auto]'); if (a) runAuto(); const g = e.target.closest && e.target.closest('[data-go]'); if (g) goTab(g.dataset.go); });

@@ -847,3 +847,22 @@ body.pa-on .story{display:none}
 .fw-row .fw-d{font-variant-numeric:tabular-nums;opacity:.8;font-size:12px}.fw-row .fw-t{min-width:0;display:flex;flex-direction:column}.fw-row .fw-t b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fw-row .fw-t small{font-size:11px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .fw-row .fw-b{font-weight:700;font-variant-numeric:tabular-nums;color:var(--fc)}
 .fw-ok{--fc:#21c7a8}.fw-warn{--fc:#f5a524}.fw-bad{--fc:#ef5d6c}.fw-over{--fc:#ff3b5c}
+/* 总览 · 审核区间 */
+.ovrange{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px;font-size:12px}
+.ovrange select{background:transparent;color:inherit;border:1px solid rgba(140,170,220,.35);border-radius:6px;padding:2px 6px}
+.ovrange select option,.seatmon select option{background:#0f1a2e;color:#e6edf7}
+.bgrid2{display:grid;grid-template-columns:1fr 1.3fr;gap:10px;margin-bottom:10px}
+@media (max-width:1100px){.bgrid2{grid-template-columns:1fr}}
+/* 总览 · 公平性看板 */
+.fairb{margin:0 0 10px;padding:12px 14px;border:1px solid rgba(140,170,220,.2);border-radius:10px;background:rgba(255,255,255,.02)}
+.fb-h{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-bottom:10px}.fb-h b{font-size:15px}
+.fb-s{font-weight:700;padding:2px 10px;border-radius:999px;font-variant-numeric:tabular-nums;background:rgba(255,255,255,.06)}
+.fb-s.ok,.fcard.ok{--fc:#21c7a8}.fb-s.warn,.fcard.warn{--fc:#f5a524}.fb-s.bad,.fcard.bad{--fc:#ef5d6c}.fb-s{color:var(--fc)}
+.fcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin-bottom:6px}
+.fcard{padding:10px 12px;border-radius:9px;border:1px solid rgba(140,170,220,.18);border-top:3px solid var(--fc);background:rgba(255,255,255,.03);display:flex;flex-direction:column;gap:5px;min-width:0}
+.fc-h{display:flex;justify-content:space-between;align-items:baseline;font-size:13px}.fc-h b{font-size:20px;color:var(--fc);font-variant-numeric:tabular-nums}
+.fc-r{display:grid;grid-template-columns:44px minmax(0,1fr) 78px;gap:6px;align-items:center;font-size:11px}
+.fc-g{opacity:.75}.fc-v{text-align:right;font-variant-numeric:tabular-nums;opacity:.8}
+.fc-t{position:relative;height:8px;border-radius:4px;background:rgba(140,170,220,.15)}
+.fc-t i{position:absolute;top:0;bottom:0;border-radius:4px;background:var(--fc);opacity:.55}
+.fc-t em{position:absolute;top:-3px;width:2px;height:14px;margin-left:-1px;background:currentColor}
