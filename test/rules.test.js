@@ -95,4 +95,14 @@ for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.auto
   // CR-19 非必须：F1/F2 无教员不再是 crewIssue 硬违规
   chk('CR19 J3+F7+F1 not hard', !/CR-19/.test(C.crewIssue(norm, [P('c', 'J3'), fo('a', 'F7'), fo('b', 'F1')], st) || ''));
 }
+// 公司特殊机场资质表（用户 2026-11-04）：两人上座且都持资质即可，第三人不要求；左座须机长类资格；被带飞/重获资格机长须配教员
+{ const sq = Object.assign({}, st, { authAirports: ['ZYYJ'] }); const yj = pr(leg('ZUUU', 'ZYYJ'), leg('ZYYJ', 'ZUUU'));
+  const Q = (id, rank, role) => P(id, rank, role ? ['ZYYJ'] : [], { qualRole: role ? { ZYYJ: [role] } : {} });
+  chk('QUAL 机长+副驾驶持资质，观察员无 → ok', !C.crewIssue(yj, [Q('c', 'J3', '责任机长'), Q('f', 'F6', '副驾驶'), Q('t', 'F3', null)], sq));
+  chk('QUAL 仅机长持资质 → 不合规', !!C.crewIssue(yj, [Q('c', 'J3', '责任机长'), Q('f', 'F6', null), Q('t', 'F3', null)], sq));
+  chk('QUAL 左座仅副驾驶资格 → 不合规', !!C.crewIssue(yj, [Q('c', 'J3', '副驾驶'), Q('f', 'F6', '副驾驶'), Q('t', 'F3', null)], sq));
+  chk('QUAL 被带飞机长+副驾驶(非教员) → 不合规', !!C.crewIssue(yj, [Q('c', 'J3', '被带飞机长'), Q('f', 'F6', '副驾驶'), Q('t', 'F5', null)], sq));
+  chk('QUAL 被带飞机长+教员 → ok', !C.crewIssue(yj, [Q('c', 'J3', '被带飞机长'), Q('f', 'TL', '责任机长'), Q('t', 'F5', null)], sq));
+  chk('QUAL 重获资格机长+副驾驶 → 不合规', !!C.crewIssue(yj, [Q('c', 'J3', '重获资格机长'), Q('f', 'F6', '副驾驶'), Q('t', 'F5', null)], sq));
+}
 console.log(fail ? 'RULES FAIL ' + fail : 'RULES ALL OK'); process.exitCode = fail ? 1 : 0;

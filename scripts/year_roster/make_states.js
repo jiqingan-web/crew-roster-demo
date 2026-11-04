@@ -14,6 +14,7 @@ function makeState(grid, pairings, dayShift, keepDay, label) {
   st.pilots = JSON.parse(JSON.stringify(Y.pilots)); const lv = clip(Y.leave); st.pilots.forEach(p => { p.leave = lv[p.id]; });
   st.pairings = JSON.parse(JSON.stringify(pairings)).map(pr => { pr.start -= dayShift; pr.legs.forEach(l => { l.dep -= dayShift * 1440; l.arr -= dayShift * 1440; }); return pr; });
   st.airports = Object.assign({}, C.AIRPORTS, Y.airports);
+  if (Y.authAirports) st.authAirports = Y.authAirports.slice(); // 公司特殊机场资质表覆盖的机场
   st.training = clip(Y.training); st.sim = clip(Y.sim); st.control = clip(Y.control); st.standby = clip(Y.standby); st.simHold = null;
   st.trainingKind = {}; Y.pilots.forEach(p => { const k = (Y.trainingKind || {})[p.id] || {}; st.trainingKind[p.id] = {}; Object.keys(k).forEach(d => { const dd = d - dayShift; if (keepDay(dd)) st.trainingKind[p.id][dd] = k[d]; }); });
   Object.assign(st, { sample: false, lite: true, official: 1, grid, demoHoles: [], demoHolesApplied: true, demoAnomalies: [], demoAnomaliesApplied: true, fills: [], solN: 1, solIdx: 0, yearRoster: { source: Y.source, label } });

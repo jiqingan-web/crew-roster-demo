@@ -125,7 +125,7 @@ for (const ch of chains) {
 }
 pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
 pairings.forEach((p, i) => { p.id = 'YR' + String(i + 1).padStart(4, '0'); p.legs.forEach(l => l.reg = 'REG-' + p.id); });
-const out = { schema: 'year-roster/1', grid: { days: NDAYS, start: { m: +fromMd.slice(0, 2), d: +fromMd.slice(3) } }, year: D.year,
+const out = { authAirports: Q ? Q.covered : undefined, schema: 'year-roster/1', grid: { days: NDAYS, start: { m: +fromMd.slice(0, 2), d: +fromMd.slice(3) } }, year: D.year,
   source: `七中队全年班表 ${D.year}-${fromMd}..${toMd}（实际执行；化名 P###）`, airports, pilots, pairings, leave, training, trainingKind, sim, control, standby, notes,
   build: { issues, unknownAp, chains: chains.length } };
 fs.writeFileSync(outPath, JSON.stringify(out));

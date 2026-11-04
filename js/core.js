@@ -1341,6 +1341,15 @@
       if (needQ && (!(L.auth || []).includes(c) || !(R.auth || []).includes(c))) return false;
       if (!catOK(cat, L.rank, R.rank)) return false; }
     if ((leg.ac === 'A321' || leg.ac === 'A21N') && !isJ2plus(L.rank)) return false;
+    // 公司特殊机场资质表（st.authAirports + p.qualRole）：用户 2026-11-04
+    //  上座两人都须持该机场资质；左座须为机长类资格（责任机长/被带飞机长/重获资格机长）；
+    //  左座在该机场为「被带飞机长」或「重获资格机长」（无责任机长资格）时，右座须为教员。第三人（观察员）不要求。
+    const QA = st && st.authAirports; if (QA && QA.length) for (const c of [leg.from, leg.to]) { if (!QA.includes(c)) continue;
+      if (!(L.auth || []).includes(c) || !(R.auth || []).includes(c)) return false;
+      const lr = L.qualRole && L.qualRole[c], rr = R.qualRole && R.qualRole[c];
+      if (lr && !lr.some(x => x.includes('机长'))) return false;
+      if (L.qualRole && !lr) return false; if (R.qualRole && !rr) return false;
+      if (lr && !lr.some(x => x.startsWith('责任机长')) && lr.some(x => x.includes('被带飞') || x.includes('重获')) && !isInstr(R.rank)) return false; }
     return true;
   }
   function crewIssue(p, crewPilots, st) {
@@ -1355,7 +1364,7 @@
     for (const leg of p.legs) {
       let ok = false;
       for (let i = 0; i < 3 && !ok; i++) for (let j = 0; j < 3 && !ok; j++) if (i !== j && legSeatedOK(cs[i], cs[j], leg, st)) ok = true;
-      if (!ok) { const c = [leg.from, leg.to].find(x => isSpecial(x, st));
+      if (!ok) { const c = [leg.from, leg.to].find(x => isSpecial(x, st) || ((st && st.authAirports) || []).includes(x));
         const ru = c && sarOf(apCat(c, st));
         return `[${ru ? 'CR-06/07/08·' + ru.key : c ? 'CR-特殊机场' : 'CR-01'}] D${leg.d} ${leg.flt} ${apName(leg.from, st)}-${apName(leg.to, st)}：无满足${c ? '特殊机场(' + apName(c, st) + ')授权/' : ''}座位搭配规则的左右座组合`; }
     }
@@ -3551,6 +3560,10 @@
           const demo = pr.demoAnomaly ? '【演示异常】' : '';
           add(t, 'hard', `${demo}${plabel} ${iss}`, pr); }
       }
+      // 个人特殊机场授权（操纵座 C/F；观察员不要求）：系统排班判硬违规；导入的真实班表座位为推断，降为软提示（用户 2026-11-04）
+      // 机组齐全时只看组合（任两人可上座即可，见 crewIssue）；不全时才逐人检查
+      if (!crew.every(Boolean)) { const need = needAuthAirports(pr, st); if (need.length) ['C', 'F'].forEach((s0, i0) => { const p0 = crew[i0]; if (!p0) return; const miss = need.filter(c => !(p0.auth || []).includes(c));
+        if (miss.length) add('个人特殊机场授权', (pr.official || st.official) ? 'soft' : 'hard', `${plabel} ${SLOT_NAME[s0]}位 ${p0.name}(${p0.rank}) 无 ${miss.map(c => apName(c, st)).join('、')} 资质${(pr.official || st.official) ? '（导入班表座位为推断，需核对）' : ''}`, pr, p0.id); }); }
       if (crew.every(Boolean) && crew.some(x => x.rank === 'F1' || x.rank === 'F2') && !crew.some(x => isInstr(x.rank))) add('F1/F2无教员', 'soft', `${plabel} [CR-19] F1/F2 未与教员同组（非必须，提示）`, pr);
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${plabel} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
@@ -3729,7 +3742,7 @@
   function forceAssign(st, prId, slot, pilotId, note) {
     const pr = st.pairings.find(p => p.id === prId); if (!pr) return false; const c = candidates(st, pr, slot).find(x => x.p.id === pilotId);
     pr.crew[slot] = pilotId; pr.forced = pr.forced || {}; pr.forced[slot] = { pilot: pilotId, reasons: c ? c.reasons.slice() : [], note: note || '', at: Date.now() }; return true; }
-  function needAuthAirports(pr, st) { const s = new Set(); pr.legs.forEach(l => { if (l.dh) return; [l.from, l.to].forEach(c => { const cat = apCat(c, st); if (cat === 'NONE') return; const ru = sarOf(cat); if (ru ? ru.crew_qualification_required !== false : AUTH_CATS.includes(cat)) s.add(c); }); }); return [...s]; }
+  function needAuthAirports(pr, st) { const s = new Set(); const QA = (st && st.authAirports) || []; pr.legs.forEach(l => { if (l.dh) return; [l.from, l.to].forEach(c => { if (QA.includes(c)) { s.add(c); return; } const cat = apCat(c, st); if (cat === 'NONE') return; const ru = sarOf(cat); if (ru ? ru.crew_qualification_required !== false : AUTH_CATS.includes(cat)) s.add(c); }); }); return [...s]; }
   function candidates(st, pr, slot, pre) {
     const idx = buildIndex(st); const res = [];
     for (const p of st.pilots) {
