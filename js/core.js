@@ -1686,7 +1686,14 @@
     }
     const dt = spanDays(pr, st);
     // 请假日只看报到→末段落地覆盖的日历日；落地后离场/车程跨过午夜不算占用次日
-    const opLegs = pr.legs.filter(l => !l.dh), lastArr = (opLegs.length ? opLegs[opLegs.length - 1] : pr.legs[pr.legs.length - 1]).arr, ldays = dt.filter(d => (d - 1) * DAY < lastArr); // 航后置位不算值勤期
+    // 请假日冲突只看：当天有航段起飞，或处在多日任务中间的外站停留日；仅是跨午夜落地（或航后置位）的那天不算占用
+    const opLegs = pr.legs.filter(l => !l.dh), lastOp = opLegs.length ? opLegs[opLegs.length - 1] : pr.legs[pr.legs.length - 1];
+    const depDays = new Set(); let prevL = null;
+    pr.legs.forEach(l => { if (l.dh && l.dep > lastOp.dep) return; const d = Math.floor(l.dep / DAY) + 1;
+      // 与前一段间隔 < 8h 的航段视为前一次值勤的延续（跨午夜往返），不另算一天
+      if (!(prevL && l.dep - prevL.arr < 480 && d !== Math.floor(prevL.dep / DAY) + 1)) depDays.add(d); else depDays.add(Math.floor(prevL.dep / DAY) + 1);
+      prevL = l; });
+    const dMin = Math.min(...depDays), dMax = Math.max(...depDays), ldays = dt.filter(d => depDays.has(d) || (d > dMin && d < dMax));
     const lv = ldays.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
     const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.join(',') + '日)');
     const trd = dt.filter(d => ((st.training || {})[p.id] || []).includes(d)); if (trd.length) rs.push('培训日冲突(' + trd.join(',') + '日)');
