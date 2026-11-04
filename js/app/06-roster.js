@@ -1,10 +1,16 @@
 /* 机组排班助手 - 界面 · roster.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 人员总览（授权 / 健康限制） ----------------
+  // 资质覆盖卡片：每个机场一张，按角色的人数 + 比例条；某角色为 0 标红；点卡片筛选
+  function qualCards(list, S, gap) {
+    const card = c => { const a = S[c], n = a.n, t = a.all || 1; const seg = (k, cl) => n[k] ? `<i class="${cl}" style="width:${(n[k] / t * 100).toFixed(1)}%"></i>` : '';
+      return `<button type="button" class="qcard ${a.lv} ${ui.ra === c ? 'on' : ''}" data-apq="${c}"><span class="qn">${esc(C.apName(c, st))}${a.lv === 'bad' ? `<em>缺${!n.责 ? '责任机长' : '副驾驶'}</em>` : ''}</span><span class="qbar">${seg('责', 'q-c')}${seg('副', 'q-f')}${seg('带', 'q-t')}${seg('重', 'q-t')}</span><span class="qv"><b>${n.责}</b> 责 · <b>${n.副}</b> 副${n.带 + n.重 ? ` · <b>${n.带 + n.重}</b> 带/重` : ''}</span></button>`; };
+    return `<div class="qwrap"><div class="qhead"><b>资质覆盖</b><span class="mut">本中队各特殊机场持资质人数（按角色）· 点机场看名单并筛选下表</span><span class="qleg"><i class="qd q-c"></i>责任机长 <i class="qd q-f"></i>副驾驶 <i class="qd q-t"></i>被带飞 / 重获资格（须教员同组）<i class="qd q-n"></i>无</span></div>
+      <div class="qcards">${list.map(card).join('')}</div>${gap.length ? `<div class="mut sm" style="margin-top:6px">资质表中无人持有：${gap.map(c => esc(C.apName(c, st))).join('、')}</div>` : ''}</div>`;
+  }
   // 某特殊机场的持资质人员 + 本期已飞该机场次数
   function apHolders(c, own, roleOf) {
-    const idx = C.buildIndex(st); const flown = p => (idx.sched[p.id] || []).filter(pr => pr.legs.some(l => !l.dh && (l.from === c || l.to === c))).length;
-    const ord = { '责': 0, '重': 1, '带': 2, '副': 3 }; const xs = own.filter(p => roleOf(p, c)).map(p => ({ p, r: roleOf(p, c), n: flown(p) })).sort((a, b) => ord[a.r] - ord[b.r] || b.n - a.n);
-    return `<div class="apq-box"><b>${esc(C.apName(c, st))} 持资质人员</b><span class="mut">（${xs.length} 人 · 括号内为本期已飞该机场任务数 · 再点机场名取消）</span><div class="apq-list">${xs.map(x => `<span class="apq-p"><span class="authtag ${x.r === '责' ? 'on' : x.r === '副' ? 'on fo' : 'tr'}">${x.r}</span>${esc(x.p.name)} <small>${esc(x.p.rank)}（${x.n}）</small></span>`).join('') || '<span class="mut">无</span>'}</div></div>`;
+    const L = { 责: '责任机长', 重: '重获资格', 带: '被带飞', 副: '副驾驶' }; const xs = own.filter(p => roleOf(p, c));
+    return `<div class="apq-box"><b>${esc(C.apName(c, st))} 持资质人员</b><span class="mut">（本中队 ${xs.length} 人 · 再点机场取消）</span>${['责', '副', '带', '重'].map(r => { const g = xs.filter(p => roleOf(p, c) === r); return g.length ? `<div class="apq-row"><span class="qlab"><i class="qd q-${{ 责: 'c', 副: 'f', 带: 't', 重: 't' }[r]}"></i>${L[r]} ${g.length}</span><span class="apq-list">${g.map(p => `<span class="apq-p">${esc(p.name)} <small>${esc(p.rank)}</small></span>`).join('')}</span></div>` : ''; }).join('')}</div>`;
   }
   function rRoster() {
     C.migratePilots(st);
@@ -12,13 +18,11 @@
     const QA = (st.authAirports || []).slice(); const useQ = QA.length > 0;
     const own0 = st.pilots.filter(p => !isOuterPilot(p));
     const roleOf = (p, c) => { const rs = (p.qualRole || {})[c] || []; return rs.some(r => /责任机长/.test(r)) ? '责' : rs.some(r => /重获/.test(r)) ? '重' : rs.some(r => /被带飞/.test(r)) ? '带' : rs.some(r => /副驾驶/.test(r)) ? '副' : ((p.auth || []).includes(c) && !useQ ? '✓' : ''); };
-    const apStat = {}; if (useQ) { const mon = Math.max(1, C.DAYS / 30.44);
-      QA.forEach(c => { const prs = st.pairings.filter(pr => pr.legs.some(l => !l.dh && (l.from === c || l.to === c)));
-        const cap = own0.filter(p => roleOf(p, c) === '责').length, fo = own0.filter(p => roleOf(p, c) === '副').length, tr = own0.filter(p => /[带重]/.test(roleOf(p, c))).length;
-        const seats = c === 'ZULS' ? 2 : 1; const load = prs.length ? prs.length * seats / mon / Math.max(cap, 0.5) : 0; // 拉萨双机长
-        const lv = !prs.length ? '' : (!cap || !fo) ? 'bad' : load > 3 ? 'bad' : load > 2 ? 'warn' : 'ok';
-        apStat[c] = { n: prs.length, cap, fo, tr, load, lv }; }); }
-    const authList = useQ ? QA.filter(c => apStat[c].n || apStat[c].cap || apStat[c].fo).sort((a, b) => apStat[b].n - apStat[a].n || apStat[b].cap - apStat[a].cap) : C.authAirports(st);
+    // 只看资质有无：每个机场按角色统计本中队持资质人数（不随排班/区间变化）；某角色为 0 标红
+    const apStat = {}; if (useQ) QA.forEach(c => { const n = { 责: 0, 副: 0, 带: 0, 重: 0 }; own0.forEach(p => { const r = roleOf(p, c); if (r) n[r]++; });
+      apStat[c] = { n, all: n.责 + n.副 + n.带 + n.重, lv: !(n.责 + n.副 + n.带 + n.重) ? 'none' : (!n.责 || !n.副) ? 'bad' : 'ok' }; });
+    const authList = useQ ? QA.filter(c => apStat[c].all).sort((a, b) => apStat[b].all - apStat[a].all || apStat[b].n.责 - apStat[a].n.责) : C.authAirports(st);
+    const apGap = useQ ? QA.filter(c => !apStat[c].all) : [];
     const levelList = C.levelAirports(st);
     let ps = st.pilots.slice().sort((a, b) => {
       const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
@@ -53,10 +57,10 @@
         ${onePersonPicker()}
       </div>
       ${DEMO ? '' : demoFillBanner()}
-      ${useQ ? `<div class="note" style="margin-top:8px">机场列取自公司特殊机场资质表（只列有航班或有人持资质的 ${authList.length} 个，按本期航班量排序）。格内：<span class="authtag on">责</span> 责任机长　<span class="authtag on fo">副</span> 副驾驶　<span class="authtag tr">带</span> 被带飞　<span class="authtag tr">重</span> 重获资格（带 / 重须教员同组）。表头：本期任务数 · 本中队可当机长 / 副驾驶人数；红 = 有人员缺口或每名机长每月超过 3 班，黄 = 超过 2 班。点机场名查看持资质人员。</div>${ui.ra !== '全部' && apStat[ui.ra] ? apHolders(ui.ra, own0, roleOf) : ''}` : `<div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div>`}</div>
+      ${useQ ? (qualCards(authList, apStat, apGap) + (ui.ra !== '全部' && apStat[ui.ra] ? apHolders(ui.ra, own0, roleOf) : '')) : `<div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div>`}</div>
       <div class="panel scroll" style="max-height:calc(100vh - 220px);padding:0"><table class="rost"><thead><tr>
         <th>员工号</th><th>姓名</th><th>级别</th><th>中队</th><th>帮扶</th><th>健康限制</th>
-        ${authList.map(c => { const a = apStat[c]; return a ? `<th class="ath aq ${a.lv}" data-apq="${c}" title="${c} · 本期 ${a.n} 个任务 · 本中队 责任机长 ${a.cap} / 副驾驶 ${a.fo} / 带飞·重获 ${a.tr}"><span>${esc(C.apName(c, st))}</span><small>${a.n} 任务</small><small>${a.cap}/${a.fo}</small></th>` : `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`; }).join('')}
+        ${authList.map(c => useQ ? `<th class="ath aq vq ${ui.ra === c ? 'on' : ''}" data-apq="${c}" title="${esc(C.apName(c, st))}（${c}）· 点击筛选持资质人员"><span>${esc(C.apName(c, st))}</span></th>` : `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`).join('')}
         <th>授权数</th><th></th></tr></thead><tbody>`;
     for (const p of ps) {
       const flags = C.healthFlags(p.health);
@@ -73,7 +77,7 @@
         <td class="hcell"><button type="button" class="btn sm roBangfu ${p.bangfu ? 'primary' : ''}" data-pid="${p.id}" title="切换帮扶对象">${p.bangfu ? '帮扶✓' : '—'}</button></td>
         <td class="hcell">${badges}</td>
         ${authList.map(c => { if (!useQ) return `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`;
-          const r = roleOf(p, c); const cl = r === '责' ? 'on' : r === '副' ? 'on fo' : r ? 'tr' : ''; return `<td class="acell">${r ? `<span class="authtag ${cl}" title="${esc(((p.qualRole || {})[c] || []).join('、'))}">${r}</span>` : '<span class="authtag" title="无资质">·</span>'}</td>`; }).join('')}
+          const r = roleOf(p, c); return `<td class="qc"><i class="qd q-${r ? { 责: 'c', 副: 'f', 带: 't', 重: 't' }[r] : 'n'}" title="${esc(p.name + ' · ' + C.apName(c, st) + '：' + (((p.qualRole || {})[c] || []).join('、') || '无资质'))}"></i></td>`; }).join('')}
         <td>${authN}/${nAuth}</td>
         <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button> <button class="btn sm roLeave" data-pid="${p.id}">请假</button> <button class="btn sm roSwap" data-pid="${p.id}">换班</button> <button class="btn sm roCal" data-pid="${p.id}" title="导出此人月历 CSV">月历</button></td></tr>`;
     }
