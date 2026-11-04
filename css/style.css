@@ -832,3 +832,11 @@ body.pa-on .story{display:none}
 /* 总览 · 人工 vs 一键排班 */
 .cmpbox{margin:12px 0;padding:12px 14px;border:1px solid rgba(120,160,255,.25);border-radius:10px;background:rgba(79,140,255,.06)}
 .cmpbox .cmp-h{font-weight:700;margin-bottom:8px}.cmpbox .cmpt td,.cmpbox .cmpt th{padding:5px 10px}.cmpbox .cmpt td:nth-child(2),.cmpbox .cmpt td:nth-child(3){text-align:right;font-variant-numeric:tabular-nums}
+/* 总览 · 席位监控小方块 */
+.seatmon{margin:12px 0}.seatmon .sm-h{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}.seatmon .sm-h b{font-size:15px;margin-right:6px}
+.seatmon select{background:transparent;color:inherit;border:1px solid rgba(140,170,220,.35);border-radius:6px;padding:2px 6px}
+.stiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px}
+.stile{display:flex;flex-direction:column;gap:4px;text-align:left;padding:10px 12px;border-radius:10px;border:1px solid rgba(140,170,220,.22);background:rgba(255,255,255,.03);color:inherit;cursor:pointer;border-left:4px solid var(--sc,#21c7a8);font:inherit}
+.stile:hover{background:rgba(255,255,255,.07)}.stile:focus-visible{outline:2px solid #4f8cff}
+.stile.ok{--sc:#21c7a8}.stile.warn{--sc:#f5a524}.stile.bad{--sc:#ef5d6c}
+.stile .st-l{font-size:12px;opacity:.8}.stile .st-v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--sc)}.stile .st-v small{font-size:13px;opacity:.7;color:inherit}.stile .st-s{font-size:11px;opacity:.65}

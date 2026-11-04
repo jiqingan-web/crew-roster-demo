@@ -127,6 +127,41 @@
       ${row('软提示', a.soft, b.soft, x => x, 'low', '第5日执飞等')}
       </table><div class="mut sm">人工班表硬违规：${esc(ht(a))}；一键排班：${esc(ht(b))}。人工表只录了本中队人员（外中队座位未入表），一键排班中外中队候补承担 ${b.extSeats} 个座位，故平均月工时 ${f1(a.meanMonth)}h → ${f1(b.meanMonth)}h。</div></div>`;
   }
+  // ---- 席位监控小方块：选定日期（默认 10/15，可切换）----
+  function seatDayDefault() { if (!C.dayLabel) return 1; for (let d = 1; d <= C.DAYS; d++) { const L = C.dayLabel(d); if (L.m === 10 && L.d === 15) return d; } return Math.ceil(C.DAYS / 2); }
+  function seatTiles(idx, om, ds) {
+    if (!st.pairings.some(p => p.crew.C || p.crew.F || p.crew.T)) return '';
+    let d = ui.seatDay; if (!d || d < 1 || d > C.DAYS) d = ui.seatDay = seatDayDefault();
+    const own = st.pilots.filter(p => !C.isOuterPilot(p) && !(p.health && p.health.noFly));
+    const mk = C.monthBuckets ? (C.monthBuckets().find(b => b.days.includes(d)) || {}).key : null;
+    const mh = p => { const per = (sum.per || []).find(x => x.id === p.id); return per && per.monthHours && mk ? (per.monthHours[mk] || 0) : (idx.hours[p.id] || 0); };
+    const cap = st.settings.hardMaxHours || 100;
+    // 4 今日可调：当日空闲或备份、前后一日无执勤、本月余量 ≥ 8h
+    const avail = own.filter(p => { const a = ds[p.id]; return (a[d] === '' || a[d] === 'S') && a[d - 1] !== 'D' && a[d + 1] !== 'D' && cap - mh(p) >= 8; });
+    const aC = avail.filter(p => C.isCaptClass(p.rank)), aF = avail.filter(p => C.isFO(p.rank));
+    // 10 接近月上限（≥85h）
+    const near = own.map(p => ({ p, h: mh(p) })).filter(x => x.h >= 85).sort((a, b) => b.h - a.h);
+    // 11 连续值勤：当日执勤且前 4 日均执勤（第 5 个连续值勤日）
+    const run5 = own.filter(p => { const a = ds[p.id]; return a[d] === 'D' && [1, 2, 3, 4].every(k => a[d - k] === 'D'); });
+    // 12 执勤期余量 < 60 分钟（当日 / 未来 7 天）
+    const rows = C.fdpRiskSummary(st).rows; const tight = rows.filter(r => r.date === d && r.buffer < 60); const tight7 = rows.filter(r => r.date >= d && r.date < d + 7 && r.buffer < 60);
+    const lv = (n, warn, bad, inv) => inv ? (n <= bad ? 'bad' : n <= warn ? 'warn' : 'ok') : (n >= bad ? 'bad' : n >= warn ? 'warn' : 'ok');
+    const names = xs => esc(xs.slice(0, 12).join('、') + (xs.length > 12 ? ` 等 ${xs.length} 人` : ''));
+    const tile = (cls, lab, val, sub, tip, go) => `<button type="button" class="stile ${cls}" title="${tip}" ${go ? `data-go="${go}"` : ''}><span class="st-l">${lab}</span><span class="st-v">${val}</span><span class="st-s">${sub}</span></button>`;
+    const opts = Array.from({ length: C.DAYS }, (_, i) => i + 1).map(k => `<option value="${k}" ${k === d ? 'selected' : ''}>${dayText(k)}</option>`).join('');
+    return `<div class="seatmon"><div class="sm-h"><b>席位监控</b><label class="mut">日期 <select id="seatDaySel">${opts}</select></label><button type="button" class="btn sm" id="seatPrev">◀</button><button type="button" class="btn sm" id="seatNext">▶</button></div><div class="stiles">
+      ${tile(lv(Math.min(aC.length, aF.length), 3, 1, true), '今日可调 机长 / 副驾驶', `${aC.length}<small> / </small>${aF.length}`, '空闲或备份 · 前后日无执勤 · 余量≥8h', '机长：' + names(aC.map(p => p.name + ' ' + p.rank)) + '\n副驾驶：' + names(aF.map(p => p.name + ' ' + p.rank)), 'gantt')}
+      ${tile(lv(om.benchWorstN, 5, 2, true), '最紧张的一天', `${dayText(om.benchWorstDay)}`, `全周期最少 · 可调 ${om.benchWorstN} / ${om.benchPool} 人`, '整个排班周期内，可临时调用人数最少的一天', '')}
+      ${tile(lv(near.length, 1, 5), '接近月上限 ≥85h', `${near.length}<small> 人</small>`, `${(C.monthBuckets().find(b => b.key === mk) || {}).label || ''} · 上限 ${cap}h`, names(near.map(x => x.p.name + ' ' + x.h.toFixed(0) + 'h')) || '无', 'roster')}
+      ${tile(lv(run5.length, 1, 4), '连续值勤第 5 天', `${run5.length}<small> 人</small>`, `当日 · 全周期软提示 ${(sum.violations || []).filter(v => /第5日执飞/.test(v.type)).length} 条`, names(run5.map(p => p.name)) || '无', 'gantt')}
+      ${tile(lv(tight.length, 1, 3), '执勤期余量 <60 分', `${tight.length}<small> 段</small>`, `当日 · 未来 7 天 ${tight7.length} 段`, esc(tight.map(r => r.pr + ' 余 ' + Math.round(r.buffer) + ' 分').join('、') || '无'), 'duty')}
+    </div></div>`;
+  }
+  function bindSeatTiles() {
+    const sel = $('#seatDaySel'); if (!sel) return; const go = v => { ui.seatDay = Math.max(1, Math.min(C.DAYS, v)); rOverview(); };
+    sel.onchange = () => go(+sel.value); $('#seatPrev').onclick = () => go(ui.seatDay - 1); $('#seatNext').onclick = () => go(ui.seatDay + 1);
+    document.querySelectorAll('.stile[data-go]').forEach(b => { b.onclick = () => { if (b.dataset.go === 'gantt') { const L = C.dayLabel(ui.seatDay); setUiMonth(C.YEAR + '-' + String(L.m).padStart(2, '0')); } goTab(b.dataset.go); }; });
+  }
   function rOverview() {
     const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx); const N = st.pilots.length;
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
@@ -193,7 +228,8 @@
     let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
         ${kc('平均工时' + (monthLab ? ' · ' + monthLab : ''), avg.toFixed(1) + 'h', (monthLab ? monthLab + ' · ' : '') + `有飞 ${flyM.length} 人 · Top ${hmx.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
-        ${kc('韧性 · 最紧张一天', `${om.benchWorstN}<small> / ${om.benchPool} 人</small>`, `${dayText(om.benchWorstDay)} 还能临时调用的人（韧性度 ${om.resiliPct}%）`, om.benchByDay || [], '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
+        ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, om.benchByDay || [], '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
+      ${seatTiles(idx, om, ds)}
       <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比 <small class="mut">本中队</small></h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), Object.values(G).reduce((a, b) => a + b, 0), '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
         <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>
       <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8 · 本中队 ${nHome} 人${monthLab ? ' · ' + esc(monthLab) : ''}</small>${monthSeg}</h4><div class="rks">${top.map((x, i) => bar(x, i + 1, 'linear-gradient(90deg,#f5a524,#ef5d6c)', `本中队第 ${i + 1} 名 / ${nHome}`)).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => { const fromBottom = i + 1; const abs = nHome - i; return bar(x, '末' + fromBottom, 'linear-gradient(90deg,#2b6fd6,#4f8cff)', `倒数第 ${fromBottom} 名 · 本中队第 ${abs}/${nHome}`); }).join('')}</div></div>
@@ -202,7 +238,7 @@
           <h4 style="margin-top:8px">四象限 · 饱和 × 韧性</h4>${quad}<div class="mut sm">${esc(om.zoneHint)}</div></div></div>
       <div class="mut sm">渲染 <span id="ovMs"></span> ms · 指标沿用运营看板口径（${esc(om.formulas.sat)}）</div></div>`;
     $('#main').innerHTML = h; tickClock(); ui.lastRenderMs = Math.round(performance.now() - t0); $('#ovMs').textContent = ui.lastRenderMs;
-    document.querySelectorAll('#ovMonthSeg button').forEach(b => { b.onclick = () => { ui.ovMonth = b.dataset.ovm; rOverview(); }; });
+    document.querySelectorAll('#ovMonthSeg button').forEach(b => { b.onclick = () => { ui.ovMonth = b.dataset.ovm; rOverview(); }; }); bindSeatTiles();
   }
   function tickClock() { const c = $('#ovClock'); if (!c) return; const n = new Date(); c.textContent = n.toTimeString().slice(0, 8); const dd = $('#ovDate'); if (dd) dd.textContent = n.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' }); }
   setInterval(tickClock, 1000);
