@@ -87,5 +87,12 @@ for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.auto
   }
   chk('CR20 机长A+F4+F5 still ok', !C.crewIssue(norm, [P('c', '机长A'), fo('a', 'F4'), fo('b', 'F5')], st));
   chk('CR20 seatOK 机长A→J0 alias', C.seatOK('机长A', 'F4') && C.seatOK('机长B', 'F4') && !C.seatOK('机长A', 'F3'));
+  // 2026-11-04：机长B 只需 F6 及以上副驾驶；SPIC/US/J0 仍须 J3+
+  chk('CR20 机长B+F6+F5 ok', !okIss('机长B', 'F6'), okIss('机长B', 'F6'));
+  chk('CR20 机长B+F7+F7 ok', !C.crewIssue(norm, [P('c', '机长B'), fo('a', 'F7'), fo('b', 'F7')], st));
+  chk('CR20 机长B+F5+F4 no', /CR-20/.test(C.crewIssue(norm, [P('c', '机长B'), fo('a', 'F5'), fo('b', 'F4')], st) || ''));
+  for (const capt of ['J0', 'US', 'SPIC']) chk('CR20 ' + capt + '+F7+F6 no', /CR-20/.test(C.crewIssue(norm, [P('c', capt), fo('a', 'F7'), fo('b', 'F6')], st) || ''));
+  // CR-19 非必须：F1/F2 无教员不再是 crewIssue 硬违规
+  chk('CR19 J3+F7+F1 not hard', !/CR-19/.test(C.crewIssue(norm, [P('c', 'J3'), fo('a', 'F7'), fo('b', 'F1')], st) || ''));
 }
 console.log(fail ? 'RULES FAIL ' + fail : 'RULES ALL OK'); process.exitCode = fail ? 1 : 0;

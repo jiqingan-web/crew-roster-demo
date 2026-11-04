@@ -77,6 +77,8 @@
   const isNew = r => NEW_CAPT.includes(r);
   const isJ2plus = r => ['J2', 'J3'].includes(r) || isInstr(r);
   const isJ3plus = r => r === 'J3' || isInstr(r);
+  // CR-20 陪飞口径：新机长须有 J3+（含教员）同组；机长B 只需 F6 及以上副驾驶（用户 2026-11-04）
+  const newCaptCompanionOK = (newRank, r) => isJ3plus(r) || (newRank === '机长B' && isFO(r) && (RANK_VAL[r] || 0) >= 6);
   const isJ1plus = r => ['J1', 'J2', 'J3'].includes(r) || isInstr(r);
   // 副驾驶等效级别（机长类视为高于 F8）
   const foLevel = r => isFO(r) ? RANK_VAL[r] : 9;
@@ -1303,7 +1305,7 @@
     if (cs.filter(x => x.bangfu).length >= 2) return '[CR-22] 同航班不可有两名帮扶对象';
     if (cs.length < 3) return null; // 不完整机组不做其余组合判定
     // 新机长执飞须组内有 J3+（J3/TL/TB/TC）陪飞；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
-    if (cs.some(x => isNew(x.rank)) && !cs.some(x => isJ3plus(x.rank))) return '[CR-20] 新机长执飞须有 J3 及以上（含教员）同组（观察员位可为任意级别）';
+    if (cs.some(n => isNew(n.rank) && !cs.some(o => o !== n && newCaptCompanionOK(n.rank, o.rank)))) return '[CR-20] 新机长执飞须有 J3 及以上（含教员）同组；机长B 有 F6 及以上副驾驶即可（观察员位可为任意级别）';
     if (cs.filter(x => isCaptClass(x.rank)).length < 1) return '[CR-05] 机组无机长';
     const xr = extraCrewIssue(p, cs, st); if (xr) return xr;
     for (const leg of p.legs) {
@@ -1313,8 +1315,7 @@
         const ru = c && sarOf(apCat(c, st));
         return `[${ru ? 'CR-06/07/08·' + ru.key : c ? 'CR-特殊机场' : 'CR-01'}] D${leg.d} ${leg.flt} ${apName(leg.from, st)}-${apName(leg.to, st)}：无满足${c ? '特殊机场(' + apName(c, st) + ')授权/' : ''}座位搭配规则的左右座组合`; }
     }
-    // F1 只能与教员在右座；F2 须有教员
-    if (cs.some(x => x.rank === 'F1' || x.rank === 'F2') && !cs.some(x => isInstr(x.rank))) return '[CR-19] F1/F2 须与教员同组';
+    // CR-19（F1/F2 与教员同组）用户 2026-11-04 确认非必须 → 不再作为硬规则，改为 validate 软提示
     return null;
   }
   // 配置驱动的组级硬规则：搭配限制表 / FO-FO 矩阵 / 高高原双机长 / 体检特许 / 年龄（有数据才生效）
@@ -1442,14 +1443,14 @@
         title: '操作级注意事项', params: '非排班硬约束',
         desc: ((RC && RC.operating_rules_reference) || []).slice(0, 3).join('；') || '见配置',
         source: '公司机型操作规定（参考）', example: '—' },
-      { id: 'CR-19', cat: '带飞', kind: '硬', status: '生效', legacyId: 'RE12-操作 F1/F2',
-        title: 'F1/F2 须与教员同组', params: '机组含 F1 或 F2 时须有 TL/TB/TC',
-        desc: '低级别副驾驶须由教员带飞同组。',
+      { id: 'CR-19', cat: '带飞', kind: '软', status: '生效', legacyId: 'RE12-操作 F1/F2',
+        title: 'F1/F2 宜与教员同组（非必须）', params: '机组含 F1 或 F2 且无 TL/TB/TC 时软提示',
+        desc: '低级别副驾驶宜由教员带飞同组；用户 2026-11-04 确认非必须，仅软提示。',
         source: '公司机型操作与搭配规定', example: 'F1+J3+F5 无教员 → 不合规。' },
       { id: 'CR-20', cat: '带飞', kind: '硬', status: '生效', legacyId: 'RE12-新机长',
-        title: '新机长须有 J3+ 同组', params: 'SPIC/US/J0/机长B 执飞须 J3+（可配J3/TL/TB/TC）；机长A 可带双副驾不强制',
-        desc: '须陪飞的新机长（SPIC/US/J0/机长B）同组须有 J3 或 TL/TB/TC；机长A 允许机长+双副驾（观察员位级别不限）。',
-        source: '公司机型操作与搭配规定 / 运控配班习惯', example: '机长B+J3+F5 → 合规；机长B+F4+F5 无J3+ → 不合规；机长A+双副驾 → 合规。' },
+        title: '新机长须有 J3+ 同组（机长B 配 F6+ 即可）', params: 'SPIC/US/J0 执飞须 J3+（J3/TL/TB/TC）；机长B 须 J3+ 或 F6 及以上副驾驶；机长A 可带双副驾不强制',
+        desc: '须陪飞的新机长（SPIC/US/J0）同组须有 J3 或 TL/TB/TC；机长B 有 F6 及以上副驾驶即可（用户 2026-11-04）；机长A 允许机长+双副驾（观察员位级别不限）。',
+        source: '公司机型操作与搭配规定 / 运控配班习惯', example: '机长B+F6+F5 → 合规；机长B+F4+F5 → 不合规；SPIC+F7+F6 无J3+ → 不合规；机长A+双副驾 → 合规。' },
       { id: 'CR-21', cat: '模拟机', kind: '软+硬', status: '生效', legacyId: 'simulator_scheduling',
         title: '模拟机块编排', params: '约5%人员/月 · 连续2–4日 · 非执勤期 · 邻接≥24h（软）',
         desc: '模拟机为独立连续训练块，与培训(飞技)分列；占用日禁止排飞；不计入飞行执勤期/连续值勤日链；与相邻飞行或培训尽量保留≥24小时间隔。',
@@ -2320,7 +2321,7 @@
           const gain0 = gapCost(p, sc, st) - gapCost(p, without, st);
           if (gain0 <= 0.2) continue;
           const pool = st.pilots.filter(q => q.id !== p.id && !Object.values(pr.crew).includes(q.id)
-            && (slot === 'C' ? isCaptClass(q.rank) && (!isNew(q.rank) || idx.hours[q.id] + h <= softCapOf(q, slot)) : slot === 'F' ? isFO(q.rank) : (isNew((idx.pm[pr.crew.C] || {}).rank) ? isJ3plus(q.rank) : true))
+            && (slot === 'C' ? isCaptClass(q.rank) && (!isNew(q.rank) || idx.hours[q.id] + h <= softCapOf(q, slot)) : slot === 'F' ? isFO(q.rank) : (isNew((idx.pm[pr.crew.C] || {}).rank) ? newCaptCompanionOK(idx.pm[pr.crew.C].rank, q.rank) : true))
             && idx.hours[q.id] > 0.5 && idx.hours[q.id] + h <= softCapOf(q, slot) && (rankGroup(q.rank) === rankGroup(p.rank) || (slot !== 'F' && isCaptClass(q.rank) && isCaptClass(p.rank) && !isNew(q.rank) && !isNew(p.rank))));
           let best = null, bs = -0.25;
           for (const q of pool) {
@@ -2427,7 +2428,7 @@
           for (const r of pool2) { if (!pcOK(r, X, st, idx, 'T')) continue; const crew = [tX, idx.pm[X.crew.F], r]; if (crewIssue(X, crew, st)) continue;
             assign(r, X, 'T'); assign(q, pr, slot); return true; }
           unassign(tX, X, 'C'); assign(tX, X, 'T'); } }
-        const need = xs === 'C' ? (r => isCaptClass(r.rank) && !isNew(r.rank)) : xs === 'F' ? (r => isFO(r.rank)) : (r => isNew((idx.pm[X.crew.C] || {}).rank) ? isJ3plus(r.rank) : !isNew(r.rank));
+        const need = xs === 'C' ? (r => isCaptClass(r.rank) && !isNew(r.rank)) : xs === 'F' ? (r => isFO(r.rank)) : (r => isNew((idx.pm[X.crew.C] || {}).rank) ? newCaptCompanionOK(idx.pm[X.crew.C].rank, r.rank) : !isNew(r.rank));
         const pool = st.pilots.filter(r => r !== q && need(r) && !Object.values(X.crew).includes(r.id) && !Object.values(pr.crew).includes(r.id) && idx.hours[r.id] + hx <= softCapOf(r, xs) + 4).sort((a, b) => idx.hours[a.id] - idx.hours[b.id]);
         for (const r of pool) { if (!pcOK(r, X, st, idx, xs)) continue; const crew = ['C', 'F', 'T'].map(k => k === xs ? r : idx.pm[X.crew[k]]); if (crew.every(Boolean) && crewIssue(X, crew, st)) continue;
           assign(r, X, xs); assign(q, pr, slot); return true; } }
@@ -3477,6 +3478,7 @@
           const demo = pr.demoAnomaly ? '【演示异常】' : '';
           add(t, 'hard', `${demo}${plabel} ${iss}`, pr); }
       }
+      if (crew.every(Boolean) && crew.some(x => x.rank === 'F1' || x.rank === 'F2') && !crew.some(x => isInstr(x.rank))) add('F1/F2无教员', 'soft', `${plabel} [CR-19] F1/F2 未与教员同组（非必须，提示）`, pr);
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${plabel} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
       fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${plabel} D${dy.d}${dy.part > 1 ? '-' + dy.part : ''}${dy.splitFrom ? '(拆)' : ''} 计划飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
@@ -3762,7 +3764,7 @@
       if (other) {
         const or = rankOf(pr.crew[other]);
         if (or && isFO(p.rank) && isFO(or) && !foComboAllowed(p.rank, or)) return false;
-        if ((slot === 'F' || slot === 'T') && rankOf(pr.crew.C) && isNew(rankOf(pr.crew.C)) && !isJ3plus(p.rank)) return false;
+        if ((slot === 'F' || slot === 'T') && rankOf(pr.crew.C) && isNew(rankOf(pr.crew.C)) && !newCaptCompanionOK(rankOf(pr.crew.C), p.rank)) return false;
       }
       // 高高原任务：T 位补机长（凑够双机长）
       if (slot === 'T' && isPlateau(pr) && !isCapRank(p.rank)) return false;
@@ -4199,7 +4201,7 @@
     if (pr.legs.some(l => l.to === 'ZULS' || l.from === 'ZULS')) rules.push('拉萨航段须两名 J3 及以上');
     if (sp.length) rules.push('特殊机场 ' + sp.map(c => apName(c, w)).join('、') + ' 须授权/级别搭配');
     const crew = ['C', 'F', 'T'].map(x => pr.crew[x] && w.pilots.find(p => p.id === pr.crew[x])).filter(Boolean);
-    if (crew.some(x => isNew(x.rank)) && slot !== 'F') rules.push('新机长所在机组须有 J3 及以上（含教员）');
+    if (crew.some(x => isNew(x.rank)) && slot !== 'F') rules.push('新机长所在机组须有 J3 及以上（含教员）；机长B 有 F6+ 副驾驶即可');
     const bp = pr.legs.filter(l => (w.settings.bpTesterAirports || []).includes(l.from)); if (bp.length) rules.push('始发站 ' + [...new Set(bp.map(l => apName(l.from, w)))].join('、') + ' 须配备血压测试仪（提醒）');
     return { top: Object.entries(cnt).sort((a, b) => b[1] - a[1]).slice(0, 4).map(([k, n]) => k + '×' + n), rules };
   }

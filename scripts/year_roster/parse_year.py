@@ -15,7 +15,7 @@ VOCAB = [  # import_spec.yaml vocabulary, priority order
     ('training', ['培训(飞技)', '培训（飞技）', '培训(飞行)', '培训（飞行）', '换季教育', '体检', 'ICAO', '会议']),
     ('sim', ['模拟机训练']),
     ('control', ['中队控班', '值班']),
-    ('standby', ['可能抓飞']),
+    ('rest', ['可能抓飞']),          # 用户 2026-11-04：「可能抓飞人员」是正常休息，不是备份
 ]
 def classify(t):
     for k, ws in VOCAB:
