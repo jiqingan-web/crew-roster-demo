@@ -1286,12 +1286,17 @@
   const BASE_APS = ['ZUUU', 'ZUTF'];
   const carOf = (ap, S) => { const m = S.carMin || {}; if (m[ap] != null) return +m[ap]; return BASE_APS.includes(ap) ? (S.carMinBase == null ? 25 : S.carMinBase) : (S.carMinDefault == null ? 25 : S.carMinDefault); };
   const baseCar = S => (S.carMinBase == null ? 25 : S.carMinBase);
+  // 公司机场基础表（settings.airportTimes[ICAO] = {report, preCar, leave, postCar}）优先：报到 / 休息期起止按机场取值
+  const ATof = (ap, S) => (S && S.airportTimes && S.airportTimes[ap]) || null;
   const repAt = (ap, p, st) => { const S = (st && st.settings) || {}; if (isAllDh(p)) return S.dhBoardMin == null ? 45 : S.dhBoardMin;
+    const T = ATof(ap, S); if (T && T.report != null) return T.report;
     const dom = (S.reportMin || 60) - baseCar(S) + carOf(ap, S); return isIntlPairing(p) ? dom + ((S.reportMinIntl || 125) - (S.reportMin || 105)) : dom; };
   const repMinOf = (p, st) => { const l = (p.legs || []).find(x => !x.dh) || (p.legs || [])[0]; return repAt(l ? l.from : 'ZUUU', p, st); };
-  const preCommuteOf = (p, st) => { const S = (st && st.settings) || {}; const ap = p.legs[0].from;
+  const preAt = (ap, allDh, st) => { const S = (st && st.settings) || {}; const T = ATof(ap, S); if (T && T.preCar != null) return T.preCar;
+    if (BASE_APS.includes(ap)) return S.restBeforeReportMin || 0; return allDh ? carOf(ap, S) : 0; };
+  const preCommuteOf = (p, st) => { const S = (st && st.settings) || {}; const ap = p.legs[0].from; if (ATof(ap, S)) return preAt(ap, isAllDh(p), st);
     if (BASE_APS.includes(ap)) return S.restBeforeReportMin || 0; return isAllDh(p) ? carOf(ap, S) : 0; };
-  const relAt = (ap, st) => { const S = (st && st.settings) || {}; return ((S.releaseMin || 40) - baseCar(S)) + carOf(ap, S); };
+  const relAt = (ap, st) => { const S = (st && st.settings) || {}; const T = ATof(ap, S); if (T && T.postCar != null) return (T.leave == null ? 15 : T.leave) + T.postCar; return ((S.releaseMin || 40) - baseCar(S)) + carOf(ap, S); };
   function dutyIvs(p, st) {
     // 休息期占用区间：[报到 − restBeforeReportMin, 关车 + releaseMin]（手册：休息期自关车后 40 分钟起，至下次报到前 25 分钟止）
     const pre = preCommuteOf(p, st);
@@ -4483,7 +4488,7 @@
       dy.planRisk = dy.planBuffer < 0 ? 'over' : dy.planBuffer < (S.fdpRiskHigh || 60) ? 'high' : dy.planBuffer < (S.fdpRiskMed || 120) ? 'med' : 'low';
       const nx = out[k + 1]; if (nx) { const req = (S.minOvernightRestH || 10) * 60;
         // 休息按含置位的实际末段退场 → 次窗首段报到（置位仍占时间，只是不计入 FDP 长度）
-        const nRep = repOf(nx.legs[0]) + (BASE_APS.includes(nx.legs[0].leg.from) ? (S.restBeforeReportMin || 0) : 0), dRel = relAt(dy.legs[dy.legs.length - 1].leg.to, st);
+        const nRep = repOf(nx.legs[0]) + preAt(nx.legs[0].leg.from, false, st), dRel = relAt(dy.legs[dy.legs.length - 1].leg.to, st);
         dy.restAfter = (nx.legs[0].dep - nRep) - (dy.relEnd + dRel); dy.planRest = (nx.legs[0].leg.dep - nRep) - (dy.planRelEnd + dRel);
         // 同日内外站拆分（酒店休息中断 FDP）不按过夜最低休息硬卡
         // 次窗仅有置位（航后置位）：不算值勤期也不算休息期，不按过夜最低休息卡（《飞行部手册》Re10-08 2.2.4 2)(4)）
