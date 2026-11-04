@@ -63,8 +63,8 @@ if (!process.env.NO_SOLVE) {
   const C = require(path.join(R, 'js', 'core.js')); const Dm = require(path.join(R, 'js', 'demo-roster.js'));
   const st = Dm.build(C); const t = Date.now();
   C.autoFillByMonth(st, { seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
-  // 排不满的任务（演示不需要）从数据里删掉：删任务不会给其余人员带来新违规
-  const keep = st.pairings.map(p => C.pairingFull(p)); const dropped = st.pairings.filter((p, i) => !keep[i]).map(p => p.id);
+    // 只移除用户明确要求删除的任务（DM138，用户 2026-11-04 指定）；其余排不满的保留，让系统如实报出、再由人工处理
+  const EXCLUDE = new Set(['DM138']); const keep = st.pairings.map(p => !EXCLUDE.has(p.id)); const dropped = st.pairings.filter((p, i) => !keep[i]).map(p => p.id);
   if (dropped.length) { st.pairings = st.pairings.filter((p, i) => keep[i]); D.pairings = D.pairings.filter((p, i) => keep[i]); js = js.replace(/const DEMO_ROSTER = .*;\n/, () => `const DEMO_ROSTER = ${JSON.stringify(D)};\n`); }
   const solved = st.pairings.map(p => [p.crew.C || 0, p.crew.F || 0, p.crew.T || 0]);
   const s = C.summarize(st); console.log('dropped unfilled', dropped.join(',') || '无');
