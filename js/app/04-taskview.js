@@ -43,7 +43,7 @@
       for (const { pr, stt } of col) {
         const ls = legsOnDay(pr, d); const k = ls[0].d; const dy = C.fdpDays(pr, st).find(x => x.d === k);
         const chips = ['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; return p ? `<span class="cchip s${s}">${esc(p.name)}<small>${esc(p.rank)}</small></span>` : `<span class="cchip hole">${C.SLOT_NAME[s]}位空缺</span>`; }).join('');
-        h += `<div class="tcard ${stt[1]}" data-card="${pr.id}"><div class="tc-h"><b>${esc(pairLabel(pr))}</b><span class="badge ${stt[1]}">${stt[0]}</span><span class="tc-t">${hm(ls[0].dep)}</span></div>
+        h += `<div class="tcard ${stt[1]}" data-card="${pr.id}"><div class="tc-h"><b>${pairHtml(pr)}</b><span class="badge ${stt[1]}">${stt[0]}</span><span class="tc-t">${hm(ls[0].dep)}</span></div>
           <div class="tc-r">${routeHtml(ls)}</div>
           <div class="tc-m">D${k}/${pr.ndays} · ${ls.length} 段 · ${(ls.reduce((a, l) => a + l.arr - l.dep, 0) / 60).toFixed(1)}h · ${pr.ac} · ${hm(ls[0].dep)}–${hm(ls[ls.length - 1].arr)}</div>
           <div class="tc-c">${chips}</div>
@@ -52,7 +52,7 @@
       h += '</div>';
     }
     h += `<div class="tcol side"><div class="sbox"><div class="tcol-h">当日备份 <span class="pillc">${sbs.length} 人</span></div>${sbs.length ? `<div class="tc-c">${sbs.map(p => `<span class="cchip">${esc(p.name)}<small>${esc(p.rank)}</small></span>`).join('')}</div>` : '<div class="tempty">当日没有备份</div>'}<div class="mut sm">备份被调用后，该日备份数量会减少；应用方案前会重新校验。</div></div>
-      <div class="sbox"><div class="tcol-h">需要关注 <span class="pillc">${att.length}</span></div>${att.length ? att.map(({ pr, stt }) => `<div class="attn" data-card="${pr.id}"><span class="badge ${stt[1]}">${stt[0]}</span><b>${esc(pairLabel(pr))}</b><span class="mut">${esc((V[pr.id] || [stt[0] === '缺员' ? '缺 ' + ['C', 'F', 'T'].filter(s => !pr.crew[s]).map(s => C.SLOT_NAME[s]).join('/') : '飞行执勤期余量偏紧'])[0]).slice(0, 60)}</span></div>`).join('') : '<div class="tempty">当日没有需要关注的任务</div>'}</div></div></div></div>`;
+      <div class="sbox"><div class="tcol-h">需要关注 <span class="pillc">${att.length}</span></div>${att.length ? att.map(({ pr, stt }) => `<div class="attn" data-card="${pr.id}"><span class="badge ${stt[1]}">${stt[0]}</span><b>${pairHtml(pr)}</b><span class="mut">${esc((V[pr.id] || [stt[0] === '缺员' ? '缺 ' + ['C', 'F', 'T'].filter(s => !pr.crew[s]).map(s => C.SLOT_NAME[s]).join('/') : '飞行执勤期余量偏紧'])[0]).slice(0, 60)}</span></div>`).join('') : '<div class="tempty">当日没有需要关注的任务</div>'}</div></div></div></div>`;
     $('#main').innerHTML = h;
     document.querySelectorAll('[data-day]').forEach(b => b.onclick = () => { ui.tday = +b.dataset.day; rTasks(); });
     $('#needOnly').onclick = () => { ui.needOnly = !ui.needOnly; rTasks(); };
@@ -71,7 +71,7 @@
     const cityChain = pr.legs.length ? [pr.legs[0].from].concat(pr.legs.map(l => l.to)).map(c => esc(C.apName(c, st))).join(' → ') : '';
     const bufCls = minBuf == null ? '' : minBuf < 0 ? 'red' : minBuf < (st.settings.fdpRiskHigh || 60) ? 'red' : minBuf < (st.settings.fdpRiskMed || 120) ? 'warnc' : 'okc';
     const spNotes = [...new Set(pr.legs.flatMap(l => [l.from, l.to]).filter(c => C.isSpecial(c, st)))].map(c => `${esc(C.apName(c, st))}(${c})：${esc(C.CAT_DESC[C.apCat(c, st)] || '特殊机场')}`);
-    const head = `<div class="drw-h"><div><h3>${esc(pairLabel(pr))}${fillBadge(pr.id)}${demoTag(pr)}</h3><div class="mut">${cityChain}</div></div><button class="btn drw-x" id="drwX" title="关闭">✕</button></div>`;
+    const head = `<div class="drw-h"><div><h3>${pairHtml(pr)}${fillBadge(pr.id)}${demoTag(pr)}</h3><div class="mut">${cityChain}</div></div><button class="btn drw-x" id="drwX" title="关闭">✕</button></div>`;
     const tfBar = ['C', 'F', 'T'].filter(s => pr.crew[s] && m[pr.crew[s]]).map(s => `<button class="btn sm drwTf" data-tf="${pr.crew[s]}" title="转给同级空闲人员">同级换班 · ${C.SLOT_NAME[s] || s} ${esc(m[pr.crew[s]].name)}</button>`).join(' ');
     const view = `<div class="drw-b"><div class="drwtf" style="margin-bottom:8px">${tfBar}</div><div class="dtiles">${tile('日期', dateOf(pr.start) + (pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''))}${tile('天数', pr.ndays + ' 天')}${tile('飞行小时', C.pairingHours(pr).toFixed(1) + 'h')}${tile('机型', esc(pr.ac))}${tile('飞行执勤期余量', minBuf == null ? '—' : fmtBuf(minBuf), bufCls, '各值勤日 (限制 − 计划飞行执勤期) 的最小值')}${tile('规则', rule, sp.length ? 'red' : '', sp.map(c => C.apName(c, st)).join('、'))}</div>
       <h4>机组</h4>${['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; return `<div class="drow ${p ? '' : 'vac'}"><span class="seat s-${s}">${({ C: '机长', F: '副驾驶', T: '观察员' })[s]}</span>${p ? `<b>${esc(p.name)}</b>${pill(p.rank)}<span class="hrs" title="该任务所在月份的当月飞行小时">${esc(dMonLab)} ${monthHoursFor(p.id, dMon, idx).toFixed(1)}h</span>` : '<b class="red">空缺</b><span class="mut">待补位 · 点「调整机组」选择候选人</span>'}</div>`; }).join('')}

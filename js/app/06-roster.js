@@ -263,7 +263,7 @@
           <td>${fh(c.hoursBefore)} → <b>${fh(c.hoursAfter)}</b></td><td>${fh(c.restBefore)}</td><td>${fh(c.restAfter)}</td>
           <td>${c.soft.length ? c.soft.map(s => `<div class="warnc">· ${esc(s)}</div>`).join('') : '<span class="okc">—</span>'}</td>
           <td><button class="btn sm ${pick === c.p.id ? 'primary' : ''} tfPick" data-to="${c.p.id}">${pick === c.p.id ? '已选' : '预览'}</button></td></tr>`).join('');
-      const pv = plan ? `<div class="swpv ${plan.ok ? 'ok' : 'bad'}"><b>${plan.ok ? '✔ 可转让' : '✖ 不可转让'}</b> ${esc(pairLabel(pr))}：${esc(A.name)}（${fh(plan.hours[A.id][0])}→${fh(plan.hours[A.id][1])}）→ ${esc(pmap[pick].name)}（${fh(plan.hours[pick][0])}→${fh(plan.hours[pick][1])}）
+      const pv = plan ? `<div class="swpv ${plan.ok ? 'ok' : 'bad'}"><b>${plan.ok ? '✔ 可转让' : '✖ 不可转让'}</b> ${pairHtml(pr)}：${esc(A.name)}（${fh(plan.hours[A.id][0])}→${fh(plan.hours[A.id][1])}）→ ${esc(pmap[pick].name)}（${fh(plan.hours[pick][0])}→${fh(plan.hours[pick][1])}）
           ${plan.issues.concat(plan.newHard.map(v => '新增硬违规：' + v.msg)).map(x => `<div class="red">· ${esc(x)}</div>`).join('')}${plan.newSoft.map(v => `<div class="warnc">· ${esc(v.msg)}</div>`).join('')}
           ${plan.resolved.length ? `<div class="okc">· 同时消除：${plan.resolved.map(v => esc(v.type)).join('、')}</div>` : ''}</div>` : '';
       $('#modalBox').innerHTML = `<div class="flex"><h3 style="margin:0">同级换班 · 转让任务 <small>员工福利：把任务转给同级别、该时段休息/空闲且全部合规的人</small></h3><button class="btn" style="margin-left:auto" id="tfClose">关闭</button></div>

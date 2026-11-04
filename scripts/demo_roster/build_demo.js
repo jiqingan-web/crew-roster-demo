@@ -6,7 +6,7 @@
 const fs = require('fs'), path = require('path');
 const R = path.join(__dirname, '..', '..');
 const L = require(path.join(R, 'js', 'lite-roster.js')).LITE_ROSTER;
-const [, , yPath, mPath, fromMD, toMD] = process.argv;
+const [, , yPath, mPath, fromMD, toMD, qPath] = process.argv; // qPath（可选）：synth_quals.py 生成的资质档案池
 const Y = JSON.parse(fs.readFileSync(yPath, 'utf8')); const M = JSON.parse(fs.readFileSync(mPath, 'utf8'));
 const MD = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 const doy = md => { const [m, d] = md.split('-').map(Number); let n = d; for (let i = 0; i < m - 1; i++) n += MD[i]; return n; };
@@ -19,8 +19,17 @@ Y.pilots.forEach(p => { if (M[p.id] && LR[M[p.id]]) idOf[p.id] = M[p.id]; });
 Y.pilots.filter(p => !idOf[p.id]).forEach(p => { let k = free.findIndex(q => q.rank === p.rank); if (k < 0) k = 0; const q = free.splice(k, 1)[0]; idOf[p.id] = q ? q.id : 'D' + p.id.slice(1); });
 const EXTRA = ['温晨', '柯远', '祁峰', '易航', '岳川', '房宁']; let ex = 0; const exName = {}; // 项目库化名不够时的补充化名
 const nameOf = id => (LR[id] ? LR[id].name : (exName[id] = exName[id] || EXTRA[ex++ % EXTRA.length]));
-const pilots = Y.pilots.map(p => { const id = idOf[p.id]; const o = { id, name: nameOf(id), rank: p.rank, squad: '演示中队', fleet: p.fleet || 'A320', auth: p.auth || [], rnpAuth: p.rnpAuth || [] };
+let pilots = Y.pilots.map(p => { const id = idOf[p.id]; const o = { id, name: nameOf(id), rank: p.rank, squad: '演示中队', fleet: p.fleet || 'A320', auth: p.auth || [], rnpAuth: p.rnpAuth || [] };
   ['qualRole', 'deptControl', 'traineeCapt', 'requalCapt', 'qualNotes'].forEach(k => { if (p[k] != null) o[k] = p[k]; }); return o; });
+// 特殊机场资质：按资质表「同职级」的档案池分配（与真人脱钩，各职级 × 各机场 × 角色的比例与资质表一致）
+let QAIR = Y.authAirports || null;
+if (qPath) { const QP = JSON.parse(fs.readFileSync(qPath, 'utf8')); QAIR = QP.airports; const QS = new Set(QAIR); const used = {};
+  const grp = r => /^F\d|^US|^SPIC/.test(r) ? 'FO' : 'CAP'; const byGrp = {}; Object.keys(QP.pool).forEach(r => { (byGrp[grp(r)] = byGrp[grp(r)] || []).push(...QP.pool[r]); });
+  pilots = pilots.slice().sort((a, b) => a.id.localeCompare(b.id)).map(o => { const src = QP.pool[o.rank] && QP.pool[o.rank].length ? QP.pool[o.rank] : byGrp[grp(o.rank)];
+    const k = used[o.rank] = (used[o.rank] || 0) + 1; const prof = src[(k - 1) % src.length];
+    const base = (o.auth || []).filter(c => !QS.has(c)); const role = JSON.parse(JSON.stringify(prof.role));
+    return Object.assign(o, { auth: base.concat(Object.keys(role)), rnpAuth: (o.rnpAuth || []).filter(c => !QS.has(c)).concat(Object.keys(role).filter(c => role[c].some(x => /RNP/.test(x)))), qualRole: role }); });
+  const order = Object.fromEntries(Y.pilots.map((p, i) => [idOf[p.id], i])); pilots.sort((a, b) => order[a.id] - order[b.id]); }
 const pairings = Y.pairings.filter(p => p.start >= a && p.start <= b).map((p, i) => ({ id: 'DM' + String(i + 1).padStart(3, '0'), start: p.start - shift, ndays: p.ndays, ac: p.ac || 'A320',
   legs: p.legs.map(l => { const o = Object.assign({}, l); o.dep -= shift * 1440; o.arr -= shift * 1440; /* l.d 为任务内第几天（相对），不随网格平移 */ o.reg = 'REG-DM' + String(i + 1).padStart(3, '0'); return o; }),
   crew: { C: null, F: null, T: null }, srcCrew: Object.fromEntries(['C', 'F', 'T'].map(k => [k, p.crew && p.crew[k] ? idOf[p.crew[k]] : null])), actualTimes: !!p.actualTimes }));
@@ -28,7 +37,7 @@ const days = Math.max(b - shift, ...pairings.map(p => p.start + p.ndays - 1));
 const clip = o => { const r = {}; Y.pilots.forEach(p => { const v = ((o || {})[p.id] || []).map(d => d - shift).filter(d => d >= 1 && d <= days); if (v.length) r[idOf[p.id]] = v; }); return r; };
 const tk = {}; Y.pilots.forEach(p => { const k = (Y.trainingKind || {})[p.id] || {}; const o = {}; Object.keys(k).forEach(d => { const dd = d - shift; if (dd >= 1 && dd <= days) o[dd] = k[d]; }); if (Object.keys(o).length) tk[idOf[p.id]] = o; });
 const [fm, fd] = fromMD.split('-').map(Number);
-const D = { grid: { days, start: { m: fm, d: fd } }, range: [fromMD, toMD], pilots, pairings, authAirports: Y.authAirports || null, airports: Y.airports || {},
+const D = { grid: { days, start: { m: fm, d: fd } }, range: [fromMD, toMD], pilots, pairings, authAirports: QAIR, airports: Y.airports || {},
   leave: clip(Y.leave), training: clip(Y.training), trainingKind: tk, sim: clip(Y.sim), control: clip(Y.control), standby: clip(Y.standby) };
 let js = `/* 比赛演示数据（由 scripts/demo_roster/build_demo.js 生成，勿手改）
  * 航班：全年真实班表 ${Y.year}-${fromMD}..${toMD} 开始的任务（航线/航班号/时刻取自源表；中间航段时刻按航距推算）。机组已清空，由「一键排班」按规则填入。

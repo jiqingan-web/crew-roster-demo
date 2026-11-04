@@ -391,7 +391,7 @@
           + '<td>' + (l.dh ? '置位' : (h ? h.toFixed(2) + 'h' : '—')) + '</td></tr>';
       }).join('') : '<tr><td colspan="4" class="mut">无航段</td></tr>';
       return '<div class="pa-pr' + (touchSel ? ' on' : '') + '" data-pid="' + esc(pr.id) + '">'
-        + '<div class="pa-prhd"><b>' + esc(pairLabel(pr)) + '(' + dayBit + ')</b>'
+        + '<div class="pa-prhd"><b>' + pairHtml(pr) + '(' + dayBit + ')</b>'
         + (chain ? ' <span class="mut">' + esc(chain) + '</span>' : '')
         + (role ? ' <span class="pill-lite">' + esc(role) + '</span>' : '')
         + ' <span class="mut">' + hrs + 'h · ' + legs.length + ' 段</span></div>'

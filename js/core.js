@@ -1375,17 +1375,20 @@
       if (lr && !lr.some(x => x.startsWith('责任机长')) && lr.some(x => x.includes('被带飞') || x.includes('重获')) && !isInstr(R.rank)) return false; }
     return true;
   }
+  // 特殊机场 · 唯一口径（排班 / 候选 / 校验共用）：
+  //  ① 责任机长（C 座）须在该机场持机长类资质 → capSeatMiss
+  //  ② 实际上座两人由 legSeatedOK 判定（三人制任两人可上座即可；观察员不要求资质）
+  function capSeatMiss(p, pr, st) { if (!p || !pr) return []; const QA = (st && !st._skipAuth && st.authAirports) || []; const out = [];
+    needAuthAirports(pr, st).forEach(c => { const ok = (p.auth || []).includes(c) && (!QA.includes(c) || !p.qualRole || ((p.qualRole[c] || []).some(x => x.includes('机长')))); if (!ok) out.push(c); });
+    return out; }
   function crewIssue(p, crewPilots, st) {
     const cs = crewPilots.filter(Boolean);
     // CR-22 帮扶对象：同任务机组至多 1 名（不完整机组也判，避免空座时漏拦）
     if (cs.filter(x => x.bangfu).length >= 2) return '[CR-22] 同航班不可有两名帮扶对象';
     // 部门管控人员（机长B 及 p.deptControl 标记者）不得互相搭配（用户 2026-11-04）
     if (cs.filter(x => x.rank === '机长B' || x.deptControl).length >= 2) return '[CR-23] 部门管控人员不得互相搭配';
-    // 责任机长（C 座）须在该特殊机场持机长类资质（责任/被带飞/重获）；其余两人谁上座由「任两人可上座」判定，观察员不要求
-    { const QA = st && !st._skipAuth && st.authAirports; const Lp = crewPilots[0];
-      if (QA && QA.length && Lp) for (const leg of p.legs) { if (leg.dh) continue; for (const c of [leg.from, leg.to]) { if (!QA.includes(c)) continue;
-        if (Lp && (!(Lp.auth || []).includes(c) || (Lp.qualRole && !((Lp.qualRole[c] || []).some(x => x.includes('机长')))))) return `[CR-特殊机场] D${leg.d} ${leg.flt}：机长座 ${Lp.name} 在${apName(c, st)}无机长资质`;
-      } } }
+    // 责任机长（C 座）须在该特殊机场持机长类资质（不完整机组也判，避免先排入无法当机长的人）
+    if (crewPilots[0] && !(st && st._skipAuth)) { const m = capSeatMiss(crewPilots[0], p, st); if (m.length) return `[CR-特殊机场] 机长座 ${crewPilots[0].name} 在${m.map(c => apName(c, st)).join('、')}无机长资质`; }
     if (cs.length < 3) return null; // 不完整机组不做其余组合判定
     // 新机长执飞须组内有 J3+（J3/TL/TB/TC）陪飞；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
     if (!(st && st._skipNewCapt) && cs.some(n => isNew(n.rank) && !cs.some(o => o !== n && newCaptCompanionOK(n.rank, o.rank)))) return '[CR-20] 新机长执飞须有 J3 及以上（含教员）同组；机长B 有 F6 及以上副驾驶即可（观察员位可为任意级别）';
@@ -1982,7 +1985,7 @@
         for (const Q of near.slice(0, 3)) { const qs = ['C', 'F', 'T'].find(k => Q.crew[k] === x.id); if (!qs) continue;
           const ys = transferCandidates(st, Q.id, x.id).filter(c => c.ok && !c.soft.length).slice(0, 6);
           for (const cy of ys) { Q.crew[qs] = cy.p.id; const cx2 = candidates(st, P, s).find(c => c.p.id === x.id);
-            if (cx2 && cx2.ok && (s === 'T' || !cx2.crewWarn)) { P.crew[s] = x.id; log.push({ kind: 'swapFill', pairing: P.id, slot: s, pilot: x.id, via: Q.id, to: cy.p.id }); done = true; break; }
+            if (cx2 && cx2.ok && !cx2.crewWarn) { /* 观察员位也须保证上座组合合规 */ P.crew[s] = x.id; log.push({ kind: 'swapFill', pairing: P.id, slot: s, pilot: x.id, via: Q.id, to: cy.p.id }); done = true; break; }
             Q.crew[qs] = x.id; }
           if (done) break; } }
     } }
@@ -3665,8 +3668,8 @@
       }
       // 个人特殊机场授权（操纵座 C/F；观察员不要求）：系统排班判硬违规；导入的真实班表座位为推断，降为软提示（用户 2026-11-04）
       // 机组齐全时只看组合（任两人可上座即可，见 crewIssue）；不全时才逐人检查
-      if (!crew.every(Boolean)) { const need = needAuthAirports(pr, st); if (need.length) ['C', 'F'].forEach((s0, i0) => { const p0 = crew[i0]; if (!p0) return; const miss = need.filter(c => !(p0.auth || []).includes(c));
-        if (miss.length) add('个人特殊机场授权', (pr.official || st.official) ? 'soft' : 'hard', `${plabel} ${SLOT_NAME[s0]}位 ${p0.name}(${p0.rank}) 无 ${miss.map(c => apName(c, st)).join('、')} 资质${(pr.official || st.official) ? '（导入班表座位为推断，需核对）' : ''}`, pr, p0.id); }); }
+      if (!crew.every(Boolean) && crew[0]) { const miss = capSeatMiss(crew[0], pr, st);
+        if (miss.length) add('个人特殊机场授权', (pr.official || st.official) ? 'soft' : 'hard', `${plabel} 机长位 ${crew[0].name}(${crew[0].rank}) 在 ${miss.map(c => apName(c, st)).join('、')} 无机长资质${(pr.official || st.official) ? '（导入班表座位为推断，需核对）' : ''}`, pr, crew[0].id); }
       if (crew.every(Boolean) && crew.some(x => x.rank === 'F1' || x.rank === 'F2') && !crew.some(x => isInstr(x.rank))) add('F1/F2无教员', 'soft', `${plabel} [CR-19] F1/F2 未与教员同组（非必须，提示）`, pr);
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${plabel} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
@@ -3855,7 +3858,9 @@
       const other = ['C', 'F', 'T'].filter(s => s !== slot).map(s => pr.crew[s]);
       if (other.includes(p.id)) rs.push('已在本任务');
       // 执飞位个人授权：需授权机场（拉萨等）未授权直接排除（此前只在机组凑齐后由 crewIssue 判，空任务时候选表看不出差别）
-      if (!rs.length && slot !== 'T') { const miss = needAuthAirports(pr, st).filter(c => !(p.auth || []).includes(c)); if (miss.length) rs.push('未授权 ' + miss.map(c => apName(c, st)).join('/')); }
+      if (!rs.length && slot === 'C') { const miss = capSeatMiss(p, pr, st); if (miss.length) rs.push('无机长资质 ' + miss.map(c => apName(c, st)).join('/')); }
+      // 副驾驶座：资质表机场由上座组合（crewIssue）判定；未入资质表的规章分类机场仍逐人要求授权（旧口径）
+      if (!rs.length && slot === 'F') { const QA = (st && st.authAirports) || []; const miss = needAuthAirports(pr, st).filter(c => !QA.includes(c) && !(p.auth || []).includes(c)); if (miss.length) rs.push('未授权 ' + miss.map(c => apName(c, st)).join('/')); }
       if (!rs.length) {
         const [, r2] = personCheck(p, pr, st, idx, { ignorePrefs: true, slot }); rs.push(...r2);
         const crew = ['C', 'F', 'T'].map(s => s === slot ? p : (pr.crew[s] && idx.pm[pr.crew[s]]));
@@ -5264,7 +5269,7 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
-    autoFillByMonth, prefSwap, realVsAuto, rosterQuality, crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    autoFillByMonth, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });
     api.setPeriod = setPeriod;

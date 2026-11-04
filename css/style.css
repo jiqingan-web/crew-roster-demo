@@ -945,3 +945,7 @@ body.pa-on .story{display:none}
 .ig-body{max-height:320px;overflow:auto;border-top:1px solid rgba(140,170,220,.12)}
 .ig-row{display:flex;gap:12px;align-items:center;padding:6px 12px 6px 28px;border-bottom:1px solid rgba(140,170,220,.08);font-size:12.5px}
 .ig-row span:first-child{flex:1;min-width:0}.ig-row.issueJump{cursor:pointer}.ig-row.issueJump:hover{background:rgba(79,140,255,.1)}.ig-go{white-space:nowrap;color:#7fb0ff;font-size:12px}
+/* 特殊机场标色（代码 / 名称 / 简称） */
+.spap{color:#ff9f43;font-weight:700}
+:root[data-theme="light"] .spap{color:#c2410c}
+.bar .spap{color:#ffc078}

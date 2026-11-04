@@ -89,9 +89,9 @@
         const rk = C.pairingRisk(pr, st, st.actuals && Object.keys(st.actuals).length ? st.actuals : null); const rb = RISK_BADGE[rk.risk];
         const badge = rb ? `<span class="rbadge r-${rk.risk}" title="执勤风险：${rb[1]} · D${rk.worst.d} 飞行执勤期 ${C.fmtH(rk.worst.fdp)} / 限制 ${C.fmtH(rk.worst.limit)} · 余量 ${rk.worst.buffer} 分钟">${rb[0]}</span>` : '';
         let inner = '';
-        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${esc(pairLabel(pr))} ${crewShort(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${blkDay(c)}</div>`).join('')}</div>`; }
-        else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${esc(pairLabel(pr))} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(abHtml).join('-')}</div>`;
-        else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${esc(pairLabel(pr))}</span>`;
+        if (lvl === 'full') { const ch = dayChains(pr); inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pairHtml(pr)} ${crewShort(pr, m)}</div><div style="display:flex">${ch.map(c => `<div class="lg" style="width:${cw - 4}px;white-space:normal;max-height:42px">${blkDay(c)}</div>`).join('')}</div>`; }
+        else if (lvl === 'mid') inner = `<div class="bh">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pairHtml(pr)} [${C.SLOT_NAME[slot]}]</div><div class="lg">${[...new Set(pr.legs.map(l => l.to))].filter(c => c !== pr.legs[0].from).map(abHtml).join('-')}</div>`;
+        else if (lvl === 'small' && w >= 34) inner = `<span class="bh">${fillBadge(pr.id)}${pairHtml(pr)}</span>`;
         const isHl = hlr && ui.hl.pairings.has(pr.id);
         const isOk = isHl && ui.hl.ok && !V[pr.id];
         let bl = left, bw = w, tcls = '';
@@ -112,7 +112,7 @@
             if (lvl === 'full') { const ch = dayChains(pr);
               const lgs = segs.map((g, i) => { const c = ch[g.chIdx]; if (!c) return ''; const room = Math.max(g.x1 - g.x0, Math.min(cw - 4, (segs[i + 1] ? segs[i + 1].x0 : g.x0 + cw) - g.x0 - 4));
                 return `<div class="lg tl" style="left:${g.x0 - bl + 3}px;width:${room}px">${blkDay(c)}</div>`; }).join('');
-              inner = `${sh}<div class="bh tl">${badge}${fillBadge(pr.id)}${demoTag(pr)}${esc(pairLabel(pr))} ${crewShort(pr, m)}</div>${lgs}`;
+              inner = `${sh}<div class="bh tl">${badge}${fillBadge(pr.id)}${demoTag(pr)}${pairHtml(pr)} ${crewShort(pr, m)}</div>${lgs}`;
             } else inner = sh + inner.replace('class="bh"', 'class="bh tl"').replace('class="lg"', 'class="lg tl"');
           }
         }
@@ -195,7 +195,7 @@
   function tipHtml(pr) {
     const m = pm(); const V = violByPairing();
     const fl = fillsOf(pr.id); const flTxt = fl.length ? '<br><span class="fbadge">补位</span> ' + fl.map(f => esc((f.slotName || '') + ' ' + (f.toName || '') + ' ← ' + (f.fromName || '') + (f.leaveDays && f.leaveDays.length ? '（请假 ' + daysText(f.leaveDays) + '）' : ''))).join('；') : '';
-    return `<b>${esc(pairLabel(pr))}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h${pr.offAway ? ` · 外站驻点（${C.apName(pr.outstationBase, st)}）休息日 ${esc(daysText(C.offAwayDays(pr, st)))}（不计值勤日）` : ''}${pr.legs.some(l => l.dh) ? ' · (随)=置位乘机，不计飞行小时' : ''}<br>${pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
+    return `<b>${pairHtml(pr)}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h${pr.offAway ? ` · 外站驻点（${C.apName(pr.outstationBase, st)}）休息日 ${esc(daysText(C.offAwayDays(pr, st)))}（不计值勤日）` : ''}${pr.legs.some(l => l.dh) ? ' · (随)=置位乘机，不计飞行小时' : ''}<br>${pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
       <br>飞行执勤期：${C.fdpDays(pr, st).map(dy => `D${dy.d} ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余${fmtBuf(dy.planBuffer)}`).join(' · ')}
       <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${flTxt}${pr.demoAnomalyNote ? '<br><span class="red">' + esc(pr.demoAnomalyNote) + '</span>' : ''}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
   }

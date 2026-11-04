@@ -9,7 +9,7 @@
     const sp = C.specialAirportsOf(pr, st); const bpt = pr.legs.filter(l => (st.settings.bpTesterAirports || []).includes(l.from));
     const draft = { C: pr.crew.C || null, F: pr.crew.F || null, T: pr.crew.T || null };
     const orig = { C: draft.C, F: draft.F, T: draft.T };
-    let h = `<div class="flex"><a href="#" id="mClose" class="drw-back">← 返回详情</a><span class="mut" style="margin-left:auto">任务 ${esc(pairLabel(pr))}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h</span></div>
+    let h = `<div class="flex"><a href="#" id="mClose" class="drw-back">← 返回详情</a><span class="mut" style="margin-left:auto">任务 ${pairHtml(pr)}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h</span></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
       <table class="legtbl"><thead><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr></thead><tbody>${pr.legs.map(l => { const dd = Math.floor(l.dep / C.DAY) + 1; const md = String(C.MONTH).padStart(2,'0') + '/' + String(dd).padStart(2,'0'); const notes = [l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${esc((C.CAT_DESC[C.apCat(c, st)] || '').split('：')[0].split('(')[0])}</span>`).join(' '); return `<tr><td class="nowrap">${md} D${l.d}</td><td>${esc(C.fltLabel(l))}${l.pos ? '<sup class="mut">调</sup>' : ''}</td><td class="legair"><span class="${C.isSpecial(l.from,st)?'red':''}">${esc(C.apName(l.from,st))}</span><span class="mut">→</span><span class="${C.isSpecial(l.to,st)?'red':''}">${esc(C.apName(l.to,st))}</span></td><td class="nowrap reg">${esc(l.reg || '—')}</td><td class="nowrap">${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td class="legnote">${notes}${(st.settings.bpTesterAirports || []).includes(l.from) ? ' <span class="warnc">血压仪</span>' : ''}${C.isNightLeg(l) ? ' <span class="warnc">夜</span>' : ''}${l.ac === 'A321' ? ' A321' : ''}</td></tr>`; }).join('')}</tbody></table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
@@ -128,7 +128,7 @@
       const light = okNow ? ' <span class="okc">● 合规</span>' : (C.pairingFull(pr) ? ' <span class="warnc">● 仍有问题</span>' : ' <span class="warnc">● 未满员</span>');
       commitHighlight({
         pairings: [pr.id], pilots, days: C.daysTouched(pr, st), ok: okNow,
-        toast: `✔ 已更新：${esc(pairLabel(pr))} ${parts.map(esc).join('；')}${light} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
+        toast: `✔ 已更新：${pairHtml(pr)} ${parts.map(esc).join('；')}${light} <a href="#" id="tUndo" style="color:#9fd4ff">撤销</a>`,
         undo: undoLeave
       });
     };
@@ -152,7 +152,7 @@
       <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>执勤风险（每日 飞行执勤期 / 限制 · 余量）</th><th>状态</th><th></th></tr>`;
     for (const pr of ps) {
       const full = C.pairingFull(pr); const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
-      h += `<tr><td><b>${esc(pairLabel(pr))}</b>${fillBadge(pr.id)}${demoTag(pr)}</td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
+      h += `<tr><td><b>${pairHtml(pr)}</b>${fillBadge(pr.id)}${demoTag(pr)}</td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
         <td>${dayChains(pr).map(c => c.html).join('<br>')}</td><td>${crewTxt(pr, m)}</td>
         <td class="fdpc">${C.fdpDays(pr, st).map(dy => `<div><span class="rdot r-${dy.planRisk}"></span>D${dy.d} ${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)} · <span class="${{ over: 'red', high: 'red', med: 'warnc', low: 'mut' }[dy.planRisk]}">余 ${dy.planBuffer} 分</span>${dy.planRestShort ? ` <span class="mut" title="计划过夜休息偏短">夜休 ${C.fmtH(dy.planRest)}</span>` : ''}</div>`).join('')}</td>
         <td>${V[pr.id] ? `<span class="red" title="${esc(V[pr.id].join('\n'))}">✖ ${V[pr.id].length}项违规</span>` : full ? '<span class="okc">✔ 合规</span>' : '<span class="warnc">待填</span>'}${bpt ? '<br><span class="warnc">需血压测试仪</span>' : ''}</td>

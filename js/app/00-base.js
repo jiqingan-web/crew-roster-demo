@@ -2,7 +2,7 @@
   const C = window.RosterCore, CH = window.Charts;
   const LITE = !!window.ROSTER_LITE; // lite/：单中队轻量版，独立存储
   const DEMO = !!(window.ROSTER_DEMO && window.RosterDemo); // show/：比赛演示版（近三个月真实航班，一键排班按规则填人）
-  const DEMO_VER = 7;
+  const DEMO_VER = 8;
   const KEY = DEMO ? 'crewRoster.demo.v1' : LITE ? 'crewRoster.lite.v1' : 'crewRoster.v2';
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -363,7 +363,7 @@
   }
 
 
-  function apHtml(c) { const n = C.apName(c, st); const k = C.apClass && C.apClass(c, st); const tag = k ? `<sup class="apcls" title="机场分类：${k.label}（${k.fleet}）">${k.label[0]}</sup>` : ''; return C.isSpecial(c, st) ? `<span class="red" title="${esc(C.CAT_DESC[C.apCat(c, st)] || '')}${k ? ' · ' + k.label : ''}">${esc(n)}</span>${tag}` : esc(n) + tag; }
+  function apHtml(c) { const n = C.apName(c, st); const k = C.apClass && C.apClass(c, st); const tag = k ? `<sup class="apcls" title="机场分类：${k.label}（${k.fleet}）">${k.label[0]}</sup>` : ''; return spAp(c) ? `<span class="spap" title="${esc(C.CAT_DESC[C.apCat(c, st)] || '')}${k ? ' · ' + k.label : ''}">${esc(n)}</span>${tag}` : esc(n) + tag; }
   function dayChains(pr) { const out = []; for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
     out.push({ d, html: `D${d} ${[ls[0].from, ...ls.map(l => l.to)].map(apHtml).join('-')}${ls.some(l => l.dh) ? '<span class="dh">(随)</span>' : ''} ${C.fmtT(ls[0].dep)}-${C.fmtT(ls[ls.length - 1].arr)}`, ls }); } return out; }
   // 机场单字简称：按出现频次分配，优先首字，冲突时依次取名称中下一个未占用字；成都双流=蓉、成都天府=府
@@ -375,11 +375,17 @@
       Object.keys(cnt).sort((a, b) => cnt[b] - cnt[a]).forEach(code => { const n = String(C.apName(code, st) || code).replace(/[\s\d]/g, '');
         const cand = [fix(n), ...n.replace(/^成都/, '')].filter(Boolean).concat([...n]); const ch = cand.find(x => !used.has(x)) || n[0] || code[0]; used.add(ch); AB[code] = ch; }); }
     return AB[c] || String(C.apName(c, st) || c)[0]; }
-  function abHtml(c) { const a = esc(apAbbr(c)); return C.isSpecial(c, st) ? `<span class="red">${a}</span>` : a; }
+  function abHtml(c) { const a = esc(apAbbr(c)); return spAp(c) ? `<span class="spap" title="特殊机场：${esc(C.apName(c, st))}">${a}</span>` : a; }
+  // 特殊机场（规章分类 + 公司资质表）：代码 / 名称 / 简称统一标色
+  function spAp(c) { return C.isSpecial(c, st) || ((st && st.authAirports) || []).includes(c); }
+  function pairHtml(pr) { if (!pr) return ''; const lab = pairLabel(pr); const id = pr.id != null ? String(pr.id) : ''; const sp = new Set();
+    pr.legs.forEach(l => [l.from, l.to].forEach(c => { if (spAp(c)) sp.add(C.apAbbrSimple(c, st)); }));
+    const route = id && lab.startsWith(id) ? lab.slice(id.length) : lab; const head = id && lab.startsWith(id) ? id : '';
+    return esc(head) + (sp.size ? [...route].map(ch => sp.has(ch) ? `<span class="spap">${esc(ch)}</span>` : esc(ch)).join('') : esc(route)); }
   function pairLabel(pr) { return C.pairingLabel(pr, st); }
   function pairLabelOf(id) { return C.pairingLabelOf(st, id); }
-  function escPair(pr) { return esc(pairLabel(pr)); }
-  function escPairOf(id) { return esc(pairLabelOf(id)); }
+  function escPair(pr) { return pairHtml(pr); }
+  function escPairOf(id) { const pr = st.pairings.find(p => p.id === id); return pr ? pairHtml(pr) : esc(pairLabelOf(id)); }
   function crewShort(pr, m) { return ['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? esc(m[pr.crew[s]].name) + (s === 'F' && C.INSTR.includes(m[pr.crew[s]].rank) ? '<sup class="instr">教</sup>' : '') : '<span class="warnc">缺</span>').join('/'); }
   function blkDay(c) { return `${[c.ls[0].from, ...c.ls.map(l => l.to)].map(abHtml).join('-')}${c.ls.some(l => l.dh) ? '<span class="dh">(随)</span>' : ''}<br><span class="mut" style="color:#b9cbe8">${C.fmtT(c.ls[0].dep)}-${C.fmtT(c.ls[c.ls.length - 1].arr)}</span>`; }
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, m)} ${seatTxt(pr, s, m)}`).join(' / '); }
