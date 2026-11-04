@@ -2,7 +2,7 @@
   const C = window.RosterCore, CH = window.Charts;
   const LITE = !!window.ROSTER_LITE; // lite/：单中队轻量版，独立存储
   const DEMO = !!(window.ROSTER_DEMO && window.RosterDemo); // show/：比赛演示版（近三个月真实航班，一键排班按规则填人）
-  const DEMO_VER = 1;
+  const DEMO_VER = 2;
   const KEY = DEMO ? 'crewRoster.demo.v1' : LITE ? 'crewRoster.lite.v1' : 'crewRoster.v2';
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -98,7 +98,7 @@
     reset(false);
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
-  function reset(r) { if (DEMO) { st = window.RosterDemo.build(C); st.demo = DEMO_VER; lastSolveMs = null; save(); if (r) refresh(); return; }
+  function reset(r) { if (DEMO) { st = window.RosterDemo.build(C); st.demo = DEMO_VER; try { st.demoSig0 = demoSig(); } catch (e) {} lastSolveMs = null; save(); if (r) refresh(); return; }
     if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
   // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
   function loadOfficial() {

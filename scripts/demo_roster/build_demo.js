@@ -57,4 +57,15 @@ const js = `/* 比赛演示数据（由 scripts/demo_roster/build_demo.js 生成
 })(typeof self !== "undefined" ? self : this);
 `;
 fs.writeFileSync(path.join(R, 'js', 'demo-roster.js'), js);
+// 内置预计算：用与页面「一键排班」完全相同的引擎与参数（固定种子、按月）算一遍，结果写回数据文件；页面输入未改动时直接载入
+if (!process.env.NO_SOLVE) {
+  delete require.cache[require.resolve(path.join(R, 'js', 'demo-roster.js'))];
+  const C = require(path.join(R, 'js', 'core.js')); const Dm = require(path.join(R, 'js', 'demo-roster.js'));
+  const st = Dm.build(C); const t = Date.now();
+  C.autoFillByMonth(st, { seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
+  const solved = st.pairings.map(p => [p.crew.C || 0, p.crew.F || 0, p.crew.T || 0]);
+  const s = C.summarize(st);
+  fs.writeFileSync(path.join(R, 'js', 'demo-roster.js'), js.replace('const api = { DEMO_ROSTER, build,', `const SOLVED = ${JSON.stringify({ crews: solved, full: s.full, total: s.total, hard: s.hard, ms: Date.now() - t })};\n  const api = { DEMO_ROSTER, SOLVED, build,`));
+  console.log('solved', s.full + '/' + s.total, 'hard', s.hard, (Date.now() - t) + 'ms');
+}
 console.log('pilots', pilots.length, 'pairings', pairings.length, 'days', days, 'bytes', js.length);

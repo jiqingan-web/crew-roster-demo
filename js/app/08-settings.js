@@ -156,14 +156,14 @@
     $('#pfill').style.width = '100%';
     setTimeout(() => { $('#progress').classList.add('hidden'); refresh();
       const unf = s.total - s.full;
-      toast(`✔ ${st.demo ? '按规则排班' : '自动填人'}完成（${(lastSolveMs / 1000).toFixed(1)} 秒）：满员 ${s.full}/${s.total}` + (unf ? (st.demo ? `（未满员 ${unf}）` : `（预留空洞 ${unf}）`) : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
+      toast(`✔ ${st.demo ? '按规则排班' : '自动填人'}完成（${info && info.builtin ? '载入内置预计算结果' : (lastSolveMs / 1000).toFixed(1) + ' 秒'}）：满员 ${s.full}/${s.total}` + (unf ? (st.demo ? `（未满员 ${unf}）` : `（预留空洞 ${unf}）`) : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
   }
   // 演示版预计算：页面载入后即在后台线程按规则求解（同一输入同一结果）；点「一键排班」时直接接上进度/结果。输入改动则作废重算
   let preJob = null;
   const demoSig = () => JSON.stringify([st.pilots.map(p => [p.id, p.rank, p.leave, p.health && p.health.noFly]), st.pairings.length, st.settings, st.simHold || null]);
   const demoOpts = () => ({ seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
   function prewarmDemo() {
-    if (!st || !st.demo || preJob || autoJob) return; if (st.pairings.some(p => p.crew.C || p.crew.F || p.crew.T)) return;
+    if (!st || !st.demo || preJob || autoJob) return; if (window.RosterDemo && window.RosterDemo.SOLVED && st.demoSig0 && demoSig() === st.demoSig0) return; // 有内置结果就不必后台预算 if (st.pairings.some(p => p.crew.C || p.crew.F || p.crew.T)) return;
     const w = makeAutoWorker(); if (!w) return;
     const job = preJob = { w, sig: demoSig(), t0: performance.now(), msg: null, last: null, onStatus: null, onDone: null };
     w.onmessage = e => { const m = e.data; if (preJob !== job) return;
@@ -174,8 +174,19 @@
   }
   function applyPre(job, t0, cb) { const m = job.msg; preJob = null; autoJob = null;
     st.pairings.forEach((pr, i) => { pr.crew = m.crews[i]; }); finishAuto(t0, cb, Object.assign({}, m.info || {}, { prewarmMs: Math.round(job.ms) })); }
+  // 内置缓存：演示数据未改动（人员/请假/设置与初始一致）时，直接载入随包预计算的结果（与现场按规则计算完全相同的引擎与参数）
+  function applyBuiltin(cb) {
+    const SV = window.RosterDemo && window.RosterDemo.SOLVED; if (!SV || !st.demoSig0 || demoSig() !== st.demoSig0 || SV.crews.length !== st.pairings.length) return false;
+    if (preJob) { try { preJob.w.terminate(); } catch (e) {} preJob = null; }
+    const t0 = performance.now(); autoJob = { builtin: true }; $('#progress').classList.remove('hidden');
+    const steps = ['载入航班与人员', '校验资质与搭配', '逐月填入机组', '复核休息与值勤期'];
+    steps.forEach((x, i) => setTimeout(() => showAutoStatus({ pct: (i + 1) / (steps.length + 1), stage: x, detail: '内置预计算', elapsed: (performance.now() - t0) / 1000 }), i * 220));
+    setTimeout(() => { st.pairings.forEach((pr, i) => { const c = SV.crews[i]; pr.crew = { C: c[0] || null, F: c[1] || null, T: c[2] || null }; }); autoJob = null; finishAuto(t0, cb, { builtin: true }); }, steps.length * 220 + 150);
+    return true;
+  }
   function runAuto(cb) {
     if (autoJob) return;
+    if (st.demo && applyBuiltin(cb)) return;
     if (st.demo && preJob) {
       if (preJob.sig !== demoSig()) { preJob.w.terminate(); preJob = null; }
       else { const job = preJob, t0 = job.t0; autoJob = { pre: true }; $('#progress').classList.remove('hidden');
