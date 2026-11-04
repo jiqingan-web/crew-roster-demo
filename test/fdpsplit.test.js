@@ -1,6 +1,6 @@
 const C = require('../js/core.js');
 const chk = (n, ok, info) => { console.log('fdpsplit ' + n, ok ? 'OK' : 'FAIL', info || ''); if (!ok) process.exitCode = 1; };
-chk('defaults', C.defaultSettings().fdpSplitLongGround === true && C.defaultSettings().fdpSplitLongGroundH === 5 && C.defaultSettings().reportMin === 95 && C.defaultSettings().reportMinIntl === 115 && C.defaultSettings().minRestH === 10 && C.defaultSettings().releaseMin === 40 && C.defaultSettings().restBeforeReportMin === 25); // 公司运行手册 Re07-10 3.6.1
+chk('defaults', C.defaultSettings().fdpSplitLongGround === true && C.defaultSettings().fdpSplitLongGroundH === 5 && C.defaultSettings().reportMin === 105 && C.defaultSettings().reportMinIntl === 115 && C.defaultSettings().minRestH === 10 && C.defaultSettings().releaseMin === 40 && C.defaultSettings().restBeforeReportMin === 25); // 公司运行手册 Re07-10 3.6.1
 const st = { settings: Object.assign(C.defaultSettings(), { reportMin: 105 }), airports: {}, pairings: [], pilots: [] };
 const hefei = { id: 'T-HFE', legs: [
   { flt: '2303', from: 'ZUUU', to: 'ZSOF', dep: 9 * 60 + 30, arr: 11 * 60 + 50, ac: 'A320', d: 1 },

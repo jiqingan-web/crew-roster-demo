@@ -212,7 +212,7 @@
     tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
   // 公司运行手册核实值（公开页不展示手册代码）。月飞行公司=法规=100h；hardMaxHours 默认对齐 100h（用户拍板 2026-10-16）。
   const COM = { rev: '公司运行手册', re12: 'RE12', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
-    reportMinDomesticFlight: 95, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 }; // 公司运行手册 Re07-10 3.6.1 3)(1)a / 4)(1)a：飞行机组国内 95、国际及地区 115 分钟报到；休息期自关车后 40 分钟起、至下次报到前 25 分钟止
+    reportMinDomesticFlight: 105, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 }; // 报到：现行执行国内 105 分钟（用户 2026-11-04 确认；手册 Re07-10 3.6.1 写 95）、国际及地区 115；休息期按手册 3.6.1 4)：关车后 40 分钟起、至下次报到前 25 分钟止
   // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
   function flightLimitMin(st, reportMin) {
     // 三人制运行：不启用扩编表A例外（即使用户旧存档曾打开 fdpAugmented）
@@ -221,7 +221,7 @@
   function defaultSettings() {
     // 休息/报到口径按《公司运行手册》Re07-10 3.6.1、3.6.10 4)：两次飞行值勤期之间至少连续 10h 休息期（关车+40 分钟 → 报到−25 分钟）
     return { minRestH: 10, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 95, reportMinIntl: 115, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 115, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
       standbyPerDay: 0, maxStandbyPerPilot: 2, // 每日备份人数：用户 2026-11-04 取消该设置（中队无固定每日备份）
       gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 144h 内连续 48h 按法规硬卡；软目标取消（用户 2026-11-04：按法规来卡），=48 即不再出「48h休息偏紧」
@@ -247,8 +247,8 @@
     if (S) {
       delete S.minHours; delete S.maxHours; if (!S.fdpTable) S.fdpTable = defaultFdpTable();
       if (S.hardMaxHours === 90) S.hardMaxHours = 100;
-      // 手册 Re07-10：飞行机组国内 95 分钟报到（105 是客舱机组口径）；最低休息 10h；休息期自关车后 40 分钟起、至报到前 25 分钟止
-      if (S.reportMin === 105) S.reportMin = 95; if (S.reportMinIntl == null) S.reportMinIntl = 115;
+      // 报到：现行国内 105 分钟（用户确认）；最低休息 10h、休息期自关车后 40 分钟起至报到前 25 分钟止（手册 Re07-10 3.6.1 4)、3.6.10 4)）
+      if (S.reportMin === 95) S.reportMin = 105; if (S.reportMinIntl == null) S.reportMinIntl = 115;
       if (S.minRestH === 12) S.minRestH = 10; if (S.releaseMin === 30) S.releaseMin = 40; if (S.restBeforeReportMin == null) S.restBeforeReportMin = 25;
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
@@ -972,7 +972,7 @@
           // 预估 FDP：报到(settings/COM 国内) + 飞行 + 过站50*(n-1) + 退场30
           const nextFlight = flight + bm;
           const nextN = legs.length + 1;
-          const estFdp = (COM.reportMinDomesticFlight || 95) + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
+          const estFdp = (COM.reportMinDomesticFlight || 105) + nextFlight + Math.max(0, nextN - 1) * 50 + 30;
           if (legs.length && (nextFlight > 450 || estFdp > 12.5 * 60)) break;
           const flt = flts[i] || flts[flts.length - 1] || 'EU0000';
           legs.push({ d: 0, flt, from: a, to: b, dep: tmin, arr: tmin + bm, ac, reg });
@@ -1288,6 +1288,21 @@
   // 外站驻点休息日：任务跨度内无值勤的日历日（不计值勤日，计休息）
   function offAwayDays(p, st) { const t = new Set(daysTouched(p, st)); return spanDays(p, st).filter(d => !t.has(d)); }
   function report(p, st) { return p.legs[0].dep - repMinOf(p, st); }
+  // 置位与相邻执勤之间的休息判定（E 在前、L 在后，二者间隔不足最低休息期时调用）
+  //  'post'：L 全为置位且自 E 的落地站出发 → 航后置位，不要求休息期
+  //  'pre-ok' / 'pre-over'：E 全为置位且落地站 = L 首段起飞站 → 航前置位计入 L 的飞行值勤期；
+  //     地面间隔 ≥ fdpSplitLongGroundH（适宜住宿场所休息，手册 3.6.1 3)(1)b 不计入）时按两段相加，否则按连续窗口
+  function dhAdjacentRest(E, L, st) {
+    const allDh = x => x.legs.length && x.legs.every(l => l.dh); const eLast = E.legs[E.legs.length - 1], lFirst = L.legs[0];
+    if (allDh(L) && lFirst.from === eLast.to) return 'post';
+    if (!(allDh(E) && eLast.to === lFirst.from)) return null;
+    const S = st.settings; const ops = L.legs.filter(l => !l.dh && l.d === (L.legs.find(x => !x.dh) || {}).d);
+    if (!ops.length) return 'post';
+    const start = report(E, st), opStart = ops[0].dep - repMinOf(L, st), end = ops[ops.length - 1].arr;
+    const splitMin = (S.fdpSplitLongGroundH || 5) * 60; const ground = ops[0].dep - eLast.arr;
+    const fdp = ground >= splitMin ? (eLast.arr - start) + (end - opStart) : end - start;
+    return fdp <= fdpLimit(st, start, ops.length) ? 'pre-ok' : 'pre-over';
+  }
   function release(p, st) { return p.legs[p.legs.length - 1].arr + ((st && st.settings.releaseMin) || 30); }
   function daysTouched(p, st) { if (!p.offAway) { const a = Math.floor(report(p, st) / DAY) + 1, b = Math.floor((release(p, st) - 1) / DAY) + 1; const r = []; for (let d = a; d <= b; d++) r.push(d); return r; }
     const s = new Set(); dutyIvs(p, st).forEach(([a, b]) => { for (let d = Math.floor(a / DAY) + 1; d <= Math.floor((b - 1) / DAY) + 1; d++) s.add(d); }); return [...s].sort((x, y) => x - y); }
@@ -1625,7 +1640,11 @@
     for (const o of idx.sched[p.id]) { if (o === pr || o.id === (opt.excludeId || '')) continue;
       const oa = report(o, st), ob = release(o, st);
       if (oa < b && a < ob) { rs.push('时间冲突(' + o.id + ')'); continue; }
-      if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) rs.push('休息不足' + S.minRestH + 'h(' + o.id + ')'); }
+      if ((oa >= b && oa - b < rest) || (a >= ob && a - ob < rest)) {
+        const dhNote = dhAdjacentRest(oa >= b ? pr : o, oa >= b ? o : pr, st);
+        if (dhNote === 'post') continue;              // 航后置位：不算值勤期也不算休息期（手册 3.7.6 注2(8)）→ 与前一值勤期之间不要求休息期
+        if (dhNote === 'pre-ok') continue;            // 航前置位：计入后续飞行值勤期（手册 3.6.1 3)(1)c），合并后未超限
+        rs.push('休息不足' + S.minRestH + 'h(' + o.id + (dhNote === 'pre-over' ? '；航前置位计入值勤期后超限' : '') + ')'); } }
     const h = pairingHours(pr), already = idx.sched[p.id].includes(pr);
     const cap = pilotHardCap(p, st);
     if (!already && idx.hours[p.id] + h > cap + 1e-9) { // 逐桶只可能更小：合计不超则各桶必不超（热路径快判）
