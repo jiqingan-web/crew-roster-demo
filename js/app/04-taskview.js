@@ -153,10 +153,23 @@
       ${tile(lv(Math.min(aC.length, aF.length), 3, 1, true), '今日可调 机长 / 副驾驶', `${aC.length}<small> / </small>${aF.length}`, '空闲或备份 · 前后日无执勤 · 余量≥8h', '机长：' + names(aC.map(p => p.name + ' ' + p.rank)) + '\n副驾驶：' + names(aF.map(p => p.name + ' ' + p.rank)), 'gantt')}
       ${tile(lv(wn, 5, 2, true), '未来 7 天最紧张的一天', `${dayText(wd)}`, `可调 ${wn} / ${om.benchPool} 人`, esc(Array.from({ length: Math.min(7, C.DAYS - d + 1) }, (_, i) => dayText(d + i) + ' ' + bb[d + i - 1] + ' 人').join('\n')), '')}
       ${tile(lv(near.length, 1, 5), '接近月上限 ≥85h', `${near.length}<small> 人</small>`, `${(C.monthBuckets().find(b => b.key === mk) || {}).label || ''} · 上限 ${cap}h`, names(near.map(x => x.p.name + ' ' + x.h.toFixed(0) + 'h')) || '无', 'roster')}
-      ${tile(lv(run5.length, 1, 4), '连续值勤第 5 天', `${run5.length}<small> 人</small>`, `当日 · 全周期软提示 ${(sum.violations || []).filter(v => /第5日执飞/.test(v.type)).length} 条`, names(run5.map(p => p.name)) || '无', 'gantt')}
     </div></div>`;
   }
+  // 执勤期监控：所选日期起 7 天内，飞行值勤期余量最小的值勤日（可能接近超限）
+  function fdpWatch() {
+    const d = ui.seatDay || seatDayDefault(); const prm = {}; st.pairings.forEach(p => { prm[p.id] = p; }); const m = pm();
+    const all = C.fdpRiskSummary(st).rows.filter(r => r.date >= d && r.date < d + 7);
+    const list = all.filter(r => r.buffer < 120).sort((a, b) => a.buffer - b.buffer).slice(0, 8);
+    const fm = x => Math.floor(x / 60) + 'h' + String(Math.round(x % 60)).padStart(2, '0');
+    const cls = b => b < 0 ? 'fw-over' : b < 30 ? 'fw-bad' : b < 60 ? 'fw-warn' : 'fw-ok';
+    const rows = list.map(r => { const pr = prm[r.pr]; const crew = pr ? ['C', 'F', 'T'].map(k => pr.crew[k] && m[pr.crew[k]] ? m[pr.crew[k]].name : null).filter(Boolean).join('/') : '';
+      return `<button type="button" class="fw-row ${cls(r.buffer)}" data-fwpr="${esc(r.pr)}" title="${esc(pairLabelOf(r.pr))}"><span class="fw-d">${dayText(r.date)}</span><span class="fw-t"><b>${esc(pairLabelOf(r.pr))}</b><small>${esc(crew)} · ${r.legs} 段 · 值勤 ${fm(r.fdp)} / 限 ${fm(r.limit)}</small></span><span class="fw-b">${r.buffer < 0 ? '超 ' + fm(-r.buffer) : '余 ' + Math.round(r.buffer) + ' 分'}</span></button>`; }).join('');
+    const n60 = all.filter(r => r.buffer < 60).length;
+    return `<div class="bpanel fwatch"><h4>执勤期监控 <small class="mut">${dayText(d)} 起 7 天 · 余量 &lt;2h · 共 ${all.filter(r => r.buffer < 120).length} 个值勤日，&lt;1h ${n60} 个</small></h4>
+      ${rows || `<div class="mut" style="padding:12px 0">这 7 天没有余量不足 2 小时的值勤期。</div>`}</div>`;
+  }
   function bindSeatTiles() {
+    document.querySelectorAll('[data-fwpr]').forEach(b => { b.onclick = () => openDrawer(b.dataset.fwpr); });
     const sel = $('#seatDaySel'); if (!sel) return; const go = v => { ui.seatDay = Math.max(1, Math.min(C.DAYS, v)); rOverview(); };
     sel.onchange = () => go(+sel.value); $('#seatPrev').onclick = () => go(ui.seatDay - 1); $('#seatNext').onclick = () => go(ui.seatDay + 1);
     document.querySelectorAll('.stile[data-go]').forEach(b => { b.onclick = () => { if (b.dataset.go === 'gantt') { const L = C.dayLabel(ui.seatDay); setUiMonth(C.YEAR + '-' + String(L.m).padStart(2, '0')); } goTab(b.dataset.go); }; });
@@ -215,7 +228,7 @@
     // 事件流
     const ev = [];
     (st.fills || []).slice(-8).reverse().forEach(f => ev.push(['调整', `${f.time || ''}`, `${esc(f.pairingId)} ${esc(f.slotName || '')}：${esc(f.fromName || '空缺')} → ${esc(f.toName || '')}${f.source === 'leave' ? '（请假替换）' : ''}`, 'ev-a']));
-    (st.solHist || []).slice(-3).reverse().forEach(hh => ev.push(['方案', new Date(hh.at || Date.now()).toTimeString().slice(0, 8), `自动排班生成方案 #${hh.n}（seed ${hh.seed}）满员 ${(hh.kpi.coverage * 100).toFixed(1)}%`, 'ev-s']));
+    (st.solHist || []).slice(-3).reverse().forEach(hh => ev.push(['方案', new Date(hh.at || Date.now()).toTimeString().slice(0, 8), `${st.demo ? '一键排班完成' : '自动排班生成方案 #' + hh.n}${hh.seed != null ? '（seed ' + hh.seed + '）' : ''} 满员 ${(hh.kpi.coverage * 100).toFixed(1)}%`, 'ev-s']));
     sum.violations.filter(v => v.level === 'hard').slice(0, 8).forEach(v => ev.push([v.type === '未满员' ? '缺员' : '违规', '', esc(v.msg).slice(0, 80), v.type === '未满员' ? 'ev-w' : 'ev-r']));
     st.pilots.filter(p => (p.leave || []).length).slice(0, 4).forEach(p => ev.push(['请假', '', `${esc(p.name)} 请假 ${dayText(p.leave[0])}–${dayText(p.leave[p.leave.length - 1])}（${p.leave.length} 天）`, 'ev-l']));
     // 四象限
@@ -230,7 +243,7 @@
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, om.benchByDay || [], '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
       ${seatTiles(idx, om, ds)}
       <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比 <small class="mut">本中队</small></h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), Object.values(G).reduce((a, b) => a + b, 0), '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
-        <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>
+        <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div>${fdpWatch()}</div>
       <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8 · 本中队 ${nHome} 人${monthLab ? ' · ' + esc(monthLab) : ''}</small>${monthSeg}</h4><div class="rks">${top.map((x, i) => bar(x, i + 1, 'linear-gradient(90deg,#f5a524,#ef5d6c)', `本中队第 ${i + 1} 名 / ${nHome}`)).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => { const fromBottom = i + 1; const abs = nHome - i; return bar(x, '末' + fromBottom, 'linear-gradient(90deg,#2b6fd6,#4f8cff)', `倒数第 ${fromBottom} 名 · 本中队第 ${abs}/${nHome}`); }).join('')}</div></div>
         <div class="bpanel"><h4>实时事件 <span class="live">● LIVE</span></h4><div class="feed">${ev.length ? ev.slice(0, 16).map(e => `<div class="ev ${e[3]}"><span class="ev-t">${e[1] || '—'}</span><span class="ev-k">${e[0]}</span><span>${e[2]}</span></div>`).join('') : '<div class="tempty">暂无事件</div>'}</div></div>
         <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => C.dayLabel ? C.dayLabel(d).text : String(d).padStart(2, '0')))}

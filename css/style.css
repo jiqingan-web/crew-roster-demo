@@ -840,3 +840,10 @@ body.pa-on .story{display:none}
 .stile:hover{background:rgba(255,255,255,.07)}.stile:focus-visible{outline:2px solid #4f8cff}
 .stile.ok{--sc:#21c7a8}.stile.warn{--sc:#f5a524}.stile.bad{--sc:#ef5d6c}
 .stile .st-l{font-size:12px;opacity:.8}.stile .st-v{font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--sc)}.stile .st-v small{font-size:13px;opacity:.7;color:inherit}.stile .st-s{font-size:11px;opacity:.65}
+/* 总览 · 执勤期监控 */
+.fwatch{display:flex;flex-direction:column;gap:6px;min-width:0}.fwatch h4 small{font-weight:400}
+.fw-row{display:grid;grid-template-columns:48px minmax(0,1fr) auto;gap:8px;align-items:center;text-align:left;padding:6px 8px;border-radius:8px;border:1px solid rgba(140,170,220,.18);border-left:4px solid var(--fc,#21c7a8);background:rgba(255,255,255,.03);color:inherit;font:inherit;cursor:pointer}
+.fw-row:hover{background:rgba(255,255,255,.07)}.fw-row:focus-visible{outline:2px solid #4f8cff}
+.fw-row .fw-d{font-variant-numeric:tabular-nums;opacity:.8;font-size:12px}.fw-row .fw-t{min-width:0;display:flex;flex-direction:column}.fw-row .fw-t b{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.fw-row .fw-t small{font-size:11px;opacity:.65;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.fw-row .fw-b{font-weight:700;font-variant-numeric:tabular-nums;color:var(--fc)}
+.fw-ok{--fc:#21c7a8}.fw-warn{--fc:#f5a524}.fw-bad{--fc:#ef5d6c}.fw-over{--fc:#ff3b5c}
