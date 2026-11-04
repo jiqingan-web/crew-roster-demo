@@ -12,7 +12,8 @@
 const path = require('path'); const fs = require('fs');
 const ROOT = path.join(__dirname, '..', '..');
 const C = require(path.join(ROOT, 'js', 'core.js')); const LI = require(path.join(ROOT, 'js', 'leg-import.js'));
-const [, , inPath, outPath, fromMd = '01-01', toMd = '10-31'] = process.argv;
+const [, , inPath, outPath, fromMd = '01-01', toMd = '10-31', qualPath] = process.argv; // qualPath：parse_quals.py 输出（可选）
+const Q = qualPath ? JSON.parse(fs.readFileSync(qualPath, 'utf8')) : null;
 if (!inPath || !outPath) { console.error('usage: build_year.js cells.json out.json [MM-DD] [MM-DD]'); process.exit(2); }
 const D = JSON.parse(fs.readFileSync(inPath, 'utf8'));
 const MD = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -27,7 +28,11 @@ const issues = { singleStation: 0, overflowSeats: 0, noTime: 0 };
 // ---- 人员 ----
 const pilots = Object.entries(D.people).map(([id, x]) => ({
   id, name: id, rank: x.rank, squad: '七中队(化名)', fleet: 'A320',
-  auth: Object.keys(C.AIRPORTS).concat(Object.keys(airports)), rnpAuth: Object.keys(C.AIRPORTS), // 资质源表未提供 → 全部授予，资质类规则不可判定
+  // 资质：有资质表时，表中覆盖的机场按表授予，表未覆盖的机场仍全部授予；无资质表或此人不在表中 → 全部授予（资质类规则不可判定）
+  ...(() => { const all = Object.keys(C.AIRPORTS).concat(Object.keys(airports)); const q = Q && Q.quals[id];
+    if (!q) return { auth: all, rnpAuth: Object.keys(C.AIRPORTS), qualSource: Q ? 'missing' : 'none' };
+    const cov = new Set(Q.covered); const rest = all.filter(c => !cov.has(c));
+    return { auth: q.auth.concat(rest), rnpAuth: q.rnp.concat(rest), qualRole: q.role, qualSource: 'table' }; })(),
   prefs: [], leave: [], health: { noFly: false, noPlateau: false, noNight: false, maxMonthH: null, noSoleCaptain: false, bpNote: '', medExamExpiry: '', note: '' },
 }));
 const P = Object.fromEntries(pilots.map(p => [p.id, p]));
