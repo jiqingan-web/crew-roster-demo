@@ -1898,7 +1898,8 @@
         g.forEach(pr => { const ids = ['C', 'F', 'T'].map(k => pr.crew[k]).filter(Boolean); if (ids.length) hist.push({ ids, pr: { id: 'H' + pr.id, start: pr.start, ndays: pr.ndays, ac: pr.ac, legs: pr.legs, crew: {}, _hist: true } }); });
       });
     } finally { st.pairings = all; delete st._hist; }
-    return Object.assign({}, info || {}, { byMonth: groups.length });
+    const rs = reseatHoles(st, { ms: 6000 }); // 全周期再做一次成对重选兜底（跨月任务在整段上下文里更好补）
+    return Object.assign({}, info || {}, { byMonth: groups.length, reseat: rs.length });
   }
   // 人工班表 vs 一键排班：同一批任务，分别用真实机组(srcCrew) 与当前机组校验，按本中队口径对比
   function rosterQuality(st) {
@@ -1976,6 +1977,22 @@
     return out.sort((x, y) => (y.ok - x.ok) || (x.soft.length - y.soft.length) * (opt.softFirst ? 1 : 0) || x.hoursBefore - y.hoursBefore);
   }
   function applyTransfer(st, prId, fromId, toId, note) { const pv = swapPreview(st, fromId, toId, [prId], []); if (!pv.ok) return pv; applySwap(st, pv, note || '同级转让'); return pv; }
+  // 空座兜底（成对重选）：任务缺座且现有人员需要「特定搭档」才能上座（在训机长 / 带飞 / 机长A·B 等）时，
+  // 把已排的一座换掉，与空座一起重新成对挑人；整组合规才落地，否则原样恢复，留给人工
+  function reseatHoles(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 4000; const log = []; const SL = ['C', 'F', 'T'];
+    for (const P of st.pairings) { if (pairingFull(P) || Date.now() - t0 > budget) continue; const open = openSlots(P); if (!open.length) continue;
+      const keep = Object.assign({}, P.crew); let done = false;
+      const pinOK = P.pin && ['C', 'F'].every(k => !P.pin[k] || P.pin[k] === keep[k]); // 带飞对完整才视为固定；已被拆散则允许重选
+      for (const drop of SL.filter(k => keep[k] && !(pinOK && P.pin[k] === keep[k]) && !(P.forced && P.forced[k]))) { if (done) break;
+        P.crew[drop] = null; const slots = SL.filter(k => !P.crew[k]);
+        const first = slots[0]; const c1 = candidates(st, P, first).filter(c => c.ok && c.p.id !== keep[drop]).sort((a, b) => a.hours - b.hours).slice(0, 15);
+        for (const a of c1) { P.crew[first] = a.p.id; const rest = slots.slice(1); let ok = true;
+          for (const k of rest) { const c = candidates(st, P, k).filter(x => x.ok && !x.crewWarn).sort((x, y) => x.hours - y.hours)[0]; if (!c) { ok = false; break; } P.crew[k] = c.p.id; }
+          const crew = SL.map(k => P.crew[k] && st.pilots.find(q => q.id === P.crew[k])); if (ok && crew.every(Boolean) && !crewIssue(P, crew, st)) { done = true; log.push({ kind: 'reseat', pairing: P.id, dropped: drop }); break; }
+          rest.forEach(k => { P.crew[k] = null; }); P.crew[first] = null; }
+        if (!done) Object.assign(P.crew, keep); }
+      if (!done) Object.assign(P.crew, keep); }
+    return log; }
   function swapFillHoles(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 4000; const log = [];
     for (const P of st.pairings) { for (const s of ['C', 'F', 'T']) { if (slotTaken(P, s) || Date.now() - t0 > budget) continue;
       const cs = candidates(st, P, s).filter(c => !c.ok && slotRankOK(s, c.p.rank) && c.reasons.length <= 3).sort((a, b) => a.reasons.length - b.reasons.length).slice(0, 30);
@@ -2038,6 +2055,7 @@
     if (!opts.noSwap) { swapBalance(st, { ms: st.pairings.length > 800 ? 1500 : 3000 }); }
     clearHardSeats(st);
     if (!opts.noSwap) { swapFillHoles(st, { ms: 4000 }); clearHardSeats(st); }
+    reseatHoles(st, { ms: 4000 }); // 成对重选兜底
     enforceOuterSlots(st);
     const out = summarize(st); out.attempt = best.k + 1; return out;
     } finally { if (PROG) PROG.done(); PROG = null; FDP_PLAN_CACHE = null; IVC = ivc0; SOFT_NEW = softNew0; HI = 0; }
@@ -5269,7 +5287,7 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
-    autoFillByMonth, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    autoFillByMonth, reseatHoles, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });
     api.setPeriod = setPeriod;
