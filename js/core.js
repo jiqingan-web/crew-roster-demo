@@ -1295,7 +1295,8 @@
     const out = []; let cur = null; let prev = null;
     p.legs.forEach(l => {
       const start = l.dep - repAt(l.from, p, st) - pre, end = l.arr + relAt(l.to, st);
-      if (!cur || l.d !== prev.d || shouldSplitFdpBetween(prev, l, p, st)) {
+      const dayThr = fdpLongGroundSplitMin(st && st.settings) || 480;
+      if (!cur || (l.d !== prev.d ? l.dep - prev.arr >= dayThr : shouldSplitFdpBetween(prev, l, p, st))) {
         if (cur) out.push(cur); cur = [start, end];
       } else { cur[0] = Math.min(cur[0], start); cur[1] = Math.max(cur[1], end); }
       prev = l;
@@ -4401,8 +4402,10 @@
       const known = a.dep != null || a.arr != null;
       // 级联（不追回）推算：录入值优先，否则受前段级联落地 + 最短过站约束
       // 同值勤日且未因长过站拆分时才级联延误；拆分后的新 FDP 窗不继承前段延误
-      const splitHere = prevC && (l.d !== prevC.leg.d || shouldSplitFdpBetween(prevC.leg, l, pr, st, dep - (prevC.arr)));
-      const sameFdp = prevC && prevC.leg.d === l.d && !splitHere;
+      // 日期变化本身不再强制拆分：跨午夜短间隔往返（如 21:00 出、次日 00:30 回）仍是同一飞行值勤期；地面间隔 ≥ 长过站门槛才算新值勤
+      const gapPrev = prevC ? dep - prevC.arr : 0, dayThr = fdpLongGroundSplitMin(S) || 480;
+      const splitHere = prevC && (l.d !== prevC.leg.d ? gapPrev >= dayThr : shouldSplitFdpBetween(prevC.leg, l, pr, st, gapPrev));
+      const sameFdp = prevC && !splitHere;
       let cdep = known ? dep : l.dep; if (!known && sameFdp) cdep = Math.max(cdep, prevC.carr + Math.min(turn, l.dep - prevC.leg.arr));
       const carr = known ? arr : cdep + blk;
       const x = { i, leg: l, dep, arr, known, kind: known ? (a.kind || 'est') : 'plan', landed: a.arr != null && a.kind === 'act', departed: a.dep != null && a.kind === 'act',
@@ -4450,7 +4453,8 @@
         const nRep = repOf(nx.legs[0]) + (BASE_APS.includes(nx.legs[0].leg.from) ? (S.restBeforeReportMin || 0) : 0), dRel = relAt(dy.legs[dy.legs.length - 1].leg.to, st);
         dy.restAfter = (nx.legs[0].dep - nRep) - (dy.relEnd + dRel); dy.planRest = (nx.legs[0].leg.dep - nRep) - (dy.planRelEnd + dRel);
         // 同日内外站拆分（酒店休息中断 FDP）不按过夜最低休息硬卡
-        const dutyBreak = !!(dy.splitNext || nx.splitFrom);
+        // 次窗仅有置位（航后置位）：不算值勤期也不算休息期，不按过夜最低休息卡（《飞行部手册》Re10-08 2.2.4 2)(4)）
+        const dutyBreak = !!(dy.splitNext || nx.splitFrom || nx.legs.every(x => x.leg.dh));
         dy.restShort = dutyBreak ? 0 : (dy.restAfter < dy.planRest ? Math.max(0, req - dy.restAfter) : 0);
         dy.planRestShort = dutyBreak ? 0 : Math.max(0, req - dy.planRest); } });
     return out;
