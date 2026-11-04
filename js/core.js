@@ -1381,6 +1381,11 @@
     if (cs.filter(x => x.bangfu).length >= 2) return '[CR-22] 同航班不可有两名帮扶对象';
     // 部门管控人员（机长B 及 p.deptControl 标记者）不得互相搭配（用户 2026-11-04）
     if (cs.filter(x => x.rank === '机长B' || x.deptControl).length >= 2) return '[CR-23] 部门管控人员不得互相搭配';
+    // 责任机长（C 座）须在该特殊机场持机长类资质（责任/被带飞/重获）；其余两人谁上座由「任两人可上座」判定，观察员不要求
+    { const QA = st && !st._skipAuth && st.authAirports; const Lp = crewPilots[0];
+      if (QA && QA.length && Lp) for (const leg of p.legs) { if (leg.dh) continue; for (const c of [leg.from, leg.to]) { if (!QA.includes(c)) continue;
+        if (Lp && (!(Lp.auth || []).includes(c) || (Lp.qualRole && !((Lp.qualRole[c] || []).some(x => x.includes('机长')))))) return `[CR-特殊机场] D${leg.d} ${leg.flt}：机长座 ${Lp.name} 在${apName(c, st)}无机长资质`;
+      } } }
     if (cs.length < 3) return null; // 不完整机组不做其余组合判定
     // 新机长执飞须组内有 J3+（J3/TL/TB/TC）陪飞；第三人观察员不强制为教员——候选过滤见 candidates(slot=T)
     if (!(st && st._skipNewCapt) && cs.some(n => isNew(n.rank) && !cs.some(o => o !== n && newCaptCompanionOK(n.rank, o.rank)))) return '[CR-20] 新机长执飞须有 J3 及以上（含教员）同组；机长B 有 F6 及以上副驾驶即可（观察员位可为任意级别）';
