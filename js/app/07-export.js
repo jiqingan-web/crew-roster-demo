@@ -47,6 +47,7 @@
     return '<div class="demo-fill-note">📌 ' + esc(note) + ' · 任务 ' + st.pairings.length + ' 组已铺满 1–' + C.DAYS + ' 日</div>';
   }
   function exportBarHtml(extra) {
+    if (DEMO) return '<div class="export-bar"><button type="button" class="btn primary" id="exRosterX" title="第一页为一线排班表（左上角选日期看横截面），后附人员甘特 / 任务甘特">📋 导出排班表 + 甘特（Excel）</button>' + (extra || '') + '</div>';
     return '<div class="export-bar">'
       + '<button type="button" class="btn primary" id="exRosterX" title="第一页为一线排班表（左上角选日期看横截面），后附人员甘特 / 任务甘特">📋 导出排班表 + 甘特（Excel）</button>'
       + '<button type="button" class="btn primary" id="exXlsxAll" title="Excel 甘特图：人员甘特 / 任务甘特 / 图例与统计（离线生成）">📊 导出 Excel 甘特图</button>'
@@ -122,23 +123,23 @@
   function rData() {
     $('#main').innerHTML = `${demoFillBanner()}<div class="grid g2"><div class="panel"><h3>导出</h3><div class="note">CSV 为 UTF-8 BOM 格式，可直接用 Excel 打开。全月班表与个人月历包可离线导出。</div>
       ${exportBarHtml()}
-      <div style="margin-top:10px;line-height:3">
+      ${DEMO ? '<div style="margin-top:10px"><button class="btn" id="exJson">完整备份(JSON)</button><span class="mut" style="margin-left:8px">个人月历：在人员总览每人行末点「月历」</span></div>' : `<div style="margin-top:10px;line-height:3">
       <button class="btn" id="exRoster">排班表（按航段，含机组）</button><button class="btn" id="exHours">人员工时统计</button><button class="btn" id="exViol">校验问题清单</button><br>
-      <button class="btn" id="exPil">人员数据</button><button class="btn" id="exPr">任务数据</button><button class="btn" id="exJson">完整备份(JSON)</button></div></div>
+      <button class="btn" id="exPil">人员数据</button><button class="btn" id="exPr">任务数据</button><button class="btn" id="exJson">完整备份(JSON)</button></div>`}</div>
       <div class="panel"><h3>导入</h3><div class="note">导入将替换对应数据并清空现有排班。可先下载模板。</div><div style="margin-top:10px;line-height:3">
       <button class="btn primary" id="tpXlsx">下载导入模板</button><label class="btn primary">导入航段 Excel<input type="file" id="imXlsx" accept=".xlsx,.xls,.csv" hidden></label><br>
       <button class="btn" id="tpPil">下载人员模板</button><button class="btn" id="tpPr">下载任务模板(CSV)</button><br>
       <label class="btn">导入人员 CSV<input type="file" id="imPil" accept=".csv" hidden></label><label class="btn">导入任务 CSV<input type="file" id="imPr" accept=".csv" hidden></label><label class="btn">恢复备份 JSON<input type="file" id="imJson" accept=".json" hidden></label></div><div id="imMsg" class="note"></div></div></div>
       <div class="panel"><h3>格式说明</h3><div class="note" style="line-height:1.9">人员 CSV 列：${PIL_H.join('，')}；级别取值：${C.RANKS.join(' / ')}<br>任务 CSV 列：${PR_H.join('，')}；同一任务号的多行即该任务的各航段（按日序、时间排列），任务须从 ZUUU 出发并回到 ZUUU。机场使用 ICAO 四字码，须在“设置”机场表内。</div></div>`;
     const m = pm();
-    $('#exRoster').onclick = () => dl('排班表_2026-11.csv', csv([['任务号', '日序', '日期', '航班号', '起飞', '落地', '起飞时间', '落地时间', '机型', '特殊机场', '需血压测试仪', '机长(机)', '级别', '副驾驶(副)', '级别', '观察员', '级别'],
+    ($('#exRoster') || {}).onclick = () => dl('排班表_2026-11.csv', csv([['任务号', '日序', '日期', '航班号', '起飞', '落地', '起飞时间', '落地时间', '机型', '特殊机场', '需血压测试仪', '机长(机)', '级别', '副驾驶(副)', '级别', '观察员', '级别'],
       ...st.pairings.flatMap(pr => pr.legs.map(l => { const day = Math.floor(l.dep / C.DAY); const c = s => pr.crew[s] && m[pr.crew[s]];
         return [pr.id, 'D' + l.d, '2026-11-' + String(day + 1).padStart(2, '0'), C.fltLabel(l), `${l.from} ${C.apName(l.from, st)}`, `${l.to} ${C.apName(l.to, st)}`, C.fmtT(l.dep), tm(l.arr, day), l.ac,
           [l.from, l.to].filter(x => C.isSpecial(x, st)).map(x => C.apName(x, st)).join(';'), (st.settings.bpTesterAirports || []).includes(l.from) ? '是' : '',
           ...['C', 'F', 'T'].flatMap(s => c(s) ? [c(s).name + '(' + c(s).id + ')', c(s).rank] : ['空缺', ''])]; }))]));
-    $('#exHours').onclick = () => dl('人员工时_2026-11.csv', csv([['员工号', '姓名', '级别', '组别', '本月飞行小时', '任务数', '执勤天数', '过夜次数', '特殊机场任务', '夜航段', '意向休息日满足', '备份天数', '备份日期', '任务间休息天数'], ...sum.per.map(x => [x.id, x.name, x.rank, x.group, x.hours.toFixed(2), x.pairings, x.dutyDays, x.overnights, x.special, x.night, x.prefOK + '/' + x.prefTotal, x.standby, ((st.standby || {})[x.id] || []).join(';'), x.gaps.join(';')])]));
-    $('#exViol').onclick = () => dl('校验问题_2026-11.csv', csv([['级别', '类型', '任务', '说明'], ...sum.violations.map(v => [v.level, v.type, v.pairing || '', v.msg])]));
-    $('#exPil').onclick = () => dl('人员数据.csv', csv(pilotRows())); $('#exPr').onclick = () => dl('任务数据.csv', csv(pairRows()));
+    ($('#exHours') || {}).onclick = () => dl('人员工时_2026-11.csv', csv([['员工号', '姓名', '级别', '组别', '本月飞行小时', '任务数', '执勤天数', '过夜次数', '特殊机场任务', '夜航段', '意向休息日满足', '备份天数', '备份日期', '任务间休息天数'], ...sum.per.map(x => [x.id, x.name, x.rank, x.group, x.hours.toFixed(2), x.pairings, x.dutyDays, x.overnights, x.special, x.night, x.prefOK + '/' + x.prefTotal, x.standby, ((st.standby || {})[x.id] || []).join(';'), x.gaps.join(';')])]));
+    ($('#exViol') || {}).onclick = () => dl('校验问题_2026-11.csv', csv([['级别', '类型', '任务', '说明'], ...sum.violations.map(v => [v.level, v.type, v.pairing || '', v.msg])]));
+    ($('#exPil') || {}).onclick = () => dl('人员数据.csv', csv(pilotRows())); ($('#exPr') || {}).onclick = () => dl('任务数据.csv', csv(pairRows()));
     $('#exJson').onclick = () => dl('排班备份.json', JSON.stringify(st), 'application/json');
     $('#tpPil').onclick = () => dl('人员模板.csv', csv([PIL_H, ['E10001', '张三', 'J3', 'ZULS;ZPLJ', '5;18', ''], ['E10002', '李四', 'F5', 'ZUJZ', '7;21', '12;13;14']]));
     $('#tpPr').onclick = () => dl('任务模板.csv', csv([PR_H, ['PR901', 1, 'EU2201', 'ZUUU', 'ZWWW', 3, '08:00', '12:20', 'A320'], ['PR901', 1, 'EU2202', 'ZWWW', 'ZUUU', 3, '13:20', '17:30', 'A320'], ['PR902', 1, 'EU6683', 'ZUUU', 'ZGHA', 5, '21:00', '22:50', 'A320'], ['PR902', 2, 'EU6684', 'ZGHA', 'ZUUU', 6, '07:30', '09:20', 'A320']]));

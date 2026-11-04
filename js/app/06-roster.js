@@ -51,10 +51,10 @@
         <select id="rh">${['全部', '有限制', '不适飞', '限制高原', '限制夜间', '月≤60h', '非唯一机长', '帮扶对象'].map(g => `<option ${g === ui.rh ? 'selected' : ''}>${g}</option>`).join('')}</select>
         <span class="mut">${ps.length}/${st.pilots.length} 人 · 外中队 ${st.pilots.filter(isOuterPilot).length}（机长 ${st.pilots.filter(p => isOuterPilot(p) && ((C.outerRoleOf?C.outerRoleOf(p):p.outerRole)==='机长')).length}）· 本中队 ${st.pilots.filter(p => !isOuterPilot(p)).length} · 有健康限制 ${nRest} 人 · 帮扶 ${st.pilots.filter(p => p.bangfu).length} 人 · 授权机场 ${nAuth} 个</span>
         <button class="btn sm primary" id="roAdd" style="margin-left:auto">＋ 新增人员</button>
-        <button class="btn sm" id="roExp">导出人员 CSV</button>
+        ${DEMO ? '' : `<button class="btn sm" id="roExp">导出人员 CSV</button>
         <button class="btn sm primary" id="exMonthRoster">全月班表</button>
         <button class="btn sm primary" id="exPersonalZip">个人月历包</button>
-        ${onePersonPicker()}
+        ${onePersonPicker()}`}
       </div>
       ${DEMO ? '' : demoFillBanner()}
       ${useQ ? (qualCards(authList, apStat, apGap) + (ui.ra !== '全部' && apStat[ui.ra] ? apHolders(ui.ra, own0, roleOf) : '')) : `<div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div>`}</div>
@@ -105,7 +105,7 @@
       goLeave(id, nx ? nx.start : 1, nx ? nx.start + nx.ndays - 1 : 1);
     });
     document.querySelectorAll('.rorow').forEach(r => r.ondblclick = () => openRosterEdit(r.dataset.pid));
-    $('#roExp').onclick = () => {
+    ($('#roExp') || {}).onclick = () => {
       const rows = [['员工号', '姓名', '级别', '组别', '中队', '外中队', '外中队角色', '帮扶对象', '暂时不适飞', '限制高原', '限制夜间', '月飞行上限h', '非唯一机长', '血压备注', '体检到期', '健康备注', ...authList.map(c => C.apName(c, st) + '(' + c + ')'), '已授权数']];
       st.pilots.forEach(p => {
         const h = p.health || C.defaultHealth();
