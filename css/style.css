@@ -935,3 +935,13 @@ body.pa-on .story{display:none}
 .rost td.qc{padding:2px 1px;text-align:center}.rost td.qc .qd{width:14px;height:14px}
 .rost th.vq{writing-mode:vertical-rl;text-orientation:upright;padding:4px 2px;font-size:11px;height:64px;vertical-align:bottom;cursor:pointer;letter-spacing:1px}.rost th.vq.on{color:#4f8cff}
 .apq-row{display:flex;gap:10px;margin-top:6px;align-items:flex-start}.apq-row .qlab{white-space:nowrap;font-size:12px;min-width:92px;display:inline-flex;gap:5px;align-items:center}
+/* 校验报告 · 问题分组 */
+.igroups{display:flex;flex-direction:column;gap:6px}
+.ig{border:1px solid rgba(140,170,220,.2);border-left:4px solid var(--ic,#8b9bb8);border-radius:8px;background:rgba(255,255,255,.02)}
+.ig-hard{--ic:#ef5d6c}.ig-soft{--ic:#f5a524}.ig-info{--ic:#8b9bb8}
+.ig summary{display:flex;gap:10px;align-items:baseline;padding:8px 12px;cursor:pointer;list-style:none;flex-wrap:wrap}.ig summary::-webkit-details-marker{display:none}
+.ig summary::before{content:'▸';opacity:.6}.ig[open] summary::before{content:'▾'}
+.ig-lv{font-size:11px;font-weight:700;white-space:nowrap}.ig-n{font-variant-numeric:tabular-nums;font-size:12px;padding:1px 8px;border-radius:999px;background:rgba(140,170,220,.15)}.ig-d{font-size:12px}
+.ig-body{max-height:320px;overflow:auto;border-top:1px solid rgba(140,170,220,.12)}
+.ig-row{display:flex;gap:12px;align-items:center;padding:6px 12px 6px 28px;border-bottom:1px solid rgba(140,170,220,.08);font-size:12.5px}
+.ig-row span:first-child{flex:1;min-width:0}.ig-row.issueJump{cursor:pointer}.ig-row.issueJump:hover{background:rgba(79,140,255,.1)}.ig-go{white-space:nowrap;color:#7fb0ff;font-size:12px}

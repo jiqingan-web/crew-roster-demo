@@ -59,8 +59,7 @@
       <div class="panel"><h3>合理性 · 特殊机场任务暴露 <small>σ=${spx.std.toFixed(2)}</small></h3>${CH.bars(C.GROUPS.map(g => ({ label: g, value: s.groups[g].special.mean, color: GCOL[g] })), { w: 420, h: 200, values: true })}<div class="note">人均含特殊机场任务数；仅持授权人员参与</div></div>
       <div class="panel"><h3>合理性 · 夜航航段 <small>σ=${nt.std.toFixed(2)}</small></h3>${CH.bars(C.GROUPS.map(g => ({ label: g, value: s.groups[g].night.mean, color: GCOL[g] })), { w: 420, h: 200, values: true })}<div class="note">人均夜航段（00:00–06:00 起降）；全员 ${nt.min}–${nt.max}</div></div></div>
       ${fdpReportPanel()}
-      <div class="panel"><h3>问题明细 <small>${s.violations.length} 条（含软性与提醒）</small></h3><div class="scroll" style="max-height:300px"><table><tr><th>级别</th><th>类型</th><th>说明</th><th></th></tr>
-      ${s.violations.slice().sort((a, b) => ['hard', 'soft', 'info'].indexOf(a.level) - ['hard', 'soft', 'info'].indexOf(b.level)).map(v => `<tr class="${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><td class="${v.level === 'hard' ? 'red' : 'warnc'}">${{ hard: '硬性', soft: '软性', info: '提醒' }[v.level]}</td><td>${v.type}</td><td>${esc(v.msg)}</td><td>${v.pairing ? '<span class="mut">定位 →</span>' : ''}</td></tr>`).join('') || '<tr><td colspan=4 class="okc">无</td></tr>'}</table></div></div>`;
+      ${issueGroups(s.violations)}`;
     const needFix = (s.hard > 0) || st.pairings.some(pr => !C.pairingFull(pr));
     h = `<div class="panel" id="autoFixBox"><h3>一键自动纠错 <small>空洞/硬违规 · 直接补位 + 换人链（深度≤4）· 可撤销</small></h3>
       <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center">
@@ -69,7 +68,8 @@
       </div><div id="autoFixPlan"></div>${holeDiagPanel()}</div>` + h;
     $('#main').innerHTML = h;
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
-    document.querySelectorAll('tr.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
+    document.querySelectorAll('.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
+    document.querySelectorAll('details.ig').forEach(d => d.ontoggle = () => { if (!issueOpen) return; d.open ? issueOpen.add(d.dataset.igk) : issueOpen.delete(d.dataset.igk); });
     bindExportButtons();
     document.querySelectorAll('.repMonthSeg button').forEach(b => { b.onclick = () => { ui.ovMonth = b.dataset.repm; if (typeof setUiMonth === 'function') setUiMonth(b.dataset.repm); rReport(); }; });
 
@@ -804,6 +804,23 @@
         out[col] = t === 's' ? ss[+(v && v.textContent)] : is ? is.textContent : v ? v.textContent : ''; }); return out; });
     }
     return await file.text();
+  }
+  // ---- 校验报告 · 问题明细：按类型分组、可折叠（硬违规在前并默认展开）----
+  const ISSUE_DESC = { '未满员': '任务还有空座位，需要补人。', '休息不足': '两次值勤之间休息期不足 10 小时。', '144h内48h休息': '报到前 144 小时内没有连续 48 小时休息。', '48h未含两个夜间': '48 小时休息里没有两个完整的 0–6 点。',
+    '执勤期超限': '飞行执勤期超过限制（超出 2 小时以上）。', '执勤期延长(实际)': '实际执行超出执勤期限制 2 小时以内，按延长处理。', '日飞行时间超限': '单日飞行时间超过表 A 限制。', '请假冲突': '请假当天安排了起飞。',
+    '备份冲突': '备份日安排了飞行任务。', '第5日执飞': '连续 4 个值勤日后第 5 天仍执飞：合规，尽量避免。', '第5日置位': '连续 4 个值勤日后第 5 天只有置位：合规，尽量避免。', '大过站休息待确认': '大过站中间是否下酒店休息，需排班员确认。',
+    '特殊机场授权/搭配': '凑不出左右座都持该机场资质的组合。', '个人特殊机场授权': '上座人员缺该机场资质（资质表更新前为提示）。', 'F1/F2无教员': 'F1/F2 未与教员同组（非必须）。', '新机长无教员': '新机长执飞时机组里没有 J3 及以上。',
+    '需血压测试仪': '该始发站须配备血压测试仪。', '过夜休息偏短': '任务内部外站过夜休息不足 10 小时（任务编排数据，需航线部门确认）。', '高强度': '工时偏高。' };
+  let issueOpen = null;
+  function issueGroups(vs) {
+    const LV = { hard: ['硬违规', 'red', 0], soft: ['软提示', 'warnc', 1], info: ['提醒', 'mut', 2] }; const by = {};
+    vs.forEach(v => { const k = v.level + '|' + v.type; (by[k] = by[k] || { level: v.level, type: v.type, xs: [] }).xs.push(v); });
+    const gs = Object.values(by).sort((a, b) => LV[a.level][2] - LV[b.level][2] || b.xs.length - a.xs.length);
+    if (!issueOpen) issueOpen = new Set(gs.filter(g => g.level === 'hard').map(g => g.level + '|' + g.type));
+    const cnt = l => vs.filter(v => v.level === l).length;
+    return `<div class="panel igroups"><h3>问题明细 <small>共 ${vs.length} 条 · <span class="red">硬违规 ${cnt('hard')}</span> · <span class="warnc">软提示 ${cnt('soft')}</span> · 提醒 ${cnt('info')} · ${gs.length} 类</small></h3>
+      ${gs.map(g => { const k = g.level + '|' + g.type; return `<details class="ig ig-${g.level}" data-igk="${esc(k)}" ${issueOpen.has(k) ? 'open' : ''}><summary><span class="ig-lv ${LV[g.level][1]}">${LV[g.level][0]}</span><b>${esc(g.type)}</b><span class="ig-n">${g.xs.length} 条</span><span class="ig-d mut">${esc(ISSUE_DESC[g.type] || '')}</span></summary>
+        <div class="ig-body">${g.xs.map(v => `<div class="ig-row ${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><span>${esc(v.msg)}</span>${v.pairing ? '<span class="ig-go">定位 →</span>' : ''}</div>`).join('')}</div></details>`; }).join('') || '<div class="okc">无问题</div>'}</div>`;
   }
   // ---- 演示版规则库：按主题分组的规则卡片 + 引擎真实代码 ----
   function hlJs(code) { // 轻量 JS 语法高亮（注释 / 字符串 / 关键字 / 数字）
