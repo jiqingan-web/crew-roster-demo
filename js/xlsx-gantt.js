@@ -14,9 +14,9 @@
   function build(ExcelJS, C, st, opt) {
     opt = opt || {}; const S = st.settings || {}; const rep = S.reportMin || 60, rel = S.releaseMin || 30;
     const idx = C.buildIndex(st); const pm = {}; st.pilots.forEach(p => pm[p.id] = p); const AB = abbrMap(C, st);
-    const D = C.DAYS, Y = C.YEAR, M = C.MONTH; const dow = d => new Date(Y, M - 1, d).getDay();
+    const D = C.DAYS, Y = C.YEAR, M = C.MONTH; const DL = d => (C.dayLabel ? C.dayLabel(d) : { m: M, d, text: M + '/' + String(d).padStart(2, '0') }); const dow = d => { const L = DL(d); return new Date(Y, L.m - 1, L.d).getDay(); };
     const pilots = opt.pilotIds ? opt.pilotIds.map(id => pm[id]).filter(Boolean) : st.pilots;
-    const wb = new ExcelJS.Workbook(); wb.creator = '机组智能排班助手'; wb.created = new Date();
+    const wb = opt.wb || new ExcelJS.Workbook(); wb.creator = '机组智能排班助手'; wb.created = new Date();
     const nm = id => id && pm[id] ? pm[id].name : '空缺';
     const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, pm)} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
     const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} 飞行执勤期 ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
@@ -29,7 +29,7 @@
       const L = leftHdr.length; ws.columns = leftHdr.map((h, i) => ({ width: leftW[i] })).concat(Array.from({ length: D * SLOTS }, () => ({ width: 3.2 })));
       ws.getCell(1, 1).value = title; ws.getCell(1, 1).font = { bold: true, size: 13 }; ws.mergeCells(1, 1, 1, L);
       for (let d = 1; d <= D; d++) { const c0 = L + (d - 1) * SLOTS + 1; ws.mergeCells(1, c0, 1, c0 + SLOTS - 1); const c = ws.getCell(1, c0);
-        const we = dow(d) === 0 || dow(d) === 6; c.value = `${M}/${String(d).padStart(2, '0')} 周${WD[dow(d)]}`; c.alignment = { horizontal: 'center' }; c.font = { bold: true, color: { argb: we ? 'FFC0392B' : 'FF1F2D4A' } }; c.fill = fill(we ? COL.wk : COL.hd2); c.border = B;
+        const we = dow(d) === 0 || dow(d) === 6; c.value = `${DL(d).text} 周${WD[dow(d)]}`; c.alignment = { horizontal: 'center' }; c.font = { bold: true, color: { argb: we ? 'FFC0392B' : 'FF1F2D4A' } }; c.fill = fill(we ? COL.wk : COL.hd2); c.border = B;
         for (let k = 0; k < SLOTS; k++) { const h = ws.getCell(2, c0 + k); h.value = String(k * 3).padStart(2, '0'); h.font = { size: 7, color: { argb: 'FF5D6F8C' } }; h.alignment = { horizontal: 'center' }; h.fill = fill(we ? COL.wk : 'F4F7FB'); h.border = B; } }
       leftHdr.forEach((h, i) => { const c = ws.getCell(2, i + 1); c.value = h; c.font = { bold: true, color: { argb: 'FFFFFFFF' } }; c.fill = fill(COL.hd); c.border = B; });
       ws.views = [{ state: 'frozen', xSplit: L, ySplit: 2 }];
@@ -45,7 +45,7 @@
       out.push({ ls, a: Math.min(...ls.map(l => l.dep)) - rep, b: Math.max(...ls.map(l => l.arr)) + rel }); } return out; };
     // ---- 人员甘特 ----
     const ws = wb.addWorksheet('人员甘特', { properties: { defaultRowHeight: 30 } });
-    const L = grid(ws, opt.title || `人员甘特 ${Y}-${String(M).padStart(2, '0')}${opt.label ? ' · ' + opt.label : ''}`, ['员工号', '姓名', '级别', '本月小时'], [9, 9, 6, 8]);
+    const L = grid(ws, opt.title || `人员甘特 ${Y} ${DL(1).text}–${DL(D).text}${opt.label ? ' · ' + opt.label : ''}`, ['员工号', '姓名', '级别', D > 31 ? '区间小时' : '本月小时'], [9, 9, 6, 8]);
     pilots.forEach((p, i) => { const r = 3 + i; const row = ws.getRow(r); row.height = 30;
       [p.id, p.name, p.rank, +(idx.hours[p.id] || 0).toFixed(1)].forEach((v, k) => { const c = ws.getCell(r, k + 1); c.value = v; c.border = B; c.alignment = { vertical: 'middle' }; if (i % 2) c.fill = fill('F4F7FB'); });
       const taken = []; const sch = (idx.sched[p.id] || []).slice().sort((a, b) => a.start - b.start);

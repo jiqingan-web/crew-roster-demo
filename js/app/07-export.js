@@ -48,6 +48,7 @@
   }
   function exportBarHtml(extra) {
     return '<div class="export-bar">'
+      + '<button type="button" class="btn primary" id="exRosterX" title="第一页为一线排班表（左上角选日期看横截面），后附人员甘特 / 任务甘特">📋 导出排班表 + 甘特（Excel）</button>'
       + '<button type="button" class="btn primary" id="exXlsxAll" title="Excel 甘特图：人员甘特 / 任务甘特 / 图例与统计（离线生成）">📊 导出 Excel 甘特图</button>'
       + ((ui.gq || (ui.gg && ui.gg !== '全部')) ? '<button type="button" class="btn primary" id="exXlsxFilt">📊 Excel 甘特（当前筛选）</button>' : '')
       + '<button type="button" class="btn" id="exMonthRoster">导出全月班表 CSV</button>'
@@ -87,8 +88,15 @@
       const buf = await wb.xlsx.writeBuffer(); const safe = String(label || '全员').replace(/[\\/:*?"<>|\s]+/g, '_');
       dl(`排班甘特_${C.YEAR}-${String(C.MONTH).padStart(2, '0')}_${safe}.xlsx`, buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       toast(`✔ 已导出 Excel 甘特图（${ids ? ids.length : st.pilots.length} 人 · ${plan}）`); } catch (e) { toast('导出失败：' + e.message); } }
+  async function exportRosterX() {
+    if (!window.ExcelJS || !window.XlsxRoster) { toast('Excel 组件未加载'); return; }
+    toast('正在生成排班表 + 甘特 Excel（约 10 秒）…', 12000);
+    try { const day = ui.seatDay || 1; const L = C.dayLabel(1), Z = C.dayLabel(C.DAYS);
+      const o = await XlsxRoster.build(ExcelJS, C, st, { day, gantt: window.XlsxGantt, JSZip: window.JSZip, ganttOpt: { label: LITE ? '演示中队' : '全部人员', plan: '当前方案' } });
+      dl(`排班表_${C.YEAR}-${L.text.replace('/', '')}至${Z.text.replace('/', '')}.xlsx`, o.buf, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      toast(`✔ 已导出：排班表 ${o.rows} 行（默认显示 ${C.dayLabel(o.day).text} 横截面 ${o.shown} 行）+ 人员甘特 / 任务甘特`, 6000); } catch (e) { console.error(e); toast('导出失败：' + esc(e.message)); } }
   function bindExportButtons() {
-    bindOnePerson();
+    bindOnePerson(); const rx = $('#exRosterX'); if (rx) rx.onclick = exportRosterX;
     const xa = $('#exXlsxAll'), xf = $('#exXlsxFilt'); if (xa) xa.onclick = () => exportXlsxGantt(ganttFilteredIds().length === st.pilots.length ? ganttFilteredIds() : null, null);
     if (xf) xf.onclick = () => { const ids = ganttFilteredIds(); if (!ids.length) return toast('当前筛选无人员'); exportXlsxGantt(ids, '筛选_' + (ui.gg !== '全部' ? ui.gg : '') + (ui.gq || '')); };
     document.querySelectorAll('.roCal').forEach(x => x.onclick = e => { e.stopPropagation(); exportOnePerson(x.dataset.pid); });
