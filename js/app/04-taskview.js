@@ -143,18 +143,17 @@
     const near = own.map(p => ({ p, h: mh(p) })).filter(x => x.h >= 85).sort((a, b) => b.h - a.h);
     // 11 连续值勤：当日执勤且前 4 日均执勤（第 5 个连续值勤日）
     const run5 = own.filter(p => { const a = ds[p.id]; return a[d] === 'D' && [1, 2, 3, 4].every(k => a[d - k] === 'D'); });
-    // 12 执勤期余量 < 60 分钟（当日 / 未来 7 天）
-    const rows = C.fdpRiskSummary(st).rows; const tight = rows.filter(r => r.date === d && r.buffer < 60); const tight7 = rows.filter(r => r.date >= d && r.date < d + 7 && r.buffer < 60);
+    // 6 所选日期起未来 7 天里最紧张的一天（可调用人数最少）
+    const bb = om.benchByDay || []; let wd = d, wn = Infinity; for (let k = d; k < d + 7 && k <= C.DAYS; k++) { const n = bb[k - 1]; if (n != null && n < wn) { wn = n; wd = k; } } if (!isFinite(wn)) wn = 0;
     const lv = (n, warn, bad, inv) => inv ? (n <= bad ? 'bad' : n <= warn ? 'warn' : 'ok') : (n >= bad ? 'bad' : n >= warn ? 'warn' : 'ok');
     const names = xs => esc(xs.slice(0, 12).join('、') + (xs.length > 12 ? ` 等 ${xs.length} 人` : ''));
     const tile = (cls, lab, val, sub, tip, go) => `<button type="button" class="stile ${cls}" title="${tip}" ${go ? `data-go="${go}"` : ''}><span class="st-l">${lab}</span><span class="st-v">${val}</span><span class="st-s">${sub}</span></button>`;
     const opts = Array.from({ length: C.DAYS }, (_, i) => i + 1).map(k => `<option value="${k}" ${k === d ? 'selected' : ''}>${dayText(k)}</option>`).join('');
     return `<div class="seatmon"><div class="sm-h"><b>席位监控</b><label class="mut">日期 <select id="seatDaySel">${opts}</select></label><button type="button" class="btn sm" id="seatPrev">◀</button><button type="button" class="btn sm" id="seatNext">▶</button></div><div class="stiles">
       ${tile(lv(Math.min(aC.length, aF.length), 3, 1, true), '今日可调 机长 / 副驾驶', `${aC.length}<small> / </small>${aF.length}`, '空闲或备份 · 前后日无执勤 · 余量≥8h', '机长：' + names(aC.map(p => p.name + ' ' + p.rank)) + '\n副驾驶：' + names(aF.map(p => p.name + ' ' + p.rank)), 'gantt')}
-      ${tile(lv(om.benchWorstN, 5, 2, true), '最紧张的一天', `${dayText(om.benchWorstDay)}`, `全周期最少 · 可调 ${om.benchWorstN} / ${om.benchPool} 人`, '整个排班周期内，可临时调用人数最少的一天', '')}
+      ${tile(lv(wn, 5, 2, true), '未来 7 天最紧张的一天', `${dayText(wd)}`, `可调 ${wn} / ${om.benchPool} 人`, esc(Array.from({ length: Math.min(7, C.DAYS - d + 1) }, (_, i) => dayText(d + i) + ' ' + bb[d + i - 1] + ' 人').join('\n')), '')}
       ${tile(lv(near.length, 1, 5), '接近月上限 ≥85h', `${near.length}<small> 人</small>`, `${(C.monthBuckets().find(b => b.key === mk) || {}).label || ''} · 上限 ${cap}h`, names(near.map(x => x.p.name + ' ' + x.h.toFixed(0) + 'h')) || '无', 'roster')}
       ${tile(lv(run5.length, 1, 4), '连续值勤第 5 天', `${run5.length}<small> 人</small>`, `当日 · 全周期软提示 ${(sum.violations || []).filter(v => /第5日执飞/.test(v.type)).length} 条`, names(run5.map(p => p.name)) || '无', 'gantt')}
-      ${tile(lv(tight.length, 1, 3), '执勤期余量 <60 分', `${tight.length}<small> 段</small>`, `当日 · 未来 7 天 ${tight7.length} 段`, esc(tight.map(r => r.pr + ' 余 ' + Math.round(r.buffer) + ' 分').join('、') || '无'), 'duty')}
     </div></div>`;
   }
   function bindSeatTiles() {
