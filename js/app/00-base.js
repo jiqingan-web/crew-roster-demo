@@ -1,7 +1,9 @@
 /* 机组排班助手 - 界面 · base.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   const C = window.RosterCore, CH = window.Charts;
   const LITE = !!window.ROSTER_LITE; // lite/：单中队轻量版，独立存储
-  const KEY = LITE ? 'crewRoster.lite.v1' : 'crewRoster.v2';
+  const DEMO = !!(window.ROSTER_DEMO && window.RosterDemo); // show/：比赛演示版（近三个月真实航班，一键排班按规则填人）
+  const DEMO_VER = 1;
+  const KEY = DEMO ? 'crewRoster.demo.v1' : LITE ? 'crewRoster.lite.v1' : 'crewRoster.v2';
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
   const GCOL = { '教员': '#e6a23c', '机长': '#3ea6ff', '新机长': '#a78bfa', '副驾驶': '#2ecc8f' };
@@ -65,6 +67,11 @@
   function load() {
     try {
       const s = JSON.parse(localStorage.getItem(KEY));
+      if (s && s.pilots && DEMO) {
+        if (s.demo !== DEMO_VER) { reset(false); return; }
+        st = s; st.settings = Object.assign(C.defaultSettings(), st.settings); C.migrateSettings(st.settings); C.migratePilots(st); st.fills = st.fills || [];
+        if (st.grid && C.setPeriod) C.setPeriod(st.grid); return;
+      }
       if (s && s.pilots) {
         // 在 migratePilots 改写中队名之前检测旧示例（一大队等）
         const LEGACY = new Set(['一大队', '二大队', '三大队', '教学中队']);
@@ -91,7 +98,8 @@
     reset(false);
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
-  function reset(r) { if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
+  function reset(r) { if (DEMO) { st = window.RosterDemo.build(C); st.demo = DEMO_VER; lastSolveMs = null; save(); if (r) refresh(); return; }
+    if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
   // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
   function loadOfficial() {
     // 正式班表：外中队候补池按 23 机长 + 19 副驾（三人制 + 高高原双机长）
@@ -121,7 +129,7 @@
       ${(d.intrinsic || []).filter(x => x.nonBlocking || x.soft).map(x => `<div class="mut">· ${esc(x.msg)}</div>`).join('')}
       <div class="mut" style="margin-top:3px">该座位级别合格 ${d.rankOK} 人的阻断原因（一人可多项；全员 ${d.total}）：</div><div>${chips || '—'}</div></div>`;
   }
-  function refresh() { sum = C.summarize(st); renderKpis(); updateIssueBadge(); render(); save(); }
+  function refresh() { sum = C.summarize(st); renderKpis(); updateIssueBadge(); render(); save(); if (DEMO && typeof prewarmDemo === 'function') setTimeout(prewarmDemo, 300); }
   function toast(m, ms) { const t = $('#toast'); t.innerHTML = m; t.classList.remove('hidden'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.add('hidden'), ms || 2600); }
 
   // ---------------- 定位问题（缺人 / 硬性违规） ----------------
@@ -393,8 +401,8 @@
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];
-    const label = h.name ? esc(h.name) : '自动填人';
-    const sub = h.name ? '真实导入' : ('生成结果' + (h.seed != null ? ' · seed ' + h.seed : ''));
+    const label = h.name ? esc(h.name) : st.demo ? '一键排班' : '自动填人';
+    const sub = h.name ? '真实导入' : st.demo ? '按规则填入' : ('生成结果' + (h.seed != null ? ' · seed ' + h.seed : ''));
     if (H.length < 2) return `<span class="solsw"><b>${label}</b><small>${sub}</small></span>`;
     return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="模拟表格1（真实导入）">◀ 真实表</button><b>${label}</b><small>${sub}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="最新自动填人结果">生成结果 ▶</button></span>`;
   }

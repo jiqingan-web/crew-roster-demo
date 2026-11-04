@@ -21,14 +21,14 @@
     const d = ui.tday = Math.min(C.DAYS, Math.max(1, ui.tday || 1));
     const hardN = sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length, softN = sum.soft, infoN = sum.info;
     const riskN = st.pairings.filter(pr => ['over', 'high', 'med'].includes(C.pairingRisk(pr, st).risk)).length;
-    // avg 工时改到月桶选择之后（见下）
+    const avg = (() => { const xs = (sum.per || []).filter(x => x.hours > 0.5); return xs.length ? xs.reduce((a, x) => a + x.hours, 0) / xs.length : 0; })(); // 有飞人员平均工时（本周期）
     let h = `<div class="cw"><div class="cw-head"><div><h2>任务视图</h2><div class="mut">${st.pairings.length} 个任务 · 按日/时段查看 · 点击卡片查看详情</div></div>
       <div class="cw-acts"><button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="okpis">${kpiCard('◎', '满员率', (sum.coverage * 100).toFixed(1) + '%', `${st.pairings.length} 个任务 · ${sum.full === sum.total ? '全部已覆盖' : '缺员 ' + (sum.total - sum.full)}`, sum.coverage >= 0.99 ? 'okc' : 'warnc')}
         ${kpiCard('⚠', '硬性违规', hardN, `软性 ${softN} · 提示 ${infoN}`, hardN ? 'red' : 'okc')}
         ${kpiCard('◷', '需关注风险', riskN || '—', riskN ? '飞行执勤期中/高风险任务' : '飞行执勤期余量均充足')}
         ${kpiCard('♙', '可排人员平均工时', avg.toFixed(1) + 'h', `${sum.all.min.toFixed(1)}–${sum.all.max.toFixed(1)}h · 基尼 ${sum.all.gini.toFixed(3)}`)}</div>
-      <div class="dstrip">${Array.from({ length: C.DAYS }, (_, i) => i + 1).map(k => `<button class="dchip ${k === d ? 'cur' : ''} ${['六', '日'].includes(wdOf(k)) ? 'we' : ''}" data-day="${k}"><b>${String(k).padStart(2, '0')}</b><small>周${wdOf(k)}</small><small>${D[k].prs.length} 任务</small>${D[k].issue ? `<i class="ddot" title="${D[k].issue} 项需处理"></i>` : ''}</button>`).join('')}</div>`;
+      <div class="dstrip">${Array.from({ length: C.DAYS }, (_, i) => i + 1).map(k => `<button class="dchip ${k === d ? 'cur' : ''} ${['六', '日'].includes(wdOf(k)) ? 'we' : ''}" data-day="${k}"><b>${C.dayLabel ? C.dayLabel(k).text : String(k).padStart(2, '0')}</b><small>周${wdOf(k)}</small><small>${D[k].prs.length} 任务</small>${D[k].issue ? `<i class="ddot" title="${D[k].issue} 项需处理"></i>` : ''}</button>`).join('')}</div>`;
     let items = D[d].prs; const sbs = Object.entries(st.standby || {}).filter(([, ds]) => (ds || []).includes(d)).map(([id]) => m[id]).filter(Boolean);
     const crewN = items.reduce((a, x) => a + ['C', 'F', 'T'].filter(s => x.pr.crew[s]).length, 0);
     const holeN = items.filter(x => x.stt[0] === '缺员').length, rN = items.filter(x => x.stt[0] === '风险' || x.stt[0] === '违规').length;
@@ -102,9 +102,11 @@
   function areaChart(series, labels) { const W = 560, H = 190, P = 26; const n = labels.length; const mx = Math.max(1, ...series.flatMap(s => s.v));
     const x = i => P + i / Math.max(1, n - 1) * (W - P - 8), y = v => H - 18 - v / mx * (H - 34);
     let g = ''; for (let k = 0; k <= 4; k++) { const yy = y(mx * k / 4); g += `<line x1="${P}" x2="${W - 8}" y1="${yy}" y2="${yy}" class="gl"/><text x="${P - 4}" y="${yy + 3}" text-anchor="end" class="ax">${Math.round(mx * k / 4)}</text>`; }
-    labels.forEach((l, i) => { if (i % 5 === 0 || i === n - 1) g += `<text x="${x(i)}" y="${H - 4}" text-anchor="middle" class="ax">${l}</text>`; });
+    const stp = Math.max(5, Math.ceil(n / 10)); labels.forEach((l, i) => { if ((i % stp === 0 && n - 1 - i >= stp / 2) || i === n - 1) g += `<text x="${x(i)}" y="${H - 4}" text-anchor="${i === n - 1 ? 'end' : i === 0 ? 'start' : 'middle'}" class="ax">${l}</text>`; });
     const paths = series.map(s => { const d = s.v.map((v, i) => (i ? 'L' : 'M') + x(i).toFixed(1) + ' ' + y(v).toFixed(1)).join(''); return `<path d="${d} L${x(n - 1)} ${H - 18} L${x(0)} ${H - 18}Z" fill="${s.c}" opacity=".12"/><path d="${d}" fill="none" stroke="${s.c}" stroke-width="2"/>`; }).join('');
     return `<svg class="area" viewBox="0 0 ${W} ${H}">${g}${paths}</svg><div class="dleg row">${series.map(s => `<div><i style="background:${s.c}"></i>${s.n}</div>`).join('')}</div>`; }
+  const dayText = d => (C.dayLabel ? C.dayLabel(d).text : d + '日');
+  function periodText() { if (!C.dayLabel) return C.YEAR + ''; const a = C.dayLabel(1), b = C.dayLabel(C.DAYS); return `${C.YEAR}-${String(a.m).padStart(2, '0')}-${String(a.d).padStart(2, '0')} – ${String(b.m).padStart(2, '0')}-${String(b.d).padStart(2, '0')}（${C.DAYS} 天）`; }
   function rOverview() {
     const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx); const N = st.pilots.length;
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
@@ -120,7 +122,7 @@
     const hardN = sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length;
     const kc = (lab, val, sub, vals, color) => `<div class="bkpi" style="--c:${color}"><div class="bk-l">${lab}<i></i></div><div class="bk-v">${val}</div><div class="bk-s">${sub}</div>${spark(vals, color)}</div>`;
     // 维度
-    const G = {}; const GH = {}; st.pilots.forEach(p => { const g = C.rankGroup(p.rank); G[g] = (G[g] || 0) + 1; GH[g] = (GH[g] || 0) + (idx.hours[p.id] || 0); });
+    const G = {}; const GH = {}; st.pilots.filter(p => !(C.isOuterPilot && C.isOuterPilot(p))).forEach(p => { const g = C.rankGroup(p.rank); G[g] = (G[g] || 0) + 1; GH[g] = (GH[g] || 0) + (idx.hours[p.id] || 0); });
     const slotN = SLOTS.map(([n, a, b]) => [n, st.pairings.filter(pr => { const t = ((pr.legs[0].dep % 1440) + 1440) % 1440 / 60; return t >= a && t < b; }).length]);
     const cls = {}; st.pairings.forEach(pr => pr.legs.forEach(l => { const k = C.apClass(l.to, st); const lab = k ? k.label : '普通'; cls[lab] = (cls[lab] || 0) + 1; }));
     const clsOrder = ['一类·高高原', '二类', '三类', '四类', '复杂', '普通']; const clsCol = ['#ef5d6c', '#f5a524', '#8b6cf6', '#3cc4f0', '#21c7a8', '#4f6a90'];
@@ -129,7 +131,9 @@
     const curCalKey = C.YEAR + '-' + String(new Date().getMonth() + 1).padStart(2, '0');
     let mk = ui.ovMonth;
     if (!mk || !buckets.some(b => b.key === mk)) {
-      mk = (buckets.find(b => b.key === curCalKey) || buckets[0] || {}).key || null;
+      // 默认：当前日历月（须是完整月）；否则取最后一个完整月（≥20 天），避免落在只含几天的尾月显示 0h
+      const fullB = buckets.filter(b => !b.days || b.days.length >= 20);
+      mk = (fullB.find(b => b.key === curCalKey) || fullB[fullB.length - 1] || buckets[0] || {}).key || null;
       ui.ovMonth = mk;
     }
     const mhOf = id => {
@@ -144,7 +148,12 @@
     const flyM = ranked.filter(x => x.h > 0.5); const avg = flyM.length ? flyM.reduce((a, x) => a + x.h, 0) / flyM.length : 0;
     const top = ranked.slice(0, 8), bot = ranked.slice(-8).reverse(); const hmx = Math.max(1, ranked[0] ? ranked[0].h : 0, 0.1);
     const nHome = ranked.length;
-    const bar = (x, rankLab, col, tip) => `<div class="rk" title="${esc(tip || '')}"><span class="rk-i">${esc(String(rankLab))}</span><span class="rk-n">${esc(x.p.name)}<small>${esc(x.p.rank)}</small></span><span class="rk-b"><i style="width:${(x.h / hmx * 100).toFixed(1)}%;background:${col}"></i></span><b>${x.h.toFixed(1)}h</b></div>`;
+    // 低工时原因：当月请假 / 培训 / 模拟机天数（解释 0h 不是排班不公）
+    const mDays = new Set(((buckets.find(b => b.key === mk) || {}).days) || []);
+    const cntIn = arr => (arr || []).filter(d => mDays.has(d)).length;
+    const offTag = x => { if (x.h > 20) return ''; const lv = cntIn(x.p.leave), tr = cntIn((st.training || {})[x.p.id]), sm = cntIn((st.sim || {})[x.p.id]);
+      const t = lv ? '假' + lv : tr ? '训' + tr : sm ? '模' + sm : ''; return t ? ` · <span title="当月请假/培训/模拟机天数" style="color:#f5a524">${t}</span>` : ''; };
+    const bar = (x, rankLab, col, tip) => `<div class="rk" title="${esc(tip || '')}"><span class="rk-i">${esc(String(rankLab))}</span><span class="rk-n">${esc(x.p.name)}<small>${esc(x.p.rank)}${offTag(x)}</small></span><span class="rk-b"><i style="width:${(x.h / hmx * 100).toFixed(1)}%;background:${col}"></i></span><b>${x.h.toFixed(1)}h</b></div>`;
     const monthSeg = buckets.length > 1
       ? `<span class="seg" id="ovMonthSeg" style="margin-left:8px;vertical-align:middle">${buckets.map(b => `<button type="button" data-ovm="${esc(b.key)}" class="${b.key === mk ? 'on' : ''}">${esc(b.label)}</button>`).join('')}</span>`
       : '';
@@ -154,22 +163,22 @@
     (st.fills || []).slice(-8).reverse().forEach(f => ev.push(['调整', `${f.time || ''}`, `${esc(f.pairingId)} ${esc(f.slotName || '')}：${esc(f.fromName || '空缺')} → ${esc(f.toName || '')}${f.source === 'leave' ? '（请假替换）' : ''}`, 'ev-a']));
     (st.solHist || []).slice(-3).reverse().forEach(hh => ev.push(['方案', new Date(hh.at || Date.now()).toTimeString().slice(0, 8), `自动排班生成方案 #${hh.n}（seed ${hh.seed}）满员 ${(hh.kpi.coverage * 100).toFixed(1)}%`, 'ev-s']));
     sum.violations.filter(v => v.level === 'hard').slice(0, 8).forEach(v => ev.push([v.type === '未满员' ? '缺员' : '违规', '', esc(v.msg).slice(0, 80), v.type === '未满员' ? 'ev-w' : 'ev-r']));
-    st.pilots.filter(p => (p.leave || []).length).slice(0, 4).forEach(p => ev.push(['请假', '', `${esc(p.name)} 请假 ${p.leave[0]}–${p.leave[p.leave.length - 1]} 日`, 'ev-l']));
+    st.pilots.filter(p => (p.leave || []).length).slice(0, 4).forEach(p => ev.push(['请假', '', `${esc(p.name)} 请假 ${dayText(p.leave[0])}–${dayText(p.leave[p.leave.length - 1])}（${p.leave.length} 天）`, 'ev-l']));
     // 四象限
     const qx = v => 20 + v / 100 * 220, qy = v => 180 - v / 100 * 160;
     const quad = `<svg viewBox="0 0 260 200" class="quad"><rect x="20" y="20" width="${qx(80) - 20}" height="160" class="q-idle"/><rect x="${qx(80)}" y="20" width="${qx(90) - qx(80)}" height="${qy(10) - 20}" class="q-ideal"/><rect x="${qx(90)}" y="20" width="${240 - qx(90)}" height="160" class="q-alert"/><rect x="${qx(90)}" y="${qy(5)}" width="${240 - qx(90)}" height="${180 - qy(5)}" class="q-crit"/>
       <line x1="20" y1="180" x2="240" y2="180" class="gl"/><line x1="20" y1="20" x2="20" y2="180" class="gl"/><text x="130" y="197" class="ax" text-anchor="middle">饱和度 %</text><text x="8" y="100" class="ax" transform="rotate(-90 8 100)" text-anchor="middle">韧性度 %</text>
       <text x="60" y="40" class="ax">低效</text><text x="${qx(80) + 2}" y="40" class="ax">理想</text><text x="${qx(90) + 4}" y="40" class="ax">警戒</text><text x="${qx(90) + 4}" y="176" class="ax">高危</text>
       ${om.bySquadron.map(s => `<circle cx="${qx(s.satPct)}" cy="${qy(s.resiliPct)}" r="7" class="q-pt"><title>${esc(s.squad)} 饱和 ${s.satPct}% 韧性 ${s.resiliPct}%</title></circle>`).join('')}</svg>`;
-    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · 2026-11 · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
+    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
         ${kc('平均工时' + (monthLab ? ' · ' + monthLab : ''), avg.toFixed(1) + 'h', (monthLab ? monthLab + ' · ' : '') + `有飞 ${flyM.length} 人 · Top ${hmx.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, satD.map(v => 100 - v), '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
-      <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比</h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), N, '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
+      <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比 <small class="mut">本中队</small></h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), Object.values(G).reduce((a, b) => a + b, 0), '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
         <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>
       <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8 · 本中队 ${nHome} 人${monthLab ? ' · ' + esc(monthLab) : ''}</small>${monthSeg}</h4><div class="rks">${top.map((x, i) => bar(x, i + 1, 'linear-gradient(90deg,#f5a524,#ef5d6c)', `本中队第 ${i + 1} 名 / ${nHome}`)).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => { const fromBottom = i + 1; const abs = nHome - i; return bar(x, '末' + fromBottom, 'linear-gradient(90deg,#2b6fd6,#4f8cff)', `倒数第 ${fromBottom} 名 · 本中队第 ${abs}/${nHome}`); }).join('')}</div></div>
         <div class="bpanel"><h4>实时事件 <span class="live">● LIVE</span></h4><div class="feed">${ev.length ? ev.slice(0, 16).map(e => `<div class="ev ${e[3]}"><span class="ev-t">${e[1] || '—'}</span><span class="ev-k">${e[0]}</span><span>${e[2]}</span></div>`).join('') : '<div class="tempty">暂无事件</div>'}</div></div>
-        <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => String(d).padStart(2, '0')))}
+        <div class="bpanel"><h4>每日趋势 <small class="mut">任务量 / 在岗人数 / 备份</small></h4>${areaChart([{ n: '每日任务', v: tasks, c: '#4f8cff' }, { n: '在飞人数', v: duty, c: '#21c7a8' }, { n: '备份', v: sb, c: '#f5a524' }], days.map(d => C.dayLabel ? C.dayLabel(d).text : String(d).padStart(2, '0')))}
           <h4 style="margin-top:8px">四象限 · 饱和 × 韧性</h4>${quad}<div class="mut sm">${esc(om.zoneHint)}</div></div></div>
       <div class="mut sm">渲染 <span id="ovMs"></span> ms · 指标沿用运营看板口径（${esc(om.formulas.sat)}）</div></div>`;
     $('#main').innerHTML = h; tickClock(); ui.lastRenderMs = Math.round(performance.now() - t0); $('#ovMs').textContent = ui.lastRenderMs;

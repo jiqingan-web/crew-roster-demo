@@ -11,8 +11,8 @@
     const filled = sum.full > 0; const allFull = sum.total > 0 && sum.full === sum.total;
     const next = !filled ? 2 : (nIssue > 0 ? 3 : 4);
     const steps = [
-      { n: 1, t: '导入数据', d: `${st.pilots.length} 人 · ${st.pairings.length} 任务${st.sample ? ' · 示例数据' : ''}`, act: 'tab:data' },
-      { n: 2, t: '一键自动填人', d: filled ? `满员 ${sum.full}/${sum.total} · 硬违规 ${sum.hard}` : '尚未排班，点此开始', act: 'auto' },
+      { n: 1, t: '导入数据', d: st.demo ? `${st.pilots.filter(p => !C.isOuterPilot(p)).length} 人 · ${st.pairings.length} 任务 · 真实航班` : `${st.pilots.length} 人 · ${st.pairings.length} 任务${st.sample ? ' · 示例数据' : ''}`, act: 'tab:data' },
+      { n: 2, t: st.demo ? '一键排班' : '一键自动填人', d: filled ? `满员 ${sum.full}/${sum.total} · 硬违规 ${sum.hard}` : '尚未排班，点此开始', act: 'auto' },
       { n: 3, t: '定位问题', d: nIssue ? `${nIssue} 个任务待处理（缺人/硬违规）` : (filled ? '✔ 无缺人/硬违规' : '排班后查看'), act: 'issues' },
       { n: 4, t: '确定补位 / 换人', d: nFill ? `已确定 ${nFill} 次补位 · 可撤销` : '选人 → 确定 → 甘特高亮', act: 'tab:leave' }
     ];

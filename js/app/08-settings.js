@@ -119,7 +119,7 @@
           + 'self.RosterLiteRoster=' + JSON.stringify(window.RosterLiteRoster || null) + ';\n'
           + 'self.RosterRulesConfig=' + JSON.stringify(window.RosterRulesConfig || null) + ';\n'
           + 'var C=(' + window.RosterCoreFactory.toString() + ')(self.RosterSampleData, self.RosterLiteRoster, self.RosterRulesConfig);\n'
-          + 'self.onmessage=function(e){var d=e.data;try{var info=C.autoFillDiverse(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
+          + 'self.onmessage=function(e){var d=e.data;try{if(d.st&&d.st.grid&&C.setPeriod)C.setPeriod(d.st.grid);var info=(d.opts&&d.opts.byMonth?C.autoFillByMonth:C.autoFillDiverse)(d.st,Object.assign({},d.opts||{},{onStatus:function(x){self.postMessage({type:"status",x:x});}}));'
           + 'self.postMessage({type:"done",info:info,crews:d.st.pairings.map(function(p){return p.crew;}),standby:d.st.standby||null,training:d.st.training||null,sim:d.st.sim||null,simHold:d.st.simHold||null});}'
           + 'catch(err){self.postMessage({type:"error",msg:String(err&&err.stack||err)});}};';
         workerURL = URL.createObjectURL(new Blob([src], { type: 'text/javascript' }));
@@ -142,7 +142,7 @@
   }
   function finishAuto(t0, cb, info) {
     let demoN = 0, holeN = 0;
-    if (st.sample) {
+    if (st.sample && !st.demo) {
       // 每次重新填人时允许再留洞 / 再注入（受设置开关控制）
       st.demoHolesApplied = false; st.demoHoles = [];
       st.demoAnomaliesApplied = false; st.demoAnomalies = [];
@@ -156,22 +156,45 @@
     $('#pfill').style.width = '100%';
     setTimeout(() => { $('#progress').classList.add('hidden'); refresh();
       const unf = s.total - s.full;
-      toast(`✔ 自动填人完成（${lastSolveMs} ms）：满员 ${s.full}/${s.total}` + (unf ? `（预留空洞 ${unf}）` : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
+      toast(`✔ ${st.demo ? '按规则排班' : '自动填人'}完成（${(lastSolveMs / 1000).toFixed(1)} 秒）：满员 ${s.full}/${s.total}` + (unf ? (st.demo ? `（未满员 ${unf}）` : `（预留空洞 ${unf}）`) : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
   }
+  // 演示版预计算：页面载入后即在后台线程按规则求解（同一输入同一结果）；点「一键排班」时直接接上进度/结果。输入改动则作废重算
+  let preJob = null;
+  const demoSig = () => JSON.stringify([st.pilots.map(p => [p.id, p.rank, p.leave, p.health && p.health.noFly]), st.pairings.length, st.settings, st.simHold || null]);
+  const demoOpts = () => ({ seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
+  function prewarmDemo() {
+    if (!st || !st.demo || preJob || autoJob) return; if (st.pairings.some(p => p.crew.C || p.crew.F || p.crew.T)) return;
+    const w = makeAutoWorker(); if (!w) return;
+    const job = preJob = { w, sig: demoSig(), t0: performance.now(), msg: null, last: null, onStatus: null, onDone: null };
+    w.onmessage = e => { const m = e.data; if (preJob !== job) return;
+      if (m.type === 'status') { job.last = m.x; if (job.onStatus) job.onStatus(m.x); return; }
+      w.terminate(); if (m.type === 'done') { job.msg = m; job.ms = performance.now() - job.t0; if (job.onDone) job.onDone(); } else preJob = null; };
+    w.onerror = ev => { ev.preventDefault && ev.preventDefault(); if (preJob === job) preJob = null; w.terminate(); };
+    w.postMessage({ st: JSON.parse(JSON.stringify(st)), opts: demoOpts() });
+  }
+  function applyPre(job, t0, cb) { const m = job.msg; preJob = null; autoJob = null;
+    st.pairings.forEach((pr, i) => { pr.crew = m.crews[i]; }); finishAuto(t0, cb, Object.assign({}, m.info || {}, { prewarmMs: Math.round(job.ms) })); }
   function runAuto(cb) {
     if (autoJob) return;
+    if (st.demo && preJob) {
+      if (preJob.sig !== demoSig()) { preJob.w.terminate(); preJob = null; }
+      else { const job = preJob, t0 = job.t0; autoJob = { pre: true }; $('#progress').classList.remove('hidden');
+        if (job.msg) { showAutoStatus({ pct: 1, stage: '后台已按规则算完，正在载入', elapsed: (performance.now() - t0) / 1000 }); setTimeout(() => applyPre(job, t0, cb), 400); return; }
+        showAutoStatus(job.last || { pct: 0, stage: '后台计算中', elapsed: (performance.now() - t0) / 1000 });
+        job.onStatus = x => showAutoStatus(x); job.onDone = () => applyPre(job, t0, cb); return; }
+    }
     const p = $('#progress'); p.classList.remove('hidden');
     showAutoStatus({ pct: 0, stage: '启动后台计算', elapsed: 0 });
     const t0 = performance.now();
     // 单次生成：新种子即可；不再为「多套方案轮播」强求 minDiff / 多候选
     const seed = (window.crypto && crypto.getRandomValues ? crypto.getRandomValues(new Uint32Array(1))[0] : Math.floor(Math.random() * 4e9)) % 1000000000;
-    const opts = { seed, tries: 1, minDiff: 0 };
+    const opts = st.demo ? demoOpts() : { seed, tries: 1, minDiff: 0 }; // 演示版：固定种子、按月依次按规则填入（同一输入→同一结果）
     const cancelBtn = ensureCancelBtn();
     const w = makeAutoWorker();
     const runMain = () => { // 退回：主线程同步计算（界面在计算期间不会刷新）
       if (cancelBtn) cancelBtn.style.display = 'none';
       showAutoStatus({ pct: 0.02, stage: '后台线程不可用，主线程计算中…', elapsed: 0 });
-      setTimeout(() => { const info = C.autoFillDiverse(st, opts); autoJob = null; finishAuto(t0, cb, info); }, 60);
+      setTimeout(() => { const info = (opts.byMonth ? C.autoFillByMonth : C.autoFillDiverse)(st, opts); autoJob = null; finishAuto(t0, cb, info); }, 60);
     };
     if (!w) { autoJob = { main: true }; runMain(); return; }
     autoJob = { w };
