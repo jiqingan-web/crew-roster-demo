@@ -23,7 +23,7 @@
     const riskN = st.pairings.filter(pr => ['over', 'high', 'med'].includes(C.pairingRisk(pr, st).risk)).length;
     const avg = (() => { const xs = (sum.per || []).filter(x => x.hours > 0.5); return xs.length ? xs.reduce((a, x) => a + x.hours, 0) / xs.length : 0; })(); // 有飞人员平均工时（本周期）
     let h = `<div class="cw"><div class="cw-head"><div><h2>任务视图</h2><div class="mut">${st.pairings.length} 个任务 · 按日/时段查看 · 点击卡片查看详情</div></div>
-      <div class="cw-acts"><button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
+      <div class="cw-acts">${DEMO ? '' : '<button class="btn primary" data-auto="1">⚡ 调整排班</button>'}</div></div>
       <div class="okpis">${kpiCard('◎', '满员率', (sum.coverage * 100).toFixed(1) + '%', `${st.pairings.length} 个任务 · ${sum.full === sum.total ? '全部已覆盖' : '缺员 ' + (sum.total - sum.full)}`, sum.coverage >= 0.99 ? 'okc' : 'warnc')}
         ${kpiCard('⚠', '硬性违规', hardN, `软性 ${softN} · 提示 ${infoN}`, hardN ? 'red' : 'okc')}
         ${kpiCard('◷', '需关注风险', riskN || '—', riskN ? '飞行执勤期中/高风险任务' : '飞行执勤期余量均充足')}
@@ -224,7 +224,7 @@
       <line x1="20" y1="180" x2="240" y2="180" class="gl"/><line x1="20" y1="20" x2="20" y2="180" class="gl"/><text x="130" y="197" class="ax" text-anchor="middle">饱和度 %</text><text x="8" y="100" class="ax" transform="rotate(-90 8 100)" text-anchor="middle">韧性度 %</text>
       <text x="60" y="40" class="ax">低效</text><text x="${qx(80) + 2}" y="40" class="ax">理想</text><text x="${qx(90) + 4}" y="40" class="ax">警戒</text><text x="${qx(90) + 4}" y="176" class="ax">高危</text>
       ${om.bySquadron.map(s => `<circle cx="${qx(s.satPct)}" cy="${qy(s.resiliPct)}" r="7" class="q-pt"><title>${esc(s.squad)} 饱和 ${s.satPct}% 韧性 ${s.resiliPct}%</title></circle>`).join('')}</svg>`;
-    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
+    let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} ${DEMO ? '' : '<button class="btn primary" data-auto="1">⚡ 调整排班</button>'}</div></div>
       <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
         ${kc('平均工时' + (monthLab ? ' · ' + monthLab : ''), avg.toFixed(1) + 'h', (monthLab ? monthLab + ' · ' : '') + `有飞 ${flyM.length} 人 · Top ${hmx.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
         ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, om.benchByDay || [], '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
