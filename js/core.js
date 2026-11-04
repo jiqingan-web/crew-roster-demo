@@ -1880,6 +1880,25 @@
     } finally { st.pairings = all; delete st._hist; }
     return Object.assign({}, info || {}, { byMonth: groups.length });
   }
+  // 人工班表 vs 一键排班：同一批任务，分别用真实机组(srcCrew) 与当前机组校验，按本中队口径对比
+  function rosterQuality(st) {
+    const v = validate(st); const idx = buildIndex(st); const mb = monthMeta().filter(b => b.days.length >= 20);
+    const own = st.pilots.filter(p => !isOuterPilot(p));
+    const hardTypes = {}; v.filter(x => x.level === 'hard' && x.type !== '未满员').forEach(x => { hardTypes[x.type] = (hardTypes[x.type] || 0) + 1; });
+    const stdOf = xs => { const m = xs.reduce((a, b) => a + b, 0) / (xs.length || 1); return Math.sqrt(xs.reduce((a, b) => a + (b - m) ** 2, 0) / (xs.length || 1)); };
+    const months = mb.map(b => { const hs = own.map(p => (monthHoursOf(p, st, idx, null) || {})[b.key] || 0).filter(h => h > 5);
+      return { key: b.key, label: b.label, n: hs.length, mean: hs.reduce((a, c) => a + c, 0) / (hs.length || 1), std: stdOf(hs), max: Math.max(0, ...hs), min: hs.length ? Math.min(...hs) : 0 }; });
+    const avg = k => months.length ? months.reduce((a, m) => a + m[k], 0) / months.length : 0;
+    let ownSeats = 0, extSeats = 0; st.pairings.forEach(pr => ['C', 'F', 'T'].forEach(k => { const id = pr.crew[k]; if (!id) return; const q = idx.pm[id]; if (q && isOuterPilot(q)) extSeats++; else ownSeats++; }));
+    return { hard: Object.values(hardTypes).reduce((a, b) => a + b, 0), hardTypes, soft: v.filter(x => x.level === 'soft').length,
+      day5: v.filter(x => /第5日执飞/.test(x.type)).length, unfilled: st.pairings.filter(pr => !pairingFull(pr)).length,
+      std: avg('std'), spread: avg('max') - avg('min'), maxMonth: Math.max(0, ...months.map(m => m.max)), meanMonth: avg('mean'), months, ownSeats, extSeats };
+  }
+  function realVsAuto(st) {
+    if (!st.pairings.some(p => p.srcCrew)) return null;
+    const real = JSON.parse(JSON.stringify(st)); real.official = 1; real.pairings.forEach(p => { p.crew = Object.assign({ C: null, F: null, T: null }, p.srcCrew || {}); p.official = true; });
+    return { real: rosterQuality(real), auto: rosterQuality(st) };
+  }
   function autoFillDiverse(st, opts) {
     opts = opts || {}; const seed = opts.seed != null ? opts.seed >>> 0 : (Date.now() % 1e9) >>> 0;
     const tries = opts.tries || (st.lite ? 3 : 1); const prev = opts.prevCrews || []; const minDiff = opts.minDiff != null ? opts.minDiff : 0.4;
@@ -5228,7 +5247,7 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
-    autoFillByMonth, crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    autoFillByMonth, realVsAuto, rosterQuality, crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });
     api.setPeriod = setPeriod;

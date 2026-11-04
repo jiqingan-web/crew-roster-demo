@@ -23,7 +23,7 @@ const pilots = Y.pilots.map(p => { const id = idOf[p.id]; const o = { id, name: 
   ['qualRole', 'deptControl', 'traineeCapt', 'requalCapt', 'qualNotes'].forEach(k => { if (p[k] != null) o[k] = p[k]; }); return o; });
 const pairings = Y.pairings.filter(p => p.start >= a && p.start <= b).map((p, i) => ({ id: 'DM' + String(i + 1).padStart(3, '0'), start: p.start - shift, ndays: p.ndays, ac: p.ac || 'A320',
   legs: p.legs.map(l => { const o = Object.assign({}, l); o.dep -= shift * 1440; o.arr -= shift * 1440; if (o.d) o.d -= shift; o.reg = 'REG-DM' + String(i + 1).padStart(3, '0'); return o; }),
-  crew: { C: null, F: null, T: null }, actualTimes: !!p.actualTimes }));
+  crew: { C: null, F: null, T: null }, srcCrew: Object.fromEntries(['C', 'F', 'T'].map(k => [k, p.crew && p.crew[k] ? idOf[p.crew[k]] : null])), actualTimes: !!p.actualTimes }));
 const days = Math.max(b - shift, ...pairings.map(p => p.start + p.ndays - 1));
 const clip = o => { const r = {}; Y.pilots.forEach(p => { const v = ((o || {})[p.id] || []).map(d => d - shift).filter(d => d >= 1 && d <= days); if (v.length) r[idOf[p.id]] = v; }); return r; };
 const tk = {}; Y.pilots.forEach(p => { const k = (Y.trainingKind || {})[p.id] || {}; const o = {}; Object.keys(k).forEach(d => { const dd = d - shift; if (dd >= 1 && dd <= days) o[dd] = k[d]; }); if (Object.keys(o).length) tk[idOf[p.id]] = o; });

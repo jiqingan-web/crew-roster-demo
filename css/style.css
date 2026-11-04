@@ -829,3 +829,6 @@ body.pa-on .story{display:none}
 .outer-pilot { display:inline-block; padding:0 6px; border-radius:4px; background:#e8f0ff; color:#2a5bd7; font-size:11px; font-weight:700; margin-left:4px; vertical-align:middle; border:1px solid #9bb6ef; }
 .outer-rank { display:inline-block; padding:0 6px; border-radius:4px; background:#fff6e8; color:#a15c00; font-size:11px; font-weight:600; margin-left:3px; vertical-align:middle; border:1px solid #e6c48a; }
 .gwrap.z-tiny .outer-pilot, .gwrap.z-tiny .outer-rank, .gwrap.z-small .outer-pilot, .gwrap.z-small .outer-rank { font-size:8px; padding:0 3px; margin-left:2px; }
+/* 总览 · 人工 vs 一键排班 */
+.cmpbox{margin:12px 0;padding:12px 14px;border:1px solid rgba(120,160,255,.25);border-radius:10px;background:rgba(79,140,255,.06)}
+.cmpbox .cmp-h{font-weight:700;margin-bottom:8px}.cmpbox .cmpt td,.cmpbox .cmpt th{padding:5px 10px}.cmpbox .cmpt td:nth-child(2),.cmpbox .cmpt td:nth-child(3){text-align:right;font-variant-numeric:tabular-nums}

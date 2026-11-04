@@ -107,6 +107,26 @@
     return `<svg class="area" viewBox="0 0 ${W} ${H}">${g}${paths}</svg><div class="dleg row">${series.map(s => `<div><i style="background:${s.c}"></i>${s.n}</div>`).join('')}</div>`; }
   const dayText = d => (C.dayLabel ? C.dayLabel(d).text : d + '日');
   function periodText() { if (!C.dayLabel) return C.YEAR + ''; const a = C.dayLabel(1), b = C.dayLabel(C.DAYS); return `${C.YEAR}-${String(a.m).padStart(2, '0')}-${String(a.d).padStart(2, '0')} – ${String(b.m).padStart(2, '0')}-${String(b.d).padStart(2, '0')}（${C.DAYS} 天）`; }
+  // 人工班表 vs 一键排班（仅演示版：任务带真实机组 srcCrew）；按当前机组签名缓存
+  let cmpCache = null;
+  function cmpHtml() {
+    if (!C.realVsAuto || !st.pairings.some(p => p.srcCrew)) return '';
+    if (!st.pairings.some(p => p.crew.C || p.crew.F || p.crew.T)) return `<div class="cmpbox"><div class="cmp-h">人工排班 vs 一键排班</div><div class="mut">点「⚡ 一键排班」后，这里对比同一批航班的人工真实班表与引擎结果。</div></div>`;
+    const sig = (st.solN || 0) + '|' + st.pairings.map(p => (p.crew.C || '') + (p.crew.F || '') + (p.crew.T || '')).join(',').length + '|' + (st.fills || []).length;
+    if (!cmpCache || cmpCache.sig !== sig) cmpCache = { sig, r: C.realVsAuto(st) };
+    const { real: a, auto: b } = cmpCache.r; const f1 = x => x.toFixed(1);
+    const row = (lab, x, y, fmt, better, note) => { const good = better === 'low' ? y < x - 1e-9 : better === 'high' ? y > x + 1e-9 : null; const eq = Math.abs(x - y) < 1e-9;
+      return `<tr><td>${lab}${note ? `<small class="mut"> ${note}</small>` : ''}</td><td>${fmt(x)}</td><td><b>${fmt(y)}</b></td><td class="${eq || good == null ? 'mut' : good ? 'okc' : 'warnc'}">${eq ? '持平' : good == null ? '—' : good ? '▲ 更好' : '▼ 更差'}</td></tr>`; };
+    const ht = o => Object.entries(o.hardTypes).map(([k, n]) => k + ' ' + n).join('、') || '无';
+    return `<div class="cmpbox"><div class="cmp-h">人工排班 vs 一键排班 <small class="mut">同一批 ${st.pairings.length} 个航班任务 · 本中队口径 · 月工时取完整月平均</small></div>
+      <table class="solt cmpt"><tr><th>指标</th><th>人工真实班表</th><th>一键排班</th><th></th></tr>
+      ${row('硬违规', a.hard, b.hard, x => x, 'low', '不含缺员')}
+      ${row('月工时标准差', a.std, b.std, f1, 'low', '越小越公平')}
+      ${row('月工时最高−最低', a.spread, b.spread, x => f1(x) + 'h', 'low')}
+      ${row('单人最高月工时', a.maxMonth, b.maxMonth, x => f1(x) + 'h', 'low')}
+      ${row('软提示', a.soft, b.soft, x => x, 'low', '第5日执飞等')}
+      </table><div class="mut sm">人工班表硬违规：${esc(ht(a))}；一键排班：${esc(ht(b))}。人工表只录了本中队人员（外中队座位未入表），一键排班中外中队候补承担 ${b.extSeats} 个座位，故平均月工时 ${f1(a.meanMonth)}h → ${f1(b.meanMonth)}h。</div></div>`;
+  }
   function rOverview() {
     const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx); const N = st.pilots.length;
     const days = Array.from({ length: C.DAYS }, (_, i) => i + 1);
@@ -173,7 +193,8 @@
     let h = `<div class="big"><div class="big-h"><div><div class="big-t">✈ 机组运行总览 · 数据大屏</div><div class="mut">${DEMO ? '演示版 · 演示中队（化名）' : LITE ? '轻量版 · 演示中队（化名）' : '完整版 · 全部中队'} · ${periodText()} · UTC+8</div></div><div class="clock"><b id="ovClock">--:--:--</b><small id="ovDate"></small></div><div>${solBadge() || '<span class="mut">尚未生成方案</span>'} <button class="btn primary" data-auto="1">⚡ 调整排班</button></div></div>
       <div class="bkpis">${kc('满员率', (sum.coverage * 100).toFixed(1) + '%', `${sum.full}/${sum.total} 任务`, cov, '#21c7a8')}${kc('硬 / 软违规', `${hardN} <small>/ ${sum.soft}</small>`, '不含缺员', vio, '#ef5d6c')}
         ${kc('平均工时' + (monthLab ? ' · ' + monthLab : ''), avg.toFixed(1) + 'h', (monthLab ? monthLab + ' · ' : '') + `有飞 ${flyM.length} 人 · Top ${hmx.toFixed(0)}h`, hrsCum, '#4f8cff')}${kc('饱和度', om.satPct + '%', om.zoneLabel + ' · 已排/上限', satD, '#8b6cf6')}
-        ${kc('韧性度', om.resiliPct + '%', `余量 ${om.remainHours.toFixed(0)}h`, satD.map(v => 100 - v), '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
+        ${kc('韧性 · 最紧张一天', `${om.benchWorstN}<small> / ${om.benchPool} 人</small>`, `${dayText(om.benchWorstDay)} 还能临时调用的人（韧性度 ${om.resiliPct}%）`, om.benchByDay || [], '#3cc4f0')}${kc('空位', sum.total - sum.full, '未满员任务', holes, '#f5a524')}</div>
+      ${cmpHtml()}
       <div class="bgrid3"><div class="bpanel"><h4>各职级人数 / 工时占比 <small class="mut">本中队</small></h4><div class="d2">${donut(C.GROUPS.map((g, i) => [g, G[g] || 0, PAL[i]]), Object.values(G).reduce((a, b) => a + b, 0), '人')}${donut(C.GROUPS.map((g, i) => [g, Math.round(GH[g] || 0), PAL[i]]), Math.round(Object.values(GH).reduce((a, b) => a + b, 0)), '机组小时')}</div></div>
         <div class="bpanel"><h4>任务时段分布</h4>${donut(slotN.map((x, i) => [x[0], x[1], PAL[i]]), st.pairings.length, '任务')}</div></div>
       <div class="bgrid3"><div class="bpanel"><h4>个人月工时排行 <small class="mut">公平性：Top 8 / Bottom 8 · 本中队 ${nHome} 人${monthLab ? ' · ' + esc(monthLab) : ''}</small>${monthSeg}</h4><div class="rks">${top.map((x, i) => bar(x, i + 1, 'linear-gradient(90deg,#f5a524,#ef5d6c)', `本中队第 ${i + 1} 名 / ${nHome}`)).join('')}<div class="rk-sep">…</div>${bot.map((x, i) => { const fromBottom = i + 1; const abs = nHome - i; return bar(x, '末' + fromBottom, 'linear-gradient(90deg,#2b6fd6,#4f8cff)', `倒数第 ${fromBottom} 名 · 本中队第 ${abs}/${nHome}`); }).join('')}</div></div>
