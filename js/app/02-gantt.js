@@ -70,7 +70,7 @@
       const hr = (multi && ui.gMonth !== 'all') ? (+mh[ui.gMonth] || 0) : (idx.hours[p.id] || 0);
       const bad = hr > (S.hardMaxHours || 100); const amb = false;
       const hlr = ui.hl && ui.hl.pilots.has(p.id);
-      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点姓名→合规审计；点其余→请假调配 · ${p.id} ${esc(p.name)} ${esc(p.rank)}${isOuterPilot(p) ? ' · 外中队' : ''} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm pa-name" data-pid="${p.id}" title="打开个人合规审计">${esc(p.name)}</span>${pill(p.rank)}${outerBadge(p)}<span class="hrs ${bad ? "red" : amb ? "warnc" : ""}">${hr.toFixed(1)}h</span></div><div class="gbg">`;
+      h += `<div class="grow ${hlr ? 'hlrow' : ''}"><div class="gcell0 lvable" data-pid="${p.id}" title="点姓名→合规审计；点其余→请假调配 · ${p.id} ${esc(p.name)} ${esc(p.rank)}${isOuterPilot(p) ? ' · 外中队' : ''} ${hr.toFixed(1)}h">${lvl === 'tiny' ? '' : `<span class="mut">${p.id}</span>`}<span class="nm pa-name" data-pid="${p.id}" title="打开个人合规审计">${esc(p.name)}</span>${pill(p.rank)}${outerBadge(p)}<span class="hrs">${hr.toFixed(1)}h</span></div><div class="gbg">`;
       const sbd = (st.standby || {})[p.id] || [];
       const trd = (st.training || {})[p.id] || [];
       const ctd = (st.control || {})[p.id] || [];
@@ -195,7 +195,7 @@
   function tipHtml(pr) {
     const m = pm(); const V = violByPairing();
     const fl = fillsOf(pr.id); const flTxt = fl.length ? '<br><span class="fbadge">补位</span> ' + fl.map(f => esc((f.slotName || '') + ' ' + (f.toName || '') + ' ← ' + (f.fromName || '') + (f.leaveDays && f.leaveDays.length ? '（请假 ' + daysText(f.leaveDays) + '）' : ''))).join('；') : '';
-    return `<b>${esc(pairLabel(pr))}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h${pr.offAway ? ` · 外站驻点（${C.apName(pr.outstationBase, st)}）休息日 ${C.offAwayDays(pr, st).join('、')} 日（不计值勤日）` : ''}${pr.legs.some(l => l.dh) ? ' · (随)=置位乘机，不计飞行小时' : ''}<br>${pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
+    return `<b>${esc(pairLabel(pr))}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h${pr.offAway ? ` · 外站驻点（${C.apName(pr.outstationBase, st)}）休息日 ${esc(daysText(C.offAwayDays(pr, st)))}（不计值勤日）` : ''}${pr.legs.some(l => l.dh) ? ' · (随)=置位乘机，不计飞行小时' : ''}<br>${pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
       <br>飞行执勤期：${C.fdpDays(pr, st).map(dy => `D${dy.d} ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余${fmtBuf(dy.planBuffer)}`).join(' · ')}
       <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${flTxt}${pr.demoAnomalyNote ? '<br><span class="red">' + esc(pr.demoAnomalyNote) + '</span>' : ''}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
   }
