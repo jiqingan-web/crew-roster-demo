@@ -246,7 +246,7 @@
       </div>
       <div class="grid g2" style="margin-top:10px">
         <div><div class="olab">每日请假/意向休息人数</div>${spark(dailyOff, '#a78bfa')}<div class="omut">max ${Math.max(...dailyOff)}</div></div>
-        <div><div class="olab">每日备份人数</div>${spark(dailySb, '#e6a23c')}<div class="omut">设定 ${st.settings.standbyPerDay}/天</div></div>
+        <div><div class="olab">每日备份人数</div>${spark(dailySb, '#e6a23c')}<div class="omut">已排备份（无每日固定人数要求）</div></div>
         <div><div class="olab">每日未满员任务</div>${spark(dailyHoles, '#ff5a6a')}<div class="omut">max ${Math.max(...dailyHoles)}</div></div>
         <div><div class="olab">飞行执勤期风险结构</div>${CH.bars([
           { label: '超限', value: fdp.cnt.over || 0, color: '#ff5a6a' },

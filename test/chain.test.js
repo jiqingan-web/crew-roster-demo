@@ -40,7 +40,8 @@ const pmL = {}; lite.pilots.forEach(p => pmL[p.id] = p);
 for (const p of lp) { const cr = pmL[p.crew.C], fr = pmL[p.crew.F];
   if (!cr || !fr || !C.NEW_CAPT.includes(cr.rank) || !C.INSTR.includes(fr.rank)) { bad++; console.log('long block not new-capt + TL in FO seat', cr && cr.rank, fr && fr.rank); } }
 const rv = C.validate(lite).filter(v => v.type === '岗位级别不符'); if (rv.length) { bad++; console.log('slot rank violations', rv.length); }
-if (!C.slotRankOK('F', 'TL', '机长B') || C.slotRankOK('F', 'TL', '机长A') || C.slotRankOK('F', 'TL', 'J3')) { bad++; console.log('slotRankOK TL-in-FO rule wrong'); }
+// 2026-11-04：教员可与任意机长同飞坐副驾驶位；无机长时不可
+if (!C.slotRankOK('F', 'TL', '机长B') || !C.slotRankOK('F', 'TL', '机长A') || !C.slotRankOK('F', 'TB', 'J3') || C.slotRankOK('F', 'TL', null) || C.slotRankOK('F', 'J3', 'TL')) { bad++; console.log('slotRankOK TL-in-FO rule wrong'); }
 console.log('lite deadhead legs', lite.pairings.reduce((s, p) => s + p.legs.filter(l => l.dh).length, 0), 'long blocks', lp.length);
 const full = C.generateSample(20261101); check('full', full);
 if (lite.sampleSchema < 16 || full.sampleSchema < 13) { bad++; console.log('schema not bumped'); }

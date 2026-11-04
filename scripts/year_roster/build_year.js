@@ -47,6 +47,16 @@ for (const c of D.cells) {
   else if (c.kind === 'standby') push(standby, p, d);
   else ((notes[p] = notes[p] || {})[d] = ((notes[p][d] || '') + ' ' + (c.text || '')).trim());
 }
+// 午夜后的短段：源表记在次日，实际是前一晚同一次执勤的延续（如 23:47 落地、00:33 再飞一段）。
+// 凌晨 04:00 前开始、距前一日最后落地 < 3h → 并回前一日（时刻 +1440）
+const CARRY_BEFORE_MIN = 4 * 60, CARRY_GAP_MIN = 3 * 60;
+for (const p in duty) {
+  const days = Object.keys(duty[p]).map(Number).sort((a, b) => a - b);
+  for (const d of days) { if (!duty[p][d - 1]) continue;
+    const prevEnd = Math.max(...duty[p][d - 1].map(c => c.e)); const keep = [];
+    for (const c of duty[p][d]) { if (c.s < CARRY_BEFORE_MIN && c.s + 1440 - prevEnd >= 0 && c.s + 1440 - prevEnd < CARRY_GAP_MIN) { duty[p][d - 1].push(Object.assign({}, c, { s: c.s + 1440, e: c.e + 1440 })); issues.carriedAfterMidnight = (issues.carriedAfterMidnight || 0) + 1; } else keep.push(c); }
+    if (keep.length) duty[p][d] = keep; else delete duty[p][d]; }
+}
 // 请假与执飞同日：源表以执飞为准（请假日不算）
 for (const p in duty) for (const d in duty[p]) leave[p] = leave[p].filter(x => x !== +d);
 
@@ -67,10 +77,15 @@ function legsOf(c, d) {
 }
 // ---- 合车 + 串日 ----
 const dg = {};
+// 同一天的记录间隔 ≥ SPLIT_GAP_MIN → 两次独立执勤，拆成两个任务（如凌晨 00:41 的一段与当晚的任务）
+const SPLIT_GAP_MIN = 8 * 60;
 Object.keys(duty).forEach(p => Object.keys(duty[p]).forEach(d => {
-  const cs = duty[p][d].slice().sort((a, b) => a.s - b.s); const raw = cs.map(c => c.route + ' ' + c.flts.join('/') + (c.dh ? '(随)' : '')).join(' + ');
-  const key = d + '|' + raw + '|' + cs.map(c => c.s + '-' + c.e).join(',');
-  (dg[key] = dg[key] || { d: +d, cs, raw, ids: [] }).ids.push(p);
+  const all = duty[p][d].slice().sort((a, b) => a.s - b.s); const groups = [];
+  all.forEach(c => { const g = groups[groups.length - 1]; if (g && c.s - Math.max(...g.map(x => x.e)) < SPLIT_GAP_MIN) g.push(c); else groups.push([c]); });
+  if (groups.length > 1) issues.sameDaySplit = (issues.sameDaySplit || 0) + 1;
+  groups.forEach(cs => { const raw = cs.map(c => c.route + ' ' + c.flts.join('/') + (c.dh ? '(随)' : '')).join(' + ');
+    const key = d + '|' + raw + '|' + cs.map(c => c.s + '-' + c.e).join(',');
+    (dg[key] = dg[key] || { d: +d, cs, raw, ids: [] }).ids.push(p); });
 }));
 const items = Object.values(dg).sort((a, b) => a.d - b.d || a.cs[0].s - b.cs[0].s);
 items.forEach(it => { it.ids.sort(); it.L = [].concat(...it.cs.map(c => legsOf(c, it.d))); it.ck = it.ids.join(','); });
@@ -78,7 +93,7 @@ const chains = []; const open = {};
 for (const it of items) {
   const prev = open[it.ck]; const pl = prev && prev.legs[prev.legs.length - 1];
   if (prev && prev.last >= it.d - 3 && prev.last < it.d && !BASES.has(pl.to) && pl.to === it.L[0].from) { prev.legs.push(...it.L.map(l => Object.assign(l, { d: it.d - prev.start + 1 }))); prev.last = it.d; prev.raw.push(it.raw); }
-  else { const ch = { ids: it.ids, start: it.d, last: it.d, legs: it.L.map(l => Object.assign(l, { d: 1 })), raw: [it.raw] }; chains.push(ch); open[it.ck] = ch; }
+  else { const ch = { actual: it.cs.every(c => c.actual), ids: it.ids, start: it.d, last: it.d, legs: it.L.map(l => Object.assign(l, { d: 1 })), raw: [it.raw] }; chains.push(ch); open[it.ck] = ch; }
 }
 // ---- 座位 ----
 const NEWC = ['SPIC', 'US', 'J0', '机长A', '机长B'];
@@ -92,10 +107,13 @@ for (const ch of chains) {
     const capt = ids.filter(i => C.isCaptClass(P[i].rank) || C.INSTR.includes(P[i].rank)); const fo = ids.filter(i => C.isFO(P[i].rank) && !capt.includes(i));
     const crew = { C: null, F: null, T: null }; let rest;
     const nc = capt.find(i => NEWC.includes(P[i].rank)), ins = capt.find(i => C.INSTR.includes(P[i].rank));
+    const plainCapt = capt.find(i => !C.INSTR.includes(P[i].rank) && !NEWC.includes(P[i].rank));
     if (nc && ins) { crew.C = nc; crew.F = ins; rest = ids.filter(i => i !== nc && i !== ins); }
+    else if (ins && plainCapt && !fo.length) { crew.C = plainCapt; crew.F = ins; rest = ids.filter(i => i !== plainCapt && i !== ins); } // 教员右座带飞/检查
+    else if (!fo.length && capt.length > 1 && !C.INSTR.includes(P[capt[1]].rank)) { crew.C = capt[0]; crew.T = capt[1]; rest = ids.filter(i => i !== capt[0] && i !== capt[1]); } // 双机长无副驾：第二名机长坐观察员位，副驾驶为外中队
     else { crew.C = capt[0] || null; crew.F = fo[0] || capt[1] || null; rest = ids.filter(i => i !== crew.C && i !== crew.F); }
-    crew.T = rest.shift() || null; const extra = rest;
-    const mk = cr => ({ id: '', start: ch.start, ndays: ch.last - ch.start + 1, ac: 'A320', legs: ch.legs.map(l => Object.assign({}, l)), crew: cr, srcCrew: Object.assign({}, cr), official: true, offRaw: ch.raw });
+    if (!crew.T) crew.T = rest.shift() || null; const extra = rest;
+    const mk = cr => ({ id: '', start: ch.start, ndays: ch.last - ch.start + 1, ac: 'A320', legs: ch.legs.map(l => Object.assign({}, l)), crew: cr, srcCrew: Object.assign({}, cr), official: true, actualTimes: ch.actual, offRaw: ch.raw });
     pairings.push(mk(crew));
     if (extra.length) { issues.overflowSeats += extra.length; for (let k = 0; k < extra.length; k += 2) pairings.push(Object.assign(mk({ C: null, F: extra[k] || null, T: extra[k + 1] || null }), { offDup: true })); }
   }

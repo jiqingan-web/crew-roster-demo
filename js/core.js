@@ -221,9 +221,10 @@
   function defaultSettings() {
     return { minRestH: 12, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
       bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, releaseMin: 30, honorPrefs: true,
-      standbyPerDay: 2, maxStandbyPerPilot: 2, gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
-      // 硬规则仍为 144h 内连续 48h；软目标偏好更松的连续休息（默认 60h），避免卡在 48h 边缘
-      softRest48H: 60,
+      standbyPerDay: 0, maxStandbyPerPilot: 2, // 每日备份人数：用户 2026-11-04 取消该设置（中队无固定每日备份）
+      gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
+      // 144h 内连续 48h 按法规硬卡；软目标取消（用户 2026-11-04：按法规来卡），=48 即不再出「48h休息偏紧」
+      softRest48H: 48,
       opsDayWindowH: 14, // 飞机日可用窗口（利用率分母）
       // 飞行值勤期（FDP）限制：默认值参考 CCAR-121 部（非扩编机组 表A），可按公司规定修改
       fdpTable: defaultFdpTable(), fdpAugmented: false, fdpAugLimitH: 16, fdpRiskHigh: 60, fdpRiskMed: 120, minTurnMin: 35, minOvernightRestH: 10,
@@ -250,11 +251,12 @@
       if (S.demoAnomalies == null) S.demoAnomalies = false;
       if (S.demoHoles == null) S.demoHoles = 4;
       if (S.highIntensity == null) S.highIntensity = false; if (S.hiTargetH == null) S.hiTargetH = 85;
-      if (S.softRest48H == null) S.softRest48H = 60; // 软目标；硬底仍 48h
+      if (S.softRest48H == null || S.softRest48H === 60) S.softRest48H = 48; // 按法规 48h 卡，取消 60h 软目标
       if (S.fdpSplitLongGround == null) S.fdpSplitLongGround = true;
       if (S.fdpSplitLongGroundH == null || S.fdpSplitLongGroundH === 8) S.fdpSplitLongGroundH = 5; // 过站≥5h 默认休息拆 FDP
       if (S.softTargetMin === 40 && S.softTargetMax === 60) { S.softTargetMin = 45; S.softTargetMax = 65; }
-      if (S.standbyPerDay === 1 && S.maxStandbyPerPilot === 1) { S.standbyPerDay = 2; S.maxStandbyPerPilot = 2; }
+      if (S.standbyPerDay === 1 && S.maxStandbyPerPilot === 1) S.maxStandbyPerPilot = 2;
+      S.standbyPerDay = 0; // 取消每日备份人数设置（用户 2026-11-04）
       if (S.maxOffCapt != null && S.maxOffCapt <= 4) S.maxOffCapt = 999; // 取消机长类每日休息上限
     }
     return S;
@@ -1466,7 +1468,7 @@
   }
   // T=观察员：任意级别可上；RE12 座位规则只约束执飞双人座对
   const SLOT_NAME = { C: '机', F: '副', T: '观察' };
-  function slotRankOK(slot, rank, capRank) { if (slot === 'C') return isCaptClass(rank); if (slot === 'F') return isFO(rank) || (isInstr(rank) && !!capRank && isNew(capRank)); return true; } // 带飞：新机长执飞时 TL 等教员可坐副驾驶位（操作座）
+  function slotRankOK(slot, rank, capRank) { if (slot === 'C') return isCaptClass(rank); if (slot === 'F') return isFO(rank) || (isInstr(rank) && !!capRank && isCaptClass(capRank)); return true; } // 带飞：新机长执飞时 TL 等教员可坐副驾驶位（操作座）
 
   // ---------- 索引与计算 ----------
   function buildIndex(st) {
@@ -1542,7 +1544,7 @@
   // 硬规则：144h 内连续 48h 休息（法规底线不变）
   function has48hRestBefore(intervals, t0) { return hasContinuousRestBefore(intervals, t0, 48 * 60); }
   function ftlCheckPerson(p, pr, st, idx, opt) {
-    opt = opt || {}; const rs = [];
+    opt = opt || {}; const rs = []; const det = []; // opt.detail：按人汇总时返回 [{r, pr}]，违规记到实际出问题的任务上
     const already = (idx.sched[p.id] || []).includes(pr);
     const ex = opt.excludeId || '';
     const extra = already ? null : pr;
@@ -1557,7 +1559,7 @@
       const iv = [];
       for (let xi = 0; xi < allPr.length; xi++) if (xi !== oi && allPr[xi] !== allPr[oi]) ivD[xi].forEach(v => iv.push(v));
       for (const v of ivS) iv.push(v);
-      if (!has48hRestBefore(iv, ivP[oi][0])) rs.push('144h内无连续48h休息(121.495/3.6.10)');
+      if (!has48hRestBefore(iv, ivP[oi][0])) { rs.push('144h内无连续48h休息(121.495/3.6.10)'); if (opt.detail) det.push({ r: '144h内无连续48h休息(121.495/3.6.10)', pr: allPr[oi] }); }
     }
     // 1b) 每一主备份日开始前 144h 内同样须有连续 48h 休息（新增任务不得破坏已排备份）
     if (extra) for (let si = 0; si < ivS.length; si++) {
@@ -1575,11 +1577,13 @@
     }
     for (let s = 1; s <= DAYS - 6; s++) {
       let sum = 0; for (let k = 0; k < 7; k++) sum += fdp[s + k];
-      if (sum > CCAR121.sevenDayFdpH * 60 + 1e-9) { rs.push('连续7日飞行值勤超' + CCAR121.sevenDayFdpH + 'h(D' + s + '-' + (s + 6) + ':' + (sum / 60).toFixed(1) + 'h)'); break; }
+      if (sum > CCAR121.sevenDayFdpH * 60 + 1e-9) { const r7 = '连续7日飞行值勤超' + CCAR121.sevenDayFdpH + 'h(D' + s + '-' + (s + 6) + ':' + (sum / 60).toFixed(1) + 'h)'; rs.push(r7);
+        if (opt.detail) det.push({ r: r7, pr: allPr.filter(x => daysTouched(x, st).some(d => d >= s && d <= s + 6)).pop() || pr }); break; }
     }
     // 5) 年飞行 900h：本月 + 可选 ytdFlightH
     const ytd = +(p.ytdFlightH || 0); const monthH = idx.hours[p.id] + (already ? 0 : pairingHours(pr));
     if (ytd + monthH > CCAR121.yearFlightH + 1e-9) rs.push('年飞行时间超' + CCAR121.yearFlightH + 'h(YTD+本月 ' + (ytd + monthH).toFixed(1) + 'h)');
+    if (opt.detail) { const got = new Set(det.map(x => x.r)); rs.forEach(r => { if (!got.has(r)) { det.push({ r, pr }); got.add(r); } }); const seen = new Set(); return det.filter(x => { const k = x.r + '|' + (x.pr && x.pr.id); if (seen.has(k)) return false; seen.add(k); return true; }); }
     return [...new Set(rs)];
   }
 
@@ -3162,7 +3166,7 @@
     const ds = dayStatus(st, idx);
     const put = (p, d) => { ds[p.id][d] = 'S'; st.standby[p.id].push(d); };
     // 每日备份：每天 standbyPerDay 人（机长类/副驾驶 交替），每人每月至多 maxStandbyPerPilot 天；其余空闲日均为正常休息
-    const cnt = id => st.standby[id].length; const per = S.standbyPerDay == null ? 1 : S.standbyPerDay, cap = S.maxStandbyPerPilot == null ? 1 : S.maxStandbyPerPilot;
+    const cnt = id => st.standby[id].length; const per = S.standbyPerDay || 0, cap = S.maxStandbyPerPilot == null ? 1 : S.maxStandbyPerPilot;
     const sbFtlOK = (p, d) => {
       // 试放入备份后，不得破坏已有飞行任务的 144h/48h 与连续4日后第5日等规则
       st.standby[p.id].push(d);
@@ -3481,7 +3485,11 @@
       if (crew.every(Boolean) && crew.some(x => x.rank === 'F1' || x.rank === 'F2') && !crew.some(x => isInstr(x.rank))) add('F1/F2无教员', 'soft', `${plabel} [CR-19] F1/F2 未与教员同组（非必须，提示）`, pr);
       if (pr.demoAnomaly && pr.demoAnomalyNote) add('演示异常', 'info', `【演示异常】${pr.demoAnomalyNote}`, pr);
       if (pr.forced) Object.entries(pr.forced).forEach(([s, f]) => { if (f && pr.crew[s] === f.pilot) add('强制指派', 'soft', `${plabel} ${SLOT_NAME[s] || s}位 强制指派 ${(st.pilots.find(x => x.id === f.pilot) || {}).name || f.pilot}（越过：${(f.reasons || []).join('；') || '无'}）`, pr); });
-      fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) add('执勤期超限', 'hard', `${plabel} D${dy.d}${dy.part > 1 ? '-' + dy.part : ''}${dy.splitFrom ? '(拆)' : ''} 计划飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}`, pr);
+      fdpDays(pr, st).forEach(dy => { if (dy.planBuffer < 0) {
+          // 实际执行时刻（含延误）：CCAR-121.485(c) 起飞前意外可延长至多 2h → 超出 ≤ fdpExtMaxMin 记软提示「执勤期延长(实际)」；计划排班仍按原限制硬判
+          const over = -dy.planBuffer, extMax = S.fdpExtMaxMin == null ? 120 : S.fdpExtMaxMin, tag = `${plabel} D${dy.d}${dy.part > 1 ? '-' + dy.part : ''}${dy.splitFrom ? '(拆)' : ''}`;
+          if (pr.actualTimes && over <= extMax) add('执勤期延长(实际)', 'soft', `${tag} 实际飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}，超 ${over} 分钟，在 121.485(c) 延长 2h 范围内（需机长决定并记录）`, pr);
+          else add('执勤期超限', 'hard', `${tag} ${pr.actualTimes ? '实际' : '计划'}飞行执勤期 ${fmtH(dy.planFdp)} > 限制 ${fmtH(dy.limit)}${pr.actualTimes ? `（超 ${over} 分钟，超过延长 2h 上限）` : ''}`, pr); }
         if (dy.fltOver > 0) add('日飞行时间超限', 'hard', `${plabel} D${dy.d} 计划飞行时间 ${fmtH(dy.planFlt)} > 表A限制 ${fmtH(dy.fltLimit)}（CCAR-121.483(a)）`, pr);
         if (dy.planRestShort > 0) add('过夜休息偏短', 'info', `${plabel} D${dy.d}→D${dy.d + 1} 计划过夜休息 ${fmtH(dy.planRest)} < ${S.minOvernightRestH || 10}h（任务编排数据，需航线部门确认）`, pr); });
       const tl = pr.legs.filter(l => (S.bpTesterAirports || []).includes(l.from));
@@ -3500,7 +3508,7 @@
         else mb.forEach(b => { const n = sb.filter(d => b.days.indexOf(d) >= 0).length;
           if (n > capSB) ded.push({ type: '备份超限', level: 'soft', msg: `${p.name} ${b.label}备份${n}天，超过每人每月上限`, pilot: p.id }); });
       } });
-    if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay == null ? 1 : S.standbyPerDay;
+    if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay || 0;
       if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 ${n}/${need} 人` }); }
     // FTL 硬规则：按人×任务跑一遍（与求解器 personCheck 同口径），再扫主备份/年累计
     const ftlSeen = new Set();
@@ -3529,11 +3537,11 @@
       const sched = idx.sched[p.id] || [];
       if (sched.length) {
         // 按人汇总 FTL（第5日执飞已降为软提示，见上方 day5Operatings；此处不再硬报）
-        ftlCheckPerson(p, sched[0], st, idx, {}).forEach(r => {
+        ftlCheckPerson(p, sched[0], st, idx, { detail: true }).forEach(({ r, pr: at }) => {
           if (/第5日/.test(r)) return; // soft only
           const type = r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : '飞行时间限制';
-          const plabel = pairingLabel(sched[0], st);
-          addFtl(type, `${plabel} ${p.name}：${r}`, sched[0], p.id);
+          const plabel = pairingLabel(at, st);
+          addFtl(type, `${plabel} ${p.name}：${r}`, at, p.id);
         });
       }
       ((st.standby || {})[p.id] || []).forEach(d => {
@@ -4043,7 +4051,7 @@
     const highRiskDays = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over' || r.risk === 'med');
     const hiOnly = risk.rows.filter(r => r.risk === 'high' || r.risk === 'over');
     // 备份：本月已排备份人日 vs 需求 DAYS * standbyPerDay
-    const sbNeed = DAYS * (S.standbyPerDay == null ? 1 : S.standbyPerDay);
+    const sbNeed = DAYS * (S.standbyPerDay || 0);
     let sbUsed = 0; st.pilots.forEach(p => { sbUsed += ((st.standby || {})[p.id] || []).length; });
     const sbLeft = Math.max(0, sbNeed - sbUsed);
     // 请假压力：本月请假人日
@@ -4057,7 +4065,7 @@
     const dayHiRisk = hiOnly.filter(r => r.date === focusDate).length;
     const daySb = st.pilots.filter(p => ((st.standby || {})[p.id] || []).includes(focusDate)).length;
     const dayLeave = st.pilots.filter(p => (p.leave || []).includes(focusDate)).length;
-    const sbPerDay = S.standbyPerDay == null ? 1 : S.standbyPerDay;
+    const sbPerDay = S.standbyPerDay || 0;
     const daySbGap = Math.max(0, sbPerDay - daySb);
     // 待补位：焦点日未满员 + 演示空洞（仍空）
     const demoOpen = (st.demoHoles || []).filter(h => {
