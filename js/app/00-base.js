@@ -179,6 +179,9 @@
     const V = violByPairing();
     return !V[pr.id];
   }
+  function openHoleOptions(prId) { tab = 'report'; location.hash = 'report'; render(); toast('正在生成补位方案…', 8000);
+    setTimeout(() => { holeOpt = C.holeOptions(st, prId); if (!holeOpt) return; const i = holeOpt.solutions.findIndex(x => x.recommended);
+      cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(holeOpt.pairing.crew).filter(Boolean), days: C.daysTouched(holeOpt.pairing, st) }; render(); const el = $('#holeSol'); if (el) el.scrollIntoView(); toast(`已生成 ${holeOpt.solutions.length} 套补位方案`); }, 30); }
   function jumpToIssue(pairingId) {
     const pr = st.pairings.find(x => x.id === pairingId); if (!pr) { toast('未找到任务 ' + esc(pairingId)); return; }
     closeIssuePanel();
@@ -205,11 +208,11 @@
     h += focus.map((v, i) => `<button type="button" class="issue-row" data-pr="${esc(v.pairing)}" data-i="${i}">
       <span class="itag ${v.kind}">${v.kind === 'unfilled' ? '缺人' : '硬性'}</span>
       <span class="ipid">${escPairOf(v.pairing)}</span>
-      <span class="imsg">${esc(v.type)} · ${esc(v.msg)}</span>
+      <span class="imsg">${esc(v.type)} · ${esc(v.msg)}</span>${v.kind === 'unfilled' ? `<span class="ihole" data-hole="${esc(v.pairing)}" role="button" tabindex="0">补位方案 →</span>` : ''}
     </button>`).join('');
     pan.innerHTML = h;
     pan.classList.remove('hidden');
-    pan.querySelectorAll('.issue-row').forEach(btn => btn.onclick = () => jumpToIssue(btn.dataset.pr));
+    pan.querySelectorAll('.issue-row').forEach(btn => btn.onclick = e => { const hb = e.target.closest('.ihole'); if (hb) { closeIssuePanel(); openHoleOptions(hb.dataset.hole); return; } jumpToIssue(btn.dataset.pr); });
     document.addEventListener('mousedown', onIssueOutside, true);
     document.addEventListener('keydown', onIssueEsc, true);
   }

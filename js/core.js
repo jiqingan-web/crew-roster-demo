@@ -4458,6 +4458,30 @@
       }
     return steps;
   }
+  // 空座补位方案（多套供人工选择，不自动牺牲他人休息）：直接补位 / 备份 / 链式调换 / 成对重选（换掉需特定搭档的人）+ 人工处理
+  function holeOptions(st, prId, opt) {
+    opt = opt || {}; const t0 = Date.now(); const pr0 = st.pairings.find(p => p.id === prId); if (!pr0) return null;
+    const before = summarize(st), bIdx = buildIndex(st); const crew0 = Object.assign({}, pr0.crew); const open0 = openSlots(pr0);
+    if (!open0.length) return { pairing: pr0, solutions: [], ms: 0 };
+    const sols = []; const usedRest = new Set();
+    for (const key of ['standby', 'rhythm', 'hours', 'chain', 'alt']) { const w = clone(st); const ban = new Set(Object.values(crew0).filter(Boolean));
+      const steps = fillVac(w, open0.map(s => ({ id: prId, slot: s, from: null })), key, ban, usedRest);
+      const sol = evaluate(st, w, steps, key, before, bIdx); const usedSb = steps.some(x => x.type === 'standby' || (x.chain && x.chain.fromStandby));
+      sol.name = '补空座 · ' + (key === 'standby' && !usedSb ? '休息人员（无可用备份）' : STRATS[key].name.replace('休息人员 · ', '')); sol.desc = key === 'standby' && !usedSb ? '当天无可调用的备份，改由空闲且合格的人员补位' : STRATS[key].desc; sols.push(sol); }
+    // 成对重选：换下一名已排人员，与空座一起重新挑人（适用于在训机长 / 带飞等需特定搭档的情况）
+    ['C', 'F', 'T'].filter(k => crew0[k] && !(pr0.forced && pr0.forced[k])).forEach(k => { for (const key of ['rhythm', 'chain']) {
+      const w = clone(st); const pr = w.pairings.find(p => p.id === prId); pr.crew[k] = null; const ban = new Set(Object.values(crew0).filter(Boolean));
+      const order = [k].concat(open0); const steps = fillVac(w, order.map(s => ({ id: prId, slot: s, from: s === k ? crew0[k] : null, why: s === k ? '成对重选' : '' })), key, ban, usedRest);
+      const sol = evaluate(st, w, steps, key, before, bIdx); const nm = (bIdx.pm[crew0[k]] || {}).name || '';
+      sol.name = `换下${SLOT_NAME[k]}位 ${nm} 重新配组 · ${STRATS[key].name.replace('休息人员 · ', '')}`; sol.desc = `${nm} 需特定搭档才能上座时，换成可独立成组的人员，再补齐空座`; sols.push(sol); } });
+    const seen = new Set(); let out = sols.filter(x => { if (seen.has(x.sig)) return false; seen.add(x.sig); return true; });
+    out = out.filter(x => !x.unresolved && x.hard <= before.hard);
+    out.sort((a, b) => a.score - b.score); out = out.slice(0, (opt.max || 5) - 1);
+    const w0 = clone(st); const man = { key: 'manual', manual: true, name: '人工处理', desc: '自动方案都需要牺牲较多休息或无法满足规则时，由排班员协调（外中队支援、调整航段等）',
+      steps: open0.map(s => ({ pairing: prId, slot: s, type: 'manual', block: blockReason(w0, w0.pairings.find(p => p.id === prId), s) })), people: [], giniB: before.all.gini, giniA: before.all.gini, giniD: 0, prefN: 0, rhy: 0, sbLeft: [], bp: [], hard: before.hard, unresolved: open0.length, score: 1e9, state: null };
+    out.push(man); const ok = out.filter(x => !x.unresolved); if (ok.length) ok[0].recommended = true;
+    return { pairing: pr0, open: open0, solutions: out, ms: Date.now() - t0 };
+  }
   function leaveOptions(st, pilotId, days, opt) {
     opt = opt || {}; const t0 = Date.now();
     const base = clone(st); const p = base.pilots.find(x => x.id === pilotId); if (!p) return null;
@@ -4487,7 +4511,7 @@
       const newPr = idx.sched[id].filter(pr => !bIdx.sched[id].some(o => o.id === pr.id));
       const prefHit = [...new Set(newPr.flatMap(pr => daysTouched(pr, w)).filter(d => (p.prefs || []).includes(d)))];
       const rb = rhythmCost(p, bIdx.sched[id], w), ra = rhythmCost(p, idx.sched[id], w);
-      return { id, name: p.name, rank: p.rank, hb, ha, overHard: ha > pilotHardCap(p, w) + 1e-9, prefHit, rhythm: ra - rb }; });
+      const mh = monthHoursOf(p, w, idx, null); const mMax = Math.max(0, ...Object.values(mh)); return { id, name: p.name, rank: p.rank, hb, ha, mMax, overHard: mMax > pilotHardCap(p, w) + 1e-9, prefHit, rhythm: ra - rb }; }); // 月上限按自然月判（多月周期不以总小时误判）
     const days = [...new Set(steps.flatMap(x => daysTouched(prOf(w, x.pairing), w)))].sort((a, b) => a - b);
     const sbLeft = days.map(d => ({ d, n: w.pilots.filter(p => ((w.standby || {})[p.id] || []).includes(d)).length }));
     const unresolved = steps.filter(x => x.type === 'manual').length;
@@ -5287,7 +5311,7 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
-    autoFillByMonth, reseatHoles, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    autoFillByMonth, reseatHoles, holeOptions, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });
     api.setPeriod = setPeriod;

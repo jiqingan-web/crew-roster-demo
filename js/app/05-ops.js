@@ -11,6 +11,7 @@
       ${rows.slice(0, big ? 60 : rows.length).map(([pr, s, d]) => `<tr class="issueJump" data-pr="${pr.id}"><td>${pairHtml(pr)}</td><td>${C.SLOT_NAME[s] || s}</td><td class="${d.cls === '数据问题' ? 'red' : d.cls === '真实运力不足' ? 'warnc' : 'okc'}">${d.cls}</td><td>${esc(d.why)}</td><td class="mut">${Object.entries(d.dist).sort((a, b) => b[1] - a[1]).map(([k, n]) => k + ' ' + n).join('、')}</td></tr>`).join('')}
       </table></div>${big ? '<div class="mut">仅显示前 60 个</div>' : ''}</div>`;
   }
+  let holeOpt = null; // 空座补位方案（多套）
   function rReport() {
     const s = sum, S = st.settings;
     const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '帮扶对象', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突', '搭配限制表', 'FO搭配矩阵', '高高原机组', '58岁带队'];
@@ -66,7 +67,17 @@
         <button class="btn primary" id="btnAutoFix" ${needFix ? '' : 'disabled'}>🔧 生成纠错方案</button>
         <span class="mut" id="autoFixStatus">${needFix ? '检测到未满员或硬违规，可尝试自动纠错' : '当前无未满员/硬违规'}</span>
       </div><div id="autoFixPlan"></div>${holeDiagPanel()}</div>` + h;
+    if (holeOpt && st.pairings.some(p => p.id === holeOpt.pairing.id && !C.pairingFull(p))) h = `<div class="panel" id="holeSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${pairHtml(holeOpt.pairing)} 补位方案 <small>缺 ${holeOpt.open.map(k => C.SLOT_NAME[k]).join('、')} · 共 ${holeOpt.solutions.length} 套 · 不会自动应用，由排班员比较后确定</small></h3><button class="btn sm" id="holeX" style="margin-left:auto">关闭</button></div>
+      <div class="note" style="margin:6px 0 8px">每套方案列出涉及的人员与工时变化、是否占用意向休息、节奏扰动和公平影响；「人工处理」列出各座位的受阻原因。</div>
+      <div class="solgrid">${holeOpt.solutions.map(solCard).join('')}</div></div>
+      <div class="panel"><h3>影响预览 <small>悬停/点选方案</small></h3><div id="mgBox">${miniGantt(holeOpt.solutions[cardCtx.hover] || holeOpt.solutions[0])}</div></div>` + h;
+    else holeOpt = null;
     $('#main').innerHTML = h;
+    document.querySelectorAll('.holeGo').forEach(b => b.onclick = e => { e.stopPropagation(); toast('正在生成补位方案…', 8000);
+      setTimeout(() => { holeOpt = C.holeOptions(st, b.dataset.pr); if (!holeOpt) return; const i = holeOpt.solutions.findIndex(x => x.recommended);
+        cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(holeOpt.pairing.crew).filter(Boolean), days: C.daysTouched(holeOpt.pairing, st) }; rReport(); const el = $('#holeSol'); if (el) el.scrollIntoView(); toast(`已生成 ${holeOpt.solutions.length} 套补位方案（${holeOpt.ms} ms）`); }, 30); });
+    if (holeOpt && $('#holeSol')) { $('#holeX').onclick = () => { holeOpt = null; rReport(); };
+      bindCards(holeOpt.solutions, sol => `${pairLabel(holeOpt.pairing)} 补位 · 方案「${sol.name}」`, () => { holeOpt = null; }, {}); }
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
     document.querySelectorAll('.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
     document.querySelectorAll('details.ig').forEach(d => d.ontoggle = () => { if (!issueOpen) return; d.open ? issueOpen.add(d.dataset.igk) : issueOpen.delete(d.dataset.igk); });
@@ -487,7 +498,7 @@
         <div><span class="lab">工时变化</span>${sol.people.map(x => `<div>${esc(x.name)} ${x.hb.toFixed(1)}h→<b class="${x.overHard ? 'red' : 'okc'}">${x.ha.toFixed(1)}h</b> ${x.overHard ? `<span class="red">超 ${st.settings.hardMaxHours || 100}h 系统月上限</span>` : ''}</div>`).join('') || '—'}</div>
         <div><span class="lab">公平（基尼）</span>${sol.giniB.toFixed(4)}→${sol.giniA.toFixed(4)} <span class="${sol.giniD > 0.002 ? 'warnc' : 'okc'}">(${sol.giniD >= 0 ? '+' : ''}${sol.giniD.toFixed(4)})</span></div>
         <div><span class="lab">意向休息 / 节奏</span>${sol.prefN ? `<span class="warnc">占用意向休息 ${sol.prefN} 天</span>` : '<span class="okc">不占意向休息</span>'} · ${sol.rhy ? `<span class="warnc">节奏扰动 +${sol.rhy}</span>` : '<span class="okc">节奏无扰动</span>'}</div>
-        <div><span class="lab">当日剩余备份</span>${sol.sbLeft.map(x => `<span class="${x.n ? '' : 'warnc'}">${x.d}日:${x.n}</span>`).join(' ')}</div>
+        <div><span class="lab">当日剩余备份</span>${(sol.sbLeft.length > 10 ? `<span class="mut">${C.dayLabel(sol.sbLeft[0].d).text}–${C.dayLabel(sol.sbLeft[sol.sbLeft.length - 1].d).text}：${sol.sbLeft.filter(x => !x.n).length} 天无备份</span>` : sol.sbLeft.map(x => `<span class="${x.n ? '' : 'warnc'}">${C.dayLabel(x.d).text}:${x.n}</span>`).join(' '))}</div>
         ${sol.fdpAfter != null ? `<div><span class="lab">执勤 / 休息</span>${sol.fdpAfter ? `<span class="red">✖ 仍有 ${sol.fdpAfter} 个值勤日超限</span>` : '<span class="okc">✔ 预计 飞行执勤期不超限</span>'} · ${sol.restAfterV ? `<span class="red">休息不足 ${sol.restAfterV} 项</span>` : '<span class="okc">休息满足</span>'}</div>` : ''}
         <div><span class="lab">合规检查</span>${sol.unresolved ? `<span class="red">✖ ${sol.unresolved} 个岗位需人工处理</span>` : sol.hard ? `<span class="red">✖ 硬性违规 ${sol.hard}</span>` : '<span class="okc">✔ 座位搭配 ✔ 特殊机场 ✔ 休息/工时 · 硬性违规 0</span>'}${sol.bp.length ? `<br><span class="warnc">血压测试仪：${sol.bp.map(pairLabelOf).join('、')} 始发站须配备</span>` : ''}</div>
       </div>
@@ -820,7 +831,7 @@
     const cnt = l => vs.filter(v => v.level === l).length;
     return `<div class="panel igroups"><h3>问题明细 <small>共 ${vs.length} 条 · <span class="red">硬违规 ${cnt('hard')}</span> · <span class="warnc">软提示 ${cnt('soft')}</span> · 提醒 ${cnt('info')} · ${gs.length} 类</small></h3>
       ${gs.map(g => { const k = g.level + '|' + g.type; return `<details class="ig ig-${g.level}" data-igk="${esc(k)}" ${issueOpen.has(k) ? 'open' : ''}><summary><span class="ig-lv ${LV[g.level][1]}">${LV[g.level][0]}</span><b>${esc(g.type)}</b><span class="ig-n">${g.xs.length} 条</span><span class="ig-d mut">${esc(ISSUE_DESC[g.type] || '')}</span></summary>
-        <div class="ig-body">${g.xs.map(v => `<div class="ig-row ${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><span>${esc(v.msg)}</span>${v.pairing ? '<span class="ig-go">定位 →</span>' : ''}</div>`).join('')}</div></details>`; }).join('') || '<div class="okc">无问题</div>'}</div>`;
+        <div class="ig-body">${g.xs.map(v => `<div class="ig-row ${v.pairing ? 'issueJump' : ''}" ${v.pairing ? `data-pr="${esc(v.pairing)}"` : ''}><span>${esc(v.msg)}</span>${v.type === '未满员' && v.pairing ? `<button type="button" class="btn sm primary holeGo" data-pr="${esc(v.pairing)}">补位方案</button>` : ''}${v.pairing ? '<span class="ig-go">定位 →</span>' : ''}</div>`).join('')}</div></details>`; }).join('') || '<div class="okc">无问题</div>'}</div>`;
   }
   // ---- 演示版规则库：按主题分组的规则卡片 + 引擎真实代码 ----
   function hlJs(code) { // 轻量 JS 语法高亮（注释 / 字符串 / 关键字 / 数字）

@@ -949,3 +949,5 @@ body.pa-on .story{display:none}
 .spap{color:#ff9f43;font-weight:700}
 :root[data-theme="light"] .spap{color:#c2410c}
 .bar .spap{color:#ffc078}
+.issue-row .ihole{display:inline-block;margin-top:4px;font-size:12px;color:#7fb0ff;border:1px solid rgba(79,140,255,.45);border-radius:6px;padding:1px 8px;cursor:pointer}.issue-row .ihole:hover{background:rgba(79,140,255,.15)}
+.ig-row .holeGo{white-space:nowrap}
