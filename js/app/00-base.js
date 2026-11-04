@@ -176,7 +176,14 @@
     const pr = st.pairings.find(x => x.id === pairingId); if (!pr) { toast('未找到任务 ' + esc(pairingId)); return; }
     closeIssuePanel();
     tab = 'gantt'; location.hash = 'gantt';
-    ui.hl = { pairings: new Set([pr.id]), pilots: new Set(['C', 'F', 'T'].map(s => pr.crew[s]).filter(Boolean)), days: C.daysTouched(pr, st) };
+    const ids = ['C', 'F', 'T'].map(s => pr.crew[s]).filter(Boolean);
+    if (!ids.length) { tab = 'tasks'; location.hash = 'tasks'; render(); openDrawer(pr.id); toast('该任务还没有任何机组，已打开任务详情'); return; }
+    // 甘特筛选会藏掉要高亮的人（外中队候补 / 其他职级 / 搜索词 / 其他月份）→ 先放开筛选
+    const pmx = {}; st.pilots.forEach(p => { pmx[p.id] = p; });
+    if (ids.some(id => pmx[id] && ui.gsq && ui.gsq !== '全部' && pmx[id].squad !== ui.gsq)) ui.gsq = '全部';
+    ui.gq = ''; ui.gg = '全部';
+    if (ui.gMonth && ui.gMonth !== 'all' && C.monthOfDay) { const mk = C.monthOfDay(pr.start); if (mk) ui.gMonth = mk; }
+    ui.hl = { pairings: new Set([pr.id]), pilots: new Set(ids), days: C.daysTouched(pr, st), issue: true };
     render(); setTimeout(() => { scrollToHl(); pulseHl(); }, 40);
   }
   function openIssuePanel() {
