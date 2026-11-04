@@ -1393,7 +1393,7 @@
   function extraCrewIssue(p, cs, st) {
     if (EO.restriction_table_hard !== false && st && st.restrictions && st.restrictions.length) { const rs = restrictionSet(st);
       for (let i = 0; i < cs.length; i++) for (let j = i + 1; j < cs.length; j++) if (rs.has(cs[i].id + '|' + cs[j].id)) return `[restriction_table] 搭配限制表：${cs[i].name} 与 ${cs[j].name} 不可同机`; }
-    const fos = cs.filter(x => isFO(x.rank));
+    const fos = p.legs.some(l => !l.dh) ? cs.filter(x => isFO(x.rank)) : []; // 纯置位任务无人上座，不查 FO 矩阵
     for (let i = 0; i < fos.length; i++) for (let j = i + 1; j < fos.length; j++) if (!foComboAllowed(fos[i].rank, fos[j].rank))
       return `[RE12 fo_combination_matrix.${foComboKey(fos[i].rank, fos[j].rank)}] 两名副驾驶 ${fos[i].rank}+${fos[j].rank} 搭配禁止`;
     const cats = new Set(); p.legs.forEach(l => [l.from, l.to].forEach(c => cats.add(apCat(c, st))));
