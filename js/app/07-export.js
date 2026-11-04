@@ -147,7 +147,7 @@
         return { id, start, ndays: Math.floor(legs[legs.length - 1].arr / C.DAY) + 1 - start + (legs[legs.length - 1].arr % C.DAY === 0 ? 0 : 0), ac: legs.some(l => l.ac === 'A321') ? 'A321' : 'A320', legs, crew: { C: null, F: null, T: null } }; })
         .map(p => (p.ndays = Math.max(p.ndays, ...p.legs.map(l => l.d)), p)).sort((a, b) => a.legs[0].dep - b.legs[0].dep);
       st.sample = false; refresh(); toast(`已导入 ${st.pairings.length} 个任务`); });
-    read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings)); refresh(); toast('备份已恢复'); });
+    read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; if (C.setPeriod) C.setPeriod(st.grid || { days: 30, start: { m: 11, d: 1 } }); st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings)); try { leaveOpts = null; leaveHoles = null; dutyOpts = null; } catch (e) {} refresh(); toast('备份已恢复'); });
     $('#tpXlsx').onclick = () => downloadLegTemplate();
     $('#imXlsx').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importLegFile(f); };
     bindExportButtons();

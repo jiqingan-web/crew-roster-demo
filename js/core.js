@@ -1567,8 +1567,11 @@
     //    （软提示见 day5Operatings / validate「第5日执飞」；置位仍不计飞行小时、不拉 FDP 窗）
     // 3) 任意连续 7 日历日飞行值勤期 ≤60h；4) 月飞行值勤期 ≤210h
     const fdp = pilotFdpByDay(p, st, idx, ex, extra);
-    let monthFdp = 0; for (let d = 1; d <= DAYS; d++) monthFdp += fdp[d];
-    if (monthFdp > CCAR121.monthFdpH * 60 + 1e-9) rs.push('月飞行值勤期超' + CCAR121.monthFdpH + 'h(' + (monthFdp / 60).toFixed(1) + 'h)');
+    // 月飞行值勤期按自然月分桶（网格可能跨月，如 51 日/全年回测）；单桶时与整段求和等价
+    for (const b of monthMeta()) {
+      let monthFdp = 0; for (const d of b.days) monthFdp += fdp[d] || 0;
+      if (monthFdp > CCAR121.monthFdpH * 60 + 1e-9) { rs.push('月飞行值勤期超' + CCAR121.monthFdpH + 'h(' + (monthMeta().length > 1 ? b.label + ' ' : '') + (monthFdp / 60).toFixed(1) + 'h)'); break; }
+    }
     for (let s = 1; s <= DAYS - 6; s++) {
       let sum = 0; for (let k = 0; k < 7; k++) sum += fdp[s + k];
       if (sum > CCAR121.sevenDayFdpH * 60 + 1e-9) { rs.push('连续7日飞行值勤超' + CCAR121.sevenDayFdpH + 'h(D' + s + '-' + (s + 6) + ':' + (sum / 60).toFixed(1) + 'h)'); break; }
@@ -4465,8 +4468,25 @@
     opt = opt || {}; const minOk = opt.minOk || 2; st.actuals = st.actuals || {}; const b0 = summarize(st);
     const hardN = s => s.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length;
     const mon = dutyMonitor(st, date).filter(x => x.day.legs.length >= 2 && !x.exceed && x.day.buffer > 60).sort((a, b) => a.day.buffer - b.day.buffer);
-    for (const x of mon.slice(0, opt.maxTry || 12)) { const l = x.day.legs[Math.min(1, x.day.legs.length - 1)]; const k = legKey(l.leg);
-      const dly = Math.max(20, Math.round((x.day.buffer - 30) / 5) * 5); // 压到余量约 30 分（高风险、未超限）→ 预防性换组
+    // 目标：注入延误后该日余量落在 [lo, hi]（高风险、未超限），且该日仍是一个执勤期（长地面间隔会触发执勤期拆分，余量反而变大）。
+    // 不能用 "buffer − 30" 一步算延误：延误不一定 1:1 吃掉余量。逐段、逐步加大延误搜索。
+    const lo = opt.targetMin == null ? 10 : opt.targetMin, hi = opt.targetMax == null ? Math.min(55, (st.settings.fdpRiskHigh || 60) - 5) : opt.targetMax;
+    const pickDelay = x => {
+      const pr = x.pr; const nLeg = x.day.legs.length;
+      for (const li of [0, Math.min(1, nLeg - 1)].filter((v, i, a) => a.indexOf(v) === i)) {
+        const l = x.day.legs[li]; const k = legKey(l.leg);
+        for (let dly = 20; dly <= x.day.buffer + 120; dly += 10) {
+          const acts = Object.assign({}, st.actuals); acts[k] = { dep: l.dep + dly, arr: l.arr + dly, kind: 'est' };
+          const ds = fdpDays(pr, st, acts).filter(q => q.date === date);
+          if (ds.length !== 1) break;                 // 被拆成两个执勤期：再加延误也只会更远离目标
+          const b = ds[0].buffer;
+          if (ds[0].exceed > 0 || b < lo) break;      // 越过目标区间
+          if (b <= hi) return { k, l, dly };
+        }
+      }
+      return null;
+    };
+    for (const x of mon.slice(0, opt.maxTry || mon.length)) { const pk = pickDelay(x); if (!pk) continue; const { k, l, dly } = pk;
       const w = clone(st); w.actuals[k] = { dep: l.dep + dly, arr: l.arr + dly, kind: 'est' };
       const o = fdpOptions(w, x.pr.id); const good = o.solutions.filter(z => !z.manual && !z.unresolved && !z.fdpAfter && z.hard <= b0.hard && z.state);
       if (good.length < minOk) continue;
