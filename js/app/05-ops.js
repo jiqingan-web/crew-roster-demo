@@ -150,15 +150,14 @@
     const mon = C.dutyMonitor(st, dutyDate); const m = pm();
     const nEx = mon.filter(x => x.exceed).length, nDn = mon.filter(x => x.downstream.length).length;
     const dl = Object.keys(A).length;
-    const tog = `<span class="seg" id="dtView"><button type="button" data-v="cards" class="${dutyView === 'cards' ? 'on' : ''}">时间轴</button><button type="button" data-v="ac" class="${dutyView === 'ac' ? 'on' : ''}">飞机甘特</button></span>`;
+    const tog = '';
     const nLow = mon.filter(x => !x.exceed && x.day.buffer < (S.fdpRiskHigh || 60)).length;
     const help = `飞行执勤期 = 报到（首段起飞前 ${S.reportMin} 分钟）→ 当日最后落地。录入延误后按最短过站顺延后续航段，即时重算余量与下游休息。`;
     let h = `<div class="panel dt-head"><b class="dt-title">执勤监控</b>${tog}
       <span class="dt-date"><button type="button" class="btn sm" id="dtPrev" aria-label="前一天">◀</button><select id="dtD" aria-label="日期">${Array.from({ length: C.DAYS }, (_, i) => `<option value="${i + 1}" ${i + 1 === dutyDate ? 'selected' : ''}>${C.dayLabel(i + 1).text} 周${WK[dow(i + 1)]}</option>`).join('')}</select><button type="button" class="btn sm" id="dtNext" aria-label="后一天">▶</button></span>
       <span class="dt-chip">当日任务 <b>${mon.length}</b></span><span class="dt-chip ${nLow ? 'warn' : ''}">余量 &lt;1h <b>${nLow}</b></span><span class="dt-chip ${nEx ? 'bad' : ''}">预计超限 <b>${nEx}</b></span><span class="dt-chip ${nDn ? 'warn' : ''}">下游休息 <b>${nDn}</b></span><span class="dt-chip">已录延误 <b>${dl}</b> 段</span>
       <span class="dt-btns"><button class="btn sm" id="dtSim">模拟延误</button><button class="btn sm" id="dtClr">清除当日延误</button>${leaveHist.length ? `<button class="btn sm" id="dtUndo">↶ 撤销</button>` : ''}<span class="dt-help" title="${esc(help)}" tabindex="0">?</span></span></div>`;
-    if (dutyView === 'ac') h += rDutyAcHtml(mon, m, A);
-    else h += dutyTimelineHtml(mon, m, A);
+    h += dutyTimelineHtml(mon, m, A);
     const o = dutyOpts;
     if (o) h += `<div class="panel" id="dtSol"><div class="flex" style="flex-wrap:wrap;align-items:center"><h3 style="margin:0">${esc(pairLabel(o.pairing))} 处置方案 <small>${o.exceed ? `D${o.exceed.d} 预计超 飞行执勤期 ${o.exceed.exceed} 分钟` : (o.downstream && o.downstream.length ? '下游休息不足' : '执勤余量紧张（预防）')} · 生成 ${o.solutions.length} 个方案 · 用时 ${o.ms} ms</small></h3>
       <button class="btn sm" id="dtExpSel" style="margin-left:auto" title="导出当前选中方案；若未选中则导出推荐方案">导出备选方案</button></div>
@@ -190,7 +189,6 @@
         if (i < 0) i = 0; exportSolPlan(o.solutions[i], i, expCtx);
       };
     }
-    if (dutyView === 'ac') bindDutyAc(mon, m, A);
   }
 
   function rDutyAcHtml(mon, m, A) {
