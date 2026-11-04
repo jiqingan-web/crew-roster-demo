@@ -97,6 +97,13 @@
     } catch (e) {}
     reset(false);
   }
+  // 日序号数组 → 日期文本，连续日合并为区间：[43..56, 85] → 「09/12–09/25（14天）、10/24」
+  function daysText(arr, empty) {
+    const xs = [...new Set(arr || [])].map(Number).filter(d => d >= 1).sort((a, b) => a - b); if (!xs.length) return empty == null ? '—' : empty;
+    const lab = d => (C.dayLabel ? C.dayLabel(d).text : d + '日'); const out = []; let s = xs[0], p = xs[0];
+    const push = () => out.push(s === p ? lab(s) : `${lab(s)}–${lab(p)}（${p - s + 1}天）`);
+    for (let i = 1; i < xs.length; i++) { if (xs[i] === p + 1) { p = xs[i]; continue; } push(); s = p = xs[i]; } push(); return out.join('、');
+  }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { if (DEMO) { st = window.RosterDemo.build(C); st.demo = DEMO_VER; try { st.demoSig0 = demoSig(); } catch (e) {} lastSolveMs = null; save(); if (r) refresh(); return; }
     if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
@@ -315,7 +322,7 @@
     if (rows.length) {
       h += rows.map((f, ri) => {
         const src = f.source === 'hole' ? '空洞换人' : f.source === 'edit' ? '手工换人' : f.source === 'oneclick' ? '一键补位' : f.source === 'plan-chain' ? '链式整案' : (f.planName ? '方案「' + esc(f.planName) + '」' : '整案');
-        return `<tr class="${f.undone ? 'mut' : ''}"><td>${esc(f.time)}</td><td>${esc(f.leavePilotName || '—')}</td><td>${(f.leaveDays || []).join(',') || '—'}</td>
+        return `<tr class="${f.undone ? 'mut' : ''}"><td>${esc(f.time)}</td><td>${esc(f.leavePilotName || '—')}</td><td>${esc(daysText(f.leaveDays))}</td>
           <td><b>${escPairOf(f.pairingId)}</b>${fillBadge(f.pairingId)}</td><td>${esc(f.slotName || f.slot || '')}</td>
           <td>${esc(f.fromName || '—')}</td><td><b>${esc(f.toName || '—')}</b> ${f.toRank ? pill(f.toRank) : ''}</td>
           <td>${src}${f.undone ? ' · 已撤销' : ''}</td>

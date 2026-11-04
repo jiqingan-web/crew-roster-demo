@@ -343,7 +343,7 @@
     if (!c) return '';
     if (c.light === 'red') return (c.reasons && c.reasons[0]) ? c.reasons[0] : '存在硬性冲突，不可直接补位';
     const parts = [];
-    if (c.fromStandby) parts.push(`备份日（${(c.standbyDays || []).join(',') || '—'}）可直接补位`);
+    if (c.fromStandby) parts.push(`备份日（${esc(daysText(c.standbyDays))}）可直接补位`);
     else parts.push('可直接补位，无链式换人');
     if (c.prefHit && c.prefHit.length) parts.push(`将占意向休息 ${c.prefHit.join(',')} 日`);
     else parts.push('不占意向休息');
@@ -542,7 +542,7 @@
         <span class="mut" id="lvQn"></span>
       </div>
       <div class="note" style="margin-top:8px">任务 ${idx.sched[p.id].map(pr => `<a class="lvpr" data-f="${pr.start}" data-t="${pr.start + pr.ndays - 1}">${esc(pairLabel(pr))}(${pr.start}${pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : ''})</a>`).join(' ') || '无'}
-        · 请假 ${(p.leave || []).join(',') || '无'} · 意向 ${(p.prefs || []).join(',') || '无'} · 占位 ${holdDaysNow.join(',') || '无'}</div>
+        · 请假 ${esc(daysText(p.leave, '无'))} · 意向 ${esc(daysText(p.prefs, '无'))} · 占位 ${esc(daysText(holdDaysNow, '无'))}</div>
       ${(() => {
         const daysPeek = []; for (let d = leaveSel.from; d <= leaveSel.to; d++) daysPeek.push(d);
         const flyPeek = daysPeek.filter(d => (idx.sched[p.id] || []).some(pr => C.daysTouched(pr, st).includes(d)));
@@ -562,7 +562,7 @@
           <span><i class="leg-hold"></i>提前占位</span>
           <span><i class="leg-lv"></i>请假</span>
           <span><i class="leg-sb"></i>备份</span>
-          <span>${esc(p.name)} · ${holdPreviewDays.length ? holdPreviewDays.join(',') + ' 日' : '—'}</span>
+          <span>${esc(p.name)} · ${esc(daysText(holdPreviewDays))}</span>
         </div>
         <div id="mgHold">${miniGantt({ state: st, people: [{ id: p.id }], steps: [] }, { focus: [p.id], days: holdPreviewDays })}</div>
       </div>
@@ -748,7 +748,7 @@
       } else {
         refresh();
         const skip = r.skipped && r.skipped.length ? `（跳过已飞 ${r.skipped.join(',')}）` : '';
-        toast(`✔ 已占位 ${esc(p.name)} ${holdDays.join(',')} 日${skip}`, 3200);
+        toast(`✔ 已占位 ${esc(p.name)} ${esc(daysText(holdDays))}${skip}`, 3200);
         setTimeout(() => {
           document.querySelectorAll('#mgHold .mgd.hold, #mgBox .mgd.hold').forEach(el => {
             el.classList.remove('hold-flash'); void el.offsetWidth; el.classList.add('hold-flash');

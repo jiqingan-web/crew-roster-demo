@@ -13,8 +13,11 @@
     if (!opt) return;
     if (opt.days) DAYS = opt.days;
     if (opt.start) GRID_START = { m: opt.start.m, d: opt.start.d };
+    DLC = {};
   }
-  function dayLabel(d) {
+  let DLC = {}; // dayLabel 缓存（热路径：冲突原因文案）
+  function dayLabel(d) { return DLC[d] || (DLC[d] = dayLabel0(d)); }
+  function dayLabel0(d) {
     let m = GRID_START.m, dd = GRID_START.d + d - 1;
     while (dd > MD[m - 1]) { dd -= MD[m - 1]; m = m % 12 + 1; }
     return { m, d: dd, text: (m < 10 ? '0' : '') + m + '/' + (dd < 10 ? '0' : '') + dd };
@@ -1714,12 +1717,12 @@
       if (!(prevL && l.dep - prevL.arr < 480 && d !== Math.floor(prevL.dep / DAY) + 1)) depDays.add(d); else depDays.add(Math.floor(prevL.dep / DAY) + 1);
       prevL = l; });
     const dMin = Math.min(...depDays), dMax = Math.max(...depDays), ldays = dt.filter(d => depDays.has(d) || (d > dMin && d < dMax));
-    const lv = ldays.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
-    const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.join(',') + '日)');
-    const trd = dt.filter(d => ((st.training || {})[p.id] || []).includes(d)); if (trd.length) rs.push('培训日冲突(' + trd.join(',') + '日)');
-    const ctd = dt.filter(d => ((st.control || {})[p.id] || []).includes(d)); if (ctd.length) rs.push('控班日冲突(' + ctd.join(',') + '日)');
-    const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d) || ((st.simHold || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.join(',') + '日)');
-    if (!opt.ignorePrefs) { const pf = dt.filter(d => (p.prefs || []).includes(d)); if (pf.length) rs.push('意向休息日(' + pf.join(',') + '日)'); }
+    const lv = ldays.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.map(d => dayLabel(d).text).join(',') + ')');
+    const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.map(d => dayLabel(d).text).join(',') + ')');
+    const trd = dt.filter(d => ((st.training || {})[p.id] || []).includes(d)); if (trd.length) rs.push('培训日冲突(' + trd.map(d => dayLabel(d).text).join(',') + ')');
+    const ctd = dt.filter(d => ((st.control || {})[p.id] || []).includes(d)); if (ctd.length) rs.push('控班日冲突(' + ctd.map(d => dayLabel(d).text).join(',') + ')');
+    const simd = dt.filter(d => ((st.sim || {})[p.id] || []).includes(d) || ((st.simHold || {})[p.id] || []).includes(d)); if (simd.length) rs.push('模拟机日冲突(' + simd.map(d => dayLabel(d).text).join(',') + ')');
+    if (!opt.ignorePrefs) { const pf = dt.filter(d => (p.prefs || []).includes(d)); if (pf.length) rs.push('意向休息日(' + pf.map(d => dayLabel(d).text).join(',') + ')'); }
     if (!opt.ignorePrefs && !opt.skipFtl) { const d5 = day5Deadheads(p, st, idx, opt.excludeId, idx.sched[p.id].includes(pr) ? null : pr).filter(x => x.pr === pr); if (d5.length) rs.push('第5日置位(尽量避免,D' + d5.map(x => x.d).join(',') + ')'); }
     const a = report(pr, st), b = release(pr, st), restPr = S.minRestH * 60 + preCommuteOf(pr, st); // 休息期止于报到前（基地 25 分钟、外站 0）
     for (const o of idx.sched[p.id]) { if (o === pr || o.id === (opt.excludeId || '')) continue;
@@ -3628,8 +3631,8 @@
           else if (r.includes('不适飞') || r.includes('体检已过期') || r.includes('不能作为唯一机长')) add('健康限制', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
           else if (r.includes('限制高原') || r.includes('限制夜间')) add('健康限制', 'soft', `${plabel} ${p.name}：${r}`, pr, p.id);
           else if (/144h|连续7日|月飞行值勤|年飞行/.test(r)) add('飞行时间限制', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id); });
-        day5Deadheads(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日置位', 'soft', `${plabel} ${p.name} 连续4个值勤日后第5日(${x.d}日)仅置位(随)：合规但尽量避免`, pr, p.id));
-        day5Operatings(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日执飞', 'soft', `${plabel} ${p.name} 连续4个值勤日后第5日(${x.d}日)执飞：时间满足即可（软提示）`, pr, p.id));
+        day5Deadheads(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日置位', 'soft', `${plabel} ${p.name} 连续4个值勤日后第5日(${dayLabel(x.d).text})仅置位(随)：合规但尽量避免`, pr, p.id));
+        day5Operatings(p, st, idx).filter(x => x.pr === pr).forEach(x => add('第5日执飞', 'soft', `${plabel} ${p.name} 连续4个值勤日后第5日(${dayLabel(x.d).text})执飞：时间满足即可（软提示）`, pr, p.id));
         const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
         if (pf.length) add('意向休息日未满足', 'soft', `${plabel} ${p.name} 意向休息日 ${pf.join(',')} 日被排班`, pr, p.id);
       });
@@ -3668,7 +3671,7 @@
     const seen = new Set(); const ded = out.filter(v => { if (v.type !== '时间重叠' && v.type !== '休息不足') return true;
       const k = v.type + v.pilot + [v.pairing, (v.msg.match(/\((PR\d+)\)/) || [])[1]].sort().join(); if (seen.has(k)) return false; seen.add(k); return true; });
     const dsv = dayStatus(st, idx);
-    st.pilots.forEach(p => { (st.standby && st.standby[p.id] || []).forEach(d => { if (dsv[p.id][d] === 'D') ded.push({ type: '备份冲突', level: 'hard', msg: `${p.name} ${d}日备份与飞行任务冲突`, pilot: p.id }); });
+    st.pilots.forEach(p => { (st.standby && st.standby[p.id] || []).forEach(d => { if (dsv[p.id][d] === 'D') ded.push({ type: '备份冲突', level: 'hard', msg: `${p.name} ${dayLabel(d).text} 备份与飞行任务冲突`, pilot: p.id }); });
       if (st.standby) {
         // 备份上限按自然月逐桶（单桶时与旧口径逐字节一致）
         const sb = st.standby[p.id] || [], capSB = S.maxStandbyPerPilot == null ? 1 : S.maxStandbyPerPilot, mb = monthMeta();
@@ -3677,7 +3680,7 @@
           if (n > capSB) ded.push({ type: '备份超限', level: 'soft', msg: `${p.name} ${b.label}备份${n}天，超过每人每月上限`, pilot: p.id }); });
       } });
     if (st.standby) for (let d = 1; d <= DAYS; d++) { const n = st.pilots.filter(p => (st.standby[p.id] || []).includes(d) && dsv[p.id][d] === 'S').length; const need = S.standbyPerDay || 0;
-      if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${d}日备份 ${n}/${need} 人` }); }
+      if (n < need) ded.push({ type: '备份人数不足', level: 'soft', msg: `${dayLabel(d).text} 备份 ${n}/${need} 人` }); }
     // FTL 硬规则：按人×任务跑一遍（与求解器 personCheck 同口径），再扫主备份/年累计
     const ftlSeen = new Set();
     const addFtl = (type, msg, pr, pid) => { const k = type + '|' + pid + '|' + msg; if (ftlSeen.has(k)) return; ftlSeen.add(k); ded.push({ type, level: 'hard', msg, pairing: pr && pr.id, pilot: pid }); };
@@ -3714,7 +3717,7 @@
       }
       ((st.standby || {})[p.id] || []).forEach(d => {
         const t0 = (d - 1) * DAY; const iv = pilotDutyIntervals(p, st, idx).filter(x => !(x[2] === 'S' && x[3] === 'SB' + d));
-        if (!has48hRestBefore(iv, t0)) addFtl('144h内48h休息', `${p.name} ${d}日主备份前144h内无连续48h休息`, null, p.id);
+        if (!has48hRestBefore(iv, t0)) addFtl('144h内48h休息', `${p.name} ${dayLabel(d).text} 主备份前144h内无连续48h休息`, null, p.id);
       });
       // 软：硬 48h 已过但未达 softRest48H（默认 60h）→ 偏紧提示，不升硬；仅飞行+备份，培训/控班不施 soft 60h
       const softH = +(S.softRest48H != null ? S.softRest48H : 60);
@@ -3734,7 +3737,7 @@
           const t0 = (d - 1) * DAY;
           const iv = pilotDutyIntervals(p, st, idx).filter(x => !(x[2] === 'S' && x[3] === 'SB' + d));
           if (hasContinuousRestBefore(iv, t0, 48 * 60) && !hasContinuousRestBefore(iv, t0, softNeed)) {
-            ded.push({ type: '48h休息偏紧', level: 'soft', msg: `${p.name} ${d}日主备份：${softLabel}`, pilot: p.id });
+            ded.push({ type: '48h休息偏紧', level: 'soft', msg: `${p.name} ${dayLabel(d).text} 主备份：${softLabel}`, pilot: p.id });
           }
         });
       }
@@ -3852,7 +3855,7 @@
       }
       const pf = daysTouched(pr, st).filter(d => (p.prefs || []).includes(d));
       const sbd = daysTouched(pr, st).filter(d => ((st.standby || {})[p.id] || []).includes(d));
-      res.push({ p, ok: rs.length === 0, reasons: rs, crewWarn, warn: pf.length ? '意向休息日' + pf.join(',') + '日' : '', standby: sbd, hours: idx.hours[p.id] });
+      res.push({ p, ok: rs.length === 0, reasons: rs, crewWarn, warn: pf.length ? '意向休息日 ' + pf.map(d => dayLabel(d).text).join(',') : '', standby: sbd, hours: idx.hours[p.id] });
     }
     // 观察员列表按工时排，不把教员置顶；自动补位另用 !crewWarn 优选
     return res.sort((a, b) => (b.ok - a.ok) || a.hours - b.hours);

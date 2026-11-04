@@ -154,9 +154,9 @@
     const tasks = (idx.sched[p.id] || []).map(pr => '<a class="lvpr" data-f="' + pr.start + '" data-t="' + (pr.start + pr.ndays - 1) + '">' + pr.id + '(' + pr.start + (pr.ndays > 1 ? '–' + (pr.start + pr.ndays - 1) : '') + '日)</a>').join(' ');
     const reg = lvRegOf(p.id);
     return '<div class="lvpinfo"><span class="lab">任务</span>' + (tasks || '<span class="mut">本月无任务</span>')
-      + '<span class="lab">已请假</span>' + ((p.leave || []).join(',') || '<span class="mut">无</span>')
-      + '<span class="lab">意向休息</span>' + ((p.prefs || []).join(',') || '<span class="mut">无</span>')
-      + '<span class="lab">备份</span>' + (((st.standby || {})[p.id] || []).join(',') || '<span class="mut">无</span>')
+      + '<span class="lab">已请假</span>' + (p.leave && p.leave.length ? esc(daysText(p.leave)) : '<span class="mut">无</span>')
+      + '<span class="lab">意向休息</span>' + (p.prefs && p.prefs.length ? esc(daysText(p.prefs)) : '<span class="mut">无</span>')
+      + '<span class="lab">备份</span>' + (((st.standby || {})[p.id] || []).length ? esc(daysText((st.standby || {})[p.id])) : '<span class="mut">无</span>')
       + '</div>';
   }
 
