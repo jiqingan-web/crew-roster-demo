@@ -1,8 +1,24 @@
 /* 机组排班助手 - 界面 · roster.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 人员总览（授权 / 健康限制） ----------------
+  // 某特殊机场的持资质人员 + 本期已飞该机场次数
+  function apHolders(c, own, roleOf) {
+    const idx = C.buildIndex(st); const flown = p => (idx.sched[p.id] || []).filter(pr => pr.legs.some(l => !l.dh && (l.from === c || l.to === c))).length;
+    const ord = { '责': 0, '重': 1, '带': 2, '副': 3 }; const xs = own.filter(p => roleOf(p, c)).map(p => ({ p, r: roleOf(p, c), n: flown(p) })).sort((a, b) => ord[a.r] - ord[b.r] || b.n - a.n);
+    return `<div class="apq-box"><b>${esc(C.apName(c, st))} 持资质人员</b><span class="mut">（${xs.length} 人 · 括号内为本期已飞该机场任务数 · 再点机场名取消）</span><div class="apq-list">${xs.map(x => `<span class="apq-p"><span class="authtag ${x.r === '责' ? 'on' : x.r === '副' ? 'on fo' : 'tr'}">${x.r}</span>${esc(x.p.name)} <small>${esc(x.p.rank)}（${x.n}）</small></span>`).join('') || '<span class="mut">无</span>'}</div></div>`;
+  }
   function rRoster() {
     C.migratePilots(st);
-    const authList = C.authAirports(st);
+    // 公司特殊机场资质表（st.authAirports + p.qualRole）：只列有航班或有人持资质的机场，按航班量排序；表头给供需
+    const QA = (st.authAirports || []).slice(); const useQ = QA.length > 0;
+    const own0 = st.pilots.filter(p => !isOuterPilot(p));
+    const roleOf = (p, c) => { const rs = (p.qualRole || {})[c] || []; return rs.some(r => /责任机长/.test(r)) ? '责' : rs.some(r => /重获/.test(r)) ? '重' : rs.some(r => /被带飞/.test(r)) ? '带' : rs.some(r => /副驾驶/.test(r)) ? '副' : ((p.auth || []).includes(c) && !useQ ? '✓' : ''); };
+    const apStat = {}; if (useQ) { const mon = Math.max(1, C.DAYS / 30.44);
+      QA.forEach(c => { const prs = st.pairings.filter(pr => pr.legs.some(l => !l.dh && (l.from === c || l.to === c)));
+        const cap = own0.filter(p => roleOf(p, c) === '责').length, fo = own0.filter(p => roleOf(p, c) === '副').length, tr = own0.filter(p => /[带重]/.test(roleOf(p, c))).length;
+        const seats = c === 'ZULS' ? 2 : 1; const load = prs.length ? prs.length * seats / mon / Math.max(cap, 0.5) : 0; // 拉萨双机长
+        const lv = !prs.length ? '' : (!cap || !fo) ? 'bad' : load > 3 ? 'bad' : load > 2 ? 'warn' : 'ok';
+        apStat[c] = { n: prs.length, cap, fo, tr, load, lv }; }); }
+    const authList = useQ ? QA.filter(c => apStat[c].n || apStat[c].cap || apStat[c].fo).sort((a, b) => apStat[b].n - apStat[a].n || apStat[b].cap - apStat[a].cap) : C.authAirports(st);
     const levelList = C.levelAirports(st);
     let ps = st.pilots.slice().sort((a, b) => {
       const order = { '教员': 0, '机长': 1, '新机长': 2, '副驾驶': 3 };
@@ -10,7 +26,7 @@
     });
     if (ui.rg !== '全部') ps = ps.filter(p => C.rankGroup(p.rank) === ui.rg);
     if (ui.rs !== '全部') ps = ps.filter(p => p.squad === ui.rs);
-    if (ui.ra !== '全部') ps = ps.filter(p => (p.auth || []).includes(ui.ra));
+    if (ui.ra !== '全部') ps = ps.filter(p => useQ ? roleOf(p, ui.ra) : (p.auth || []).includes(ui.ra));
     if (ui.rh === '有限制') ps = ps.filter(p => C.hasHealthRestriction(p.health));
     if (ui.rh === '不适飞') ps = ps.filter(p => p.health && p.health.noFly);
     if (ui.rh === '限制高原') ps = ps.filter(p => p.health && p.health.noPlateau);
@@ -22,7 +38,7 @@
     const squads = ['全部', ...new Set(st.pilots.map(p => p.squad).filter(Boolean))];
     const nAuth = authList.length;
     const nRest = st.pilots.filter(p => C.hasHealthRestriction(p.health)).length;
-    let h = `<div class="panel"><h3>人员总览 · 特殊机场授权与健康限制 <small>授权机场与规章校验一致（RE12 需授权类）；健康限制参与候选人过滤与校验（不适飞/体检过期/个人月上限/非唯一机长为硬性，高原/夜航限制为软性提示）</small></h3>
+    let h = `<div class="panel"><h3>人员总览 · 特殊机场授权与健康限制 <small>${useQ ? '特殊机场资质取自公司资质表' : '授权机场与规章校验一致（RE12 需授权类）'}；健康限制参与候选人过滤与校验（不适飞/体检过期/个人月上限/非唯一机长为硬性，高原/夜航限制为软性提示）</small></h3>
       <div class="flex" style="flex-wrap:wrap;gap:8px">
         <input id="rq" placeholder="搜索姓名/工号/拼音首字母/备注" value="${esc(ui.rq)}" style="width:200px">
         <select id="rg">${['全部', ...C.GROUPS].map(g => `<option ${g === ui.rg ? 'selected' : ''}>${g}</option>`).join('')}</select>
@@ -36,11 +52,11 @@
         <button class="btn sm primary" id="exPersonalZip">个人月历包</button>
         ${onePersonPicker()}
       </div>
-      ${demoFillBanner()}
-      <div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div></div>
+      ${DEMO ? '' : demoFillBanner()}
+      ${useQ ? `<div class="note" style="margin-top:8px">机场列取自公司特殊机场资质表（只列有航班或有人持资质的 ${authList.length} 个，按本期航班量排序）。格内：<span class="authtag on">责</span> 责任机长　<span class="authtag on fo">副</span> 副驾驶　<span class="authtag tr">带</span> 被带飞　<span class="authtag tr">重</span> 重获资格（带 / 重须教员同组）。表头：本期任务数 · 本中队可当机长 / 副驾驶人数；红 = 有人员缺口或每名机长每月超过 3 班，黄 = 超过 2 班。点机场名查看持资质人员。</div>${ui.ra !== '全部' && apStat[ui.ra] ? apHolders(ui.ra, own0, roleOf) : ''}` : `<div class="note" style="margin-top:8px"><span class="authtag on">绿</span> 已授权　<span class="authtag">灰</span> 未授权（需授权类：拉萨/丽江/西双版纳/西昌/西宁/大连/高原/赤峰）。克拉玛依、茅台/吕梁/忻州为级别运行限制（按座位级别，非个人授权本）。点击行可编辑健康限制与授权。</div>`}</div>
       <div class="panel scroll" style="max-height:calc(100vh - 220px);padding:0"><table class="rost"><thead><tr>
         <th>员工号</th><th>姓名</th><th>级别</th><th>中队</th><th>帮扶</th><th>健康限制</th>
-        ${authList.map(c => `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`).join('')}
+        ${authList.map(c => { const a = apStat[c]; return a ? `<th class="ath aq ${a.lv}" data-apq="${c}" title="${c} · 本期 ${a.n} 个任务 · 本中队 责任机长 ${a.cap} / 副驾驶 ${a.fo} / 带飞·重获 ${a.tr}"><span>${esc(C.apName(c, st))}</span><small>${a.n} 任务</small><small>${a.cap}/${a.fo}</small></th>` : `<th class="ath" title="${c}">${esc(C.apName(c, st))}</th>`; }).join('')}
         <th>授权数</th><th></th></tr></thead><tbody>`;
     for (const p of ps) {
       const flags = C.healthFlags(p.health);
@@ -51,12 +67,13 @@
             return `<span class="${cls}">${esc(f)}</span>`;
           }).join(' ')
         : '<span class="mut">—</span>';
-      const authN = (p.auth || []).filter(c => authList.includes(c)).length;
+      const authN = useQ ? authList.filter(c => roleOf(p, c)).length : (p.auth || []).filter(c => authList.includes(c)).length;
       h += `<tr class="rorow" data-pid="${p.id}">
         <td class="mut">${p.id}</td><td><b>${esc(p.name)}</b>${isOuterPilot(p) ? ' ' + outerBadge(p) : ''}</td><td>${pill(p.rank)}${isOuterPilot(p) ? `<span class="outer-rank">等级 ${esc(p.rank)}</span>` : ''}</td><td>${squadCell(p)}</td>
         <td class="hcell"><button type="button" class="btn sm roBangfu ${p.bangfu ? 'primary' : ''}" data-pid="${p.id}" title="切换帮扶对象">${p.bangfu ? '帮扶✓' : '—'}</button></td>
         <td class="hcell">${badges}</td>
-        ${authList.map(c => `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`).join('')}
+        ${authList.map(c => { if (!useQ) return `<td class="acell">${(p.auth || []).includes(c) ? '<span class="authtag on" title="已授权">✓</span>' : '<span class="authtag" title="未授权">·</span>'}</td>`;
+          const r = roleOf(p, c); const cl = r === '责' ? 'on' : r === '副' ? 'on fo' : r ? 'tr' : ''; return `<td class="acell">${r ? `<span class="authtag ${cl}" title="${esc(((p.qualRole || {})[c] || []).join('、'))}">${r}</span>` : '<span class="authtag" title="无资质">·</span>'}</td>`; }).join('')}
         <td>${authN}/${nAuth}</td>
         <td><button class="btn sm roEdit" data-pid="${p.id}">编辑</button> <button class="btn sm roLeave" data-pid="${p.id}">请假</button> <button class="btn sm roSwap" data-pid="${p.id}">换班</button> <button class="btn sm roCal" data-pid="${p.id}" title="导出此人月历 CSV">月历</button></td></tr>`;
     }
@@ -70,6 +87,7 @@
     $('#rg').onchange = e => { ui.rg = e.target.value; redraw(); };
     $('#rs').onchange = e => { ui.rs = e.target.value; redraw(); };
     $('#ra').onchange = e => { ui.ra = e.target.value; redraw(); };
+    document.querySelectorAll('[data-apq]').forEach(th => th.onclick = () => { ui.ra = ui.ra === th.dataset.apq ? '全部' : th.dataset.apq; redraw(); });
     $('#rh').onchange = e => { ui.rh = e.target.value; redraw(); };
     $('#roAdd').onclick = () => openRosterEdit(null);
     document.querySelectorAll('.roSwap').forEach(b => b.onclick = e => { e.stopPropagation(); openTransfer(b.dataset.pid); });

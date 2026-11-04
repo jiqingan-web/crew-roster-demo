@@ -917,3 +917,8 @@ body.pa-on .story{display:none}
 .rc-code summary code{opacity:.7;margin-left:4px;font-size:11px}
 .rc-code pre{margin:6px 0 0;padding:10px 12px;border-radius:8px;background:#0a1220;color:#d6e2f5;font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:pre;max-height:320px}
 .rc-code .hc{color:#6a9955}.rc-code .hs{color:#ce9178}.rc-code .hk{color:#569cd6}.rc-code .hn{color:#b5cea8}
+/* 人员总览 · 资质表机场 */
+.rost th.aq{cursor:pointer;line-height:1.25;vertical-align:bottom}.rost th.aq span{display:block}.rost th.aq small{display:block;font-weight:400;font-size:10px;opacity:.75;font-variant-numeric:tabular-nums}
+.rost th.aq.ok small{color:#21c7a8;opacity:1}.rost th.aq.warn small{color:#f5a524;opacity:1}.rost th.aq.bad small{color:#ef5d6c;opacity:1}
+.authtag.fo{background:rgba(79,140,255,.18);color:#7fb0ff;border-color:rgba(79,140,255,.5)}.authtag.tr{background:rgba(245,165,36,.15);color:#f5a524;border-color:rgba(245,165,36,.5)}
+.apq-box{margin-top:8px;padding:10px 12px;border:1px solid rgba(140,170,220,.25);border-radius:8px}.apq-list{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:6px}.apq-p{font-size:12px;display:inline-flex;align-items:center;gap:4px}
