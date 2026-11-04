@@ -97,7 +97,9 @@ items.forEach(it => { it.ids.sort(); it.L = [].concat(...it.cs.map(c => legsOf(c
 const chains = []; const open = {};
 for (const it of items) {
   const prev = open[it.ck]; const pl = prev && prev.legs[prev.legs.length - 1];
-  if (prev && prev.last >= it.d - 3 && prev.last < it.d && !BASES.has(pl.to) && pl.to === it.L[0].from) { prev.legs.push(...it.L.map(l => Object.assign(l, { d: it.d - prev.start + 1 }))); prev.last = it.d; prev.raw.push(it.raw); }
+  // 隔日串接时，中间日期里机组成员不得另有执勤（否则会把去程、回程置位串成一个任务，包住中间的执飞）
+  const freeBetween = prev && it.ids.every(p => { for (let d = prev.last + 1; d < it.d; d++) if ((duty[p] && duty[p][d]) || (leave[p] || []).includes(d)) return false; return true; }); // 中间有执勤或请假/停飞则不串
+  if (prev && prev.last >= it.d - 3 && prev.last < it.d && freeBetween && !BASES.has(pl.to) && pl.to === it.L[0].from) { prev.legs.push(...it.L.map(l => Object.assign(l, { d: it.d - prev.start + 1 }))); prev.last = it.d; prev.raw.push(it.raw); }
   else { const ch = { actual: it.cs.every(c => c.actual), ids: it.ids, start: it.d, last: it.d, legs: it.L.map(l => Object.assign(l, { d: 1 })), raw: [it.raw] }; chains.push(ch); open[it.ck] = ch; }
 }
 // ---- 座位 ----

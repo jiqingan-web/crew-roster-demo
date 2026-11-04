@@ -221,7 +221,7 @@
   function defaultSettings() {
     // 休息/报到口径按《公司运行手册》Re07-10 3.6.1、3.6.10 4)：两次飞行值勤期之间至少连续 10h 休息期（关车+40 分钟 → 报到−25 分钟）
     return { minRestH: 10, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 125, dhBoardMin: 45, night48Required: true, carMinBase: 25, carMinDefault: 25, carMin: {}, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 125, dhBoardMin: 45, dhMergedReportMin: 95, night48Required: true, carMinBase: 25, carMinDefault: 25, carMin: {}, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
       standbyPerDay: 0, maxStandbyPerPilot: 2, // 每日备份人数：用户 2026-11-04 取消该设置（中队无固定每日备份）
       gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 144h 内连续 48h 按法规硬卡；软目标取消（用户 2026-11-04：按法规来卡），=48 即不再出「48h休息偏紧」
@@ -249,7 +249,7 @@
       if (S.hardMaxHours === 90) S.hardMaxHours = 100;
       // 报到：现行国内 105 分钟（用户确认）；最低休息 10h、休息期自关车后 40 分钟起至报到前 25 分钟止（手册 Re07-10 3.6.1 4)、3.6.10 4)）
       if (S.reportMin === 95) S.reportMin = 105; if (S.reportMinIntl == null || S.reportMinIntl === 115) S.reportMinIntl = 125; // 《飞行部手册》Re10-08 2.2.3 4)(1)：国际航班在各机场报到时间前再提前 20 分钟
-      if (S.dhBoardMin == null) S.dhBoardMin = 45; if (S.carMinBase == null) S.carMinBase = 25; if (S.carMinDefault == null) S.carMinDefault = 25; if (!S.carMin) S.carMin = {}; if (S.night48Required == null) S.night48Required = true;
+      if (S.dhBoardMin == null) S.dhBoardMin = 45; if (S.dhMergedReportMin == null) S.dhMergedReportMin = 95; if (S.carMinBase == null) S.carMinBase = 25; if (S.carMinDefault == null) S.carMinDefault = 25; if (!S.carMin) S.carMin = {}; if (S.night48Required == null) S.night48Required = true;
       if (S.minRestH === 12) S.minRestH = 10; if (S.releaseMin === 30) S.releaseMin = 40; if (S.restBeforeReportMin == null) S.restBeforeReportMin = 25;
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
@@ -1294,7 +1294,8 @@
     const pre = preCommuteOf(p, st);
     const out = []; let cur = null; let prev = null;
     p.legs.forEach(l => {
-      const start = l.dep - repAt(l.from, p, st) - pre, end = l.arr + relAt(l.to, st);
+      const r0 = (l === p.legs[0] && l.dh && !isAllDh(p)) ? ((st && st.settings && st.settings.dhMergedReportMin != null) ? st.settings.dhMergedReportMin : 95) : repAt(l.from, p, st);
+      const start = l.dep - r0 - pre, end = l.arr + relAt(l.to, st);
       const dayThr = fdpLongGroundSplitMin(st && st.settings) || 480;
       if (!cur || (l.d !== prev.d ? l.dep - prev.arr >= dayThr : shouldSplitFdpBetween(prev, l, p, st))) {
         if (cur) out.push(cur); cur = [start, end];
@@ -1308,7 +1309,8 @@
   function spanDays(p, st) { const a = Math.floor(report(p, st) / DAY) + 1, b = Math.floor((release(p, st) - 1) / DAY) + 1; const r = []; for (let d = a; d <= b; d++) r.push(d); return r; }
   // 外站驻点休息日：任务跨度内无值勤的日历日（不计值勤日，计休息）
   function offAwayDays(p, st) { const t = new Set(daysTouched(p, st)); return spanDays(p, st).filter(d => !t.has(d)); }
-  function report(p, st) { return p.legs[0].dep - repMinOf(p, st); }
+  // 置位与飞行任务合并执行（首段为置位、后有执飞）：报到按置位前 dhMergedReportMin（95 = 地面准备 10 + 上机 25 + 机上 60，《飞行部手册》Re10-08 2.2.3 5)(3)）
+  function report(p, st) { const S = (st && st.settings) || {}; if (p.legs[0].dh && !isAllDh(p)) return p.legs[0].dep - (S.dhMergedReportMin == null ? 95 : S.dhMergedReportMin); return p.legs[0].dep - repMinOf(p, st); }
   // 置位与相邻执勤之间的休息判定（E 在前、L 在后，二者间隔不足最低休息期时调用）
   //  'post'：L 全为置位且自 E 的落地站出发 → 航后置位，不要求休息期
   //  'pre-ok' / 'pre-over'：E 全为置位且落地站 = L 首段起飞站 → 航前置位计入 L 的飞行值勤期；
@@ -1631,7 +1633,9 @@
       const iv = [];
       for (let xi = 0; xi < allPr.length; xi++) if (xi !== oi && allPr[xi] !== allPr[oi]) ivD[xi].forEach(v => iv.push(v));
       for (const v of ivS) iv.push(v);
-      const r48 = rest48Status(iv, ivP[oi][0], st.settings.night48Required !== false && !allPr[oi].legs.every(l => l.dh));
+      // 纯置位任务不受 144h/48h 约束（121.495(b) 针对飞行任务或主备份；《飞行部手册》Re10-08 2.2.4 2)(4)）
+      if (allPr[oi].legs.every(l => l.dh)) continue;
+      const r48 = rest48Status(iv, ivP[oi][0], st.settings.night48Required !== false);
       if (r48 === 0) { rs.push('144h内无连续48h休息(121.495/3.6.10)'); if (opt.detail) det.push({ r: '144h内无连续48h休息(121.495/3.6.10)', pr: allPr[oi] }); }
       else if (r48 === 1) { const rn = '144h内48h休息未含两个完整0-6点(飞行部手册2.2.4)'; rs.push(rn); if (opt.detail) det.push({ r: rn, pr: allPr[oi] }); }
     }
@@ -1681,7 +1685,9 @@
       if (needC9 !== isC9) rs.push(needC9 ? '非C909机队资质' : '非空客机队资质');
     }
     const dt = spanDays(pr, st);
-    const lv = dt.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
+    // 请假日只看报到→末段落地覆盖的日历日；落地后离场/车程跨过午夜不算占用次日
+    const opLegs = pr.legs.filter(l => !l.dh), lastArr = (opLegs.length ? opLegs[opLegs.length - 1] : pr.legs[pr.legs.length - 1]).arr, ldays = dt.filter(d => (d - 1) * DAY < lastArr); // 航后置位不算值勤期
+    const lv = ldays.filter(d => (p.leave || []).includes(d)); if (lv.length) rs.push('请假(' + lv.join(',') + '日)');
     const sbd = dt.filter(d => ((st.standby || {})[p.id] || []).includes(d)); if (sbd.length) rs.push('备份日冲突(' + sbd.join(',') + '日)');
     const trd = dt.filter(d => ((st.training || {})[p.id] || []).includes(d)); if (trd.length) rs.push('培训日冲突(' + trd.join(',') + '日)');
     const ctd = dt.filter(d => ((st.control || {})[p.id] || []).includes(d)); if (ctd.length) rs.push('控班日冲突(' + ctd.join(',') + '日)');

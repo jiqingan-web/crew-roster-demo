@@ -18,9 +18,9 @@ chk('hours before/after reported', Object.values(h0).every(x => x.length === 2))
 // 不同级别拒绝
 const a = st.pilots.find(p => p.rank === 'F5'), b = st.pilots.find(p => p.rank === 'F6'); const pa = (C.buildIndex(st).sched[a.id] || [])[0];
 chk('different rank rejected', !C.swapPreview(st, a.id, b.id, pa ? [pa.id] : [], []).ok);
-// 冲突：把甲的任务给一个同日已有任务的同级人员 → 新增硬违规
+// 冲突：把甲的任务给一个同时段已有执飞任务的同级人员 → 新增硬违规（同日但不重叠的置位+执飞按手册可合法）
 const i2 = C.buildIndex(st); let bad = null;
-for (const p of st.pilots) { for (const pr of (i2.sched[p.id] || [])) { const q = st.pilots.find(x => x.rank === p.rank && x.id !== p.id && (i2.sched[x.id] || []).some(o => o.start === pr.start)); if (q) { bad = C.swapPreview(st, p.id, q.id, [pr.id], []); break; } } if (bad) break; }
+for (const p of st.pilots) { for (const pr of (i2.sched[p.id] || [])) { const q = st.pilots.find(x => x.rank === p.rank && x.id !== p.id && !Object.values(pr.crew).includes(x.id) && (i2.sched[x.id] || []).some(o => o.legs.some(l => !l.dh) && pr.legs.some(l => !l.dh) && o.legs[0].dep < pr.legs[pr.legs.length - 1].arr && pr.legs[0].dep < o.legs[o.legs.length - 1].arr)); if (q) { bad = C.swapPreview(st, p.id, q.id, [pr.id], []); break; } } if (bad) break; }
 chk('conflicting one-way rejected with reason', bad && !bad.ok && bad.newHard.length > 0, bad && bad.newHard.slice(0, 1).map(v => v.msg).join(''));
 // 换班补空座：造一个空座，swapFillHoles 至少不引入硬违规
 const s2 = C.generateLiteSample(7); C.autoFill(s2, { noSwap: true }); const holes0 = s2.pairings.filter(p => !(p.crew.C && p.crew.F && p.crew.T)).length;
