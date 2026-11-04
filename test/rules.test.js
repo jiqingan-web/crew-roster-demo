@@ -86,7 +86,11 @@ for (const seed of [20261101, 7]) { const s = C.generateLiteSample(seed); C.auto
     chk('CR20 ' + capt + '+F4+F5 no', /CR-20/.test(okIss(capt, 'F4') || ''), okIss(capt, 'F4'));
   }
   chk('CR20 机长A+F4+F5 still ok', !C.crewIssue(norm, [P('c', '机长A'), fo('a', 'F4'), fo('b', 'F5')], st));
-  chk('CR20 seatOK 机长A→J0 alias', C.seatOK('机长A', 'F4') && C.seatOK('机长B', 'F4') && !C.seatOK('机长A', 'F3'));
+  // 2026-11-04：机长A 右座须 F5 及以上；机长B（部门管控）须 F6 及以上
+  chk('CR20 seatOK 机长A≥F5 / 机长B≥F6', C.seatOK('机长A', 'F5') && !C.seatOK('机长A', 'F4') && C.seatOK('机长B', 'F6') && !C.seatOK('机长B', 'F5') && C.seatOK('机长A', 'J3'));
+  chk('CR20 机长A+F4+F3 → 不合规（无 F5+ 可上座）', !!C.crewIssue(norm, [P('c', '机长A'), fo('a', 'F4'), fo('b', 'F3')], st));
+  chk('CR23 两名机长B（部门管控）不得同组', /CR-23/.test(C.crewIssue(norm, [P('c', '机长B'), P('x', '机长B'), fo('b', 'F7')], st) || ''));
+  chk('CR23 部门管控标记者与机长B 不得同组', /CR-23/.test(C.crewIssue(norm, [P('c', '机长B'), P('a', 'F7', ALL, { deptControl: true }), fo('b', 'F6')], st) || ''));
   // 2026-11-04：机长B 只需 F6 及以上副驾驶；SPIC/US/J0 仍须 J3+
   chk('CR20 机长B+F6+F5 ok', !okIss('机长B', 'F6'), okIss('机长B', 'F6'));
   chk('CR20 机长B+F7+F7 ok', !C.crewIssue(norm, [P('c', '机长B'), fo('a', 'F7'), fo('b', 'F7')], st));

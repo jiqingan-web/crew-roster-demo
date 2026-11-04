@@ -52,6 +52,9 @@ for (const c of D.cells) {
   else if (c.kind === 'standby') push(standby, p, d);
   else ((notes[p] = notes[p] || {})[d] = ((notes[p][d] || '') + ' ' + (c.text || '')).trim());
 }
+// 同一格内多段：后一段时刻早于前一段结束（如「武北 21:17-23:52 / 北琼 00:29-01:32」）→ 后一段实为次日凌晨，+1440
+for (const p in duty) for (const d in duty[p]) { let prevE = null;
+  duty[p][d] = duty[p][d].map(c => { let x = c; if (prevE != null && c.s < prevE && prevE - c.s > 6 * 60) { x = Object.assign({}, c, { s: c.s + 1440, e: c.e + 1440 }); issues.inCellNextDay = (issues.inCellNextDay || 0) + 1; } prevE = x.e; return x; }); }
 // 午夜后的短段：源表记在次日，实际是前一晚同一次执勤的延续（如 23:47 落地、00:33 再飞一段）。
 // 凌晨 04:00 前开始、距前一日最后落地 < 3h → 并回前一日（时刻 +1440）
 const CARRY_BEFORE_MIN = 4 * 60, CARRY_GAP_MIN = 3 * 60;
@@ -69,9 +72,12 @@ for (const p in duty) for (const d in duty[p]) leave[p] = leave[p].filter(x => x
 function legsOf(c, d) {
   let ch = [...c.route]; if (ch.length < 2) { ch = [ch[0], ch[0]]; issues.singleStation++; }
   const codes = ch.map(apCode); const fl = c.flts.map(f => f.replace('(V)', '')); const n = ch.length - 1;
-  const s = c.s, e = c.e; const base = (d - 1) * 1440;
+  let e = c.e; const base = (d - 1) * 1440;
   const bm = []; for (let i = 0; i < n; i++) { let b = 90; try { if (C.AIRPORTS[codes[i]] && C.AIRPORTS[codes[i + 1]]) b = C.blockMin(codes[i], codes[i + 1]) || 90; } catch (err) {} bm.push(Math.max(40, b)); }
-  const sumB = bm.reduce((a, b) => a + b, 0); const win = e - s; let k = 1, gap = n > 1 ? (win - sumB) / (n - 1) : 0;
+  const sumB = bm.reduce((a, b) => a + b, 0);
+  // 窗口超过 18h（FDP 上限 + 2h 延长都不可能）→ 起始时刻记录有误（如「福蓉府 23:26-22:51」，23:26 实为前一日落地时刻），按落地时刻倒推
+  let s = c.s; if (e - s > 18 * 60) { if (e >= 1440) e -= 1440; s = e - (sumB + 50 * Math.max(0, n - 1)); issues.badWindow = (issues.badWindow || 0) + 1; } // 落地按当日（解析时按跨午夜 +1440 的撤回）
+  const win = e - s; let k = 1, gap = n > 1 ? (win - sumB) / (n - 1) : 0;
   if (n > 1 && gap < 30) { k = Math.max(0.3, (win - 30 * (n - 1)) / sumB); gap = (win - sumB * k) / (n - 1); } if (n === 1) k = win / sumB;
   let t = s; const out = [];
   for (let i = 0; i < n; i++) { const b = Math.max(15, Math.round(bm[i] * k)); const arr = i === n - 1 ? e : t + b;
