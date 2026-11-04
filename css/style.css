@@ -901,3 +901,19 @@ body.pa-on .story{display:none}
 .dt-kv.r-low{--rc:#21c7a8}.dt-kv.r-med{--rc:#8b9bb8}.dt-kv.r-high{--rc:#f5a524}.dt-kv.r-over{--rc:#ef5d6c}.dt-kv .dt-bv{color:var(--rc)}
 .dt-lt input.dlyin{width:62px}.dt-lt td,.dt-lt th{padding:4px 6px;font-size:12px}
 .dt-acts{display:flex;gap:6px;flex-wrap:wrap}
+/* 规则库 · 卡片 */
+.rulesx{display:flex;flex-direction:column;gap:14px}
+.rx-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}.rx-h h2{margin:0}.rx-h .btn{margin-left:auto}
+.rx-g h3{margin:4px 0 8px;font-size:15px;border-left:3px solid #4f8cff;padding-left:8px}
+.rx-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:10px}
+.rcard{display:flex;flex-direction:column;gap:7px;padding:12px 14px;border-radius:10px;border:1px solid rgba(140,170,220,.2);background:rgba(255,255,255,.03);min-width:0}
+.rc-h{display:flex;align-items:flex-start;gap:8px}.rc-h h4{margin:0;font-size:14px;flex:1;line-height:1.4}
+.rc-k{font-size:11px;padding:2px 8px;border-radius:999px;white-space:nowrap;font-weight:700}
+.rc-k.hard{background:rgba(239,93,108,.15);color:#ef5d6c}.rc-k.soft{background:rgba(245,165,36,.15);color:#f5a524}.rc-k.mix{background:rgba(139,108,246,.18);color:#a78bfa}.rc-k.info{background:rgba(140,170,220,.15);color:#9fb2d3}
+.rc-how{margin:0;font-size:13px;line-height:1.6;opacity:.9}
+.rc-ex{display:flex;flex-direction:column;gap:3px;font-size:12px}.rc-ex .ok{color:#21c7a8}.rc-ex .bad{color:#ef5d6c}
+.rc-src{font-size:11px;opacity:.6}
+.rc-code summary{cursor:pointer;font-size:12px;color:#7fb0ff;list-style:none}.rc-code summary::-webkit-details-marker{display:none}.rc-code summary::before{content:'▸ '}.rc-code[open] summary::before{content:'▾ '}
+.rc-code summary code{opacity:.7;margin-left:4px;font-size:11px}
+.rc-code pre{margin:6px 0 0;padding:10px 12px;border-radius:8px;background:#0a1220;color:#d6e2f5;font:11.5px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;overflow-x:auto;white-space:pre;max-height:320px}
+.rc-code .hc{color:#6a9955}.rc-code .hs{color:#ce9178}.rc-code .hk{color:#569cd6}.rc-code .hn{color:#b5cea8}

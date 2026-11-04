@@ -805,7 +805,25 @@
     }
     return await file.text();
   }
+  // ---- 演示版规则库：按主题分组的规则卡片 + 引擎真实代码 ----
+  function hlJs(code) { // 轻量 JS 语法高亮（注释 / 字符串 / 关键字 / 数字）
+    const KW = /^(const|let|var|function|return|if|else|for|of|in|while|continue|break|new|true|false|null|undefined|typeof)$/;
+    return code.replace(/(\/\/[^\n]*)|(`(?:\\.|[^`])*`|'(?:\\.|[^'\\])*'|"(?:\\.|[^"\\])*")|\b([A-Za-z_$][\w$]*)\b|\b(\d+(?:\.\d+)?)\b|([&<>])/g, (m, cm, str, id, num, ch) =>
+      cm ? `<span class="hc">${esc(cm)}</span>` : str ? `<span class="hs">${esc(str)}</span>` : id ? (KW.test(id) ? `<span class="hk">${id}</span>` : id) : num ? `<span class="hn">${num}</span>` : esc(ch)); }
+  function rRulesCards() {
+    const G = window.RuleCards || []; const n = G.reduce((s, g) => s + g.cards.length, 0);
+    const kc = k => /硬/.test(k) && /软/.test(k) ? 'mix' : /硬/.test(k) ? 'hard' : /软/.test(k) ? 'soft' : 'info';
+    const card = c => `<article class="rcard"><div class="rc-h"><h4>${esc(c.t)}</h4><span class="rc-k ${kc(c.k)}">${esc(c.k)}</span></div>
+      <p class="rc-how">${esc(c.how)}</p>
+      ${c.ok !== '—' || c.bad !== '—' ? `<div class="rc-ex">${c.ok !== '—' ? `<span class="ok">✔ ${esc(c.ok)}</span>` : ''}${c.bad !== '—' ? `<span class="bad">✘ ${esc(c.bad)}</span>` : ''}</div>` : ''}
+      <div class="rc-src">出处：${esc(c.src)}</div>
+      <details class="rc-code"><summary>查看引擎代码 <code>${esc(c.file)}:${c.from}${c.to > c.from ? '–' + c.to : ''}</code></summary><pre><code>${hlJs(c.code)}</code></pre></details></article>`;
+    $('#main').innerHTML = `<div class="rulesx"><div class="rx-h"><h2>规则库</h2><span class="mut">${n} 条规则 · 校验与排班使用同一套引擎代码，点「查看引擎代码」可看到实际执行的判断语句</span><button type="button" class="btn sm" id="rxAll">展开全部代码</button></div>
+      ${G.map(g => `<section class="rx-g"><h3>${esc(g.g)} <small class="mut">${g.cards.length} 条</small></h3><div class="rx-cards">${g.cards.map(card).join('')}</div></section>`).join('')}</div>`;
+    const b = $('#rxAll'); b.onclick = () => { const ds = document.querySelectorAll('.rc-code'); const open = ![...ds].every(d => d.open); ds.forEach(d => { d.open = open; }); b.textContent = open ? '收起全部代码' : '展开全部代码'; };
+  }
   function rRules() {
+    if (DEMO && window.RuleCards) return rRulesCards();
     const cat = C.rulesCatalog(st); const RC = C.RULES_CONFIG || {}; const L = RC.airport_category_list || {};
     const stCls = s => /^生效/.test(s) ? 'okc' : /待|停用/.test(s) ? 'warnc' : 'mut';
     const rs = st.restrictions || []; const pm = {}; st.pilots.forEach(p => pm[p.id] = p);
