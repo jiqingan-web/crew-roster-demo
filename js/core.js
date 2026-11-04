@@ -212,7 +212,7 @@
     tableA: [ { from: 0, to: 5, h: 8 }, { from: 5, to: 20, h: 9 }, { from: 20, to: 24, h: 8 } ] };
   // 公司运行手册核实值（公开页不展示手册代码）。月飞行公司=法规=100h；hardMaxHours 默认对齐 100h（用户拍板 2026-10-16）。
   const COM = { rev: '公司运行手册', re12: 'RE12', monthFlightH: 100, yearFlightH: 900, sevenDayFdpH: 60, monthFdpH: 210, minRestBeforeFdpH: 10,
-    reportMinDomesticFlight: 105, reportMinIntlFlight: 115, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 }; // 报到：现行执行国内 105 分钟（用户 2026-11-04 确认；手册 Re07-10 3.6.1 写 95）、国际及地区 115；休息期按手册 3.6.1 4)：关车后 40 分钟起、至下次报到前 25 分钟止
+    reportMinDomesticFlight: 105, reportMinIntlFlight: 125, restAfterShutdownMin: 40, restBeforeNextReportMin: 25 }; // 报到：现行执行国内 105 分钟（用户 2026-11-04 确认；手册 Re07-10 3.6.1 写 95）、国际及地区 115；休息期按手册 3.6.1 4)：关车后 40 分钟起、至下次报到前 25 分钟止
   // 表A：非扩编机组一个飞行值勤期内最大飞行时间（按报到时刻，北京时间）；扩编3人=13h（121.483(a)(2)）
   function flightLimitMin(st, reportMin) {
     // 三人制运行：不启用扩编表A例外（即使用户旧存档曾打开 fdpAugmented）
@@ -221,7 +221,7 @@
   function defaultSettings() {
     // 休息/报到口径按《公司运行手册》Re07-10 3.6.1、3.6.10 4)：两次飞行值勤期之间至少连续 10h 休息期（关车+40 分钟 → 报到−25 分钟）
     return { minRestH: 10, hardMaxHours: 100, maxOffCapt: 999, maxOffFO: 7,
-      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 115, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
+      bpTesterAirports: ['ZLXY', 'ZWWW'], reportMin: 105, reportMinIntl: 125, dhBoardMin: 45, night48Required: true, releaseMin: 40, restBeforeReportMin: 25, honorPrefs: true,
       standbyPerDay: 0, maxStandbyPerPilot: 2, // 每日备份人数：用户 2026-11-04 取消该设置（中队无固定每日备份）
       gapWeight: 0.45, softTargetMin: 45, softTargetMax: 65,
       // 144h 内连续 48h 按法规硬卡；软目标取消（用户 2026-11-04：按法规来卡），=48 即不再出「48h休息偏紧」
@@ -248,7 +248,8 @@
       delete S.minHours; delete S.maxHours; if (!S.fdpTable) S.fdpTable = defaultFdpTable();
       if (S.hardMaxHours === 90) S.hardMaxHours = 100;
       // 报到：现行国内 105 分钟（用户确认）；最低休息 10h、休息期自关车后 40 分钟起至报到前 25 分钟止（手册 Re07-10 3.6.1 4)、3.6.10 4)）
-      if (S.reportMin === 95) S.reportMin = 105; if (S.reportMinIntl == null) S.reportMinIntl = 115;
+      if (S.reportMin === 95) S.reportMin = 105; if (S.reportMinIntl == null || S.reportMinIntl === 115) S.reportMinIntl = 125; // 《飞行部手册》Re10-08 2.2.3 4)(1)：国际航班在各机场报到时间前再提前 20 分钟
+      if (S.dhBoardMin == null) S.dhBoardMin = 45; if (S.night48Required == null) S.night48Required = true;
       if (S.minRestH === 12) S.minRestH = 10; if (S.releaseMin === 30) S.releaseMin = 40; if (S.restBeforeReportMin == null) S.restBeforeReportMin = 25;
       S.fdpAugmented = false;
       if (S.demoAnomalies == null) S.demoAnomalies = false;
@@ -1267,8 +1268,14 @@
   }
   // 按值勤日拆分的值勤区间 [报到, 退场]；长过站（休息）拆成多段，中间空隙计休息
   // 国际/地区航班（任一航段非 Z 字头机场，如 VTBS/VVNB/UHWW/VHHH）按 reportMinIntl 报到
-  const isIntlPairing = p => !!(p && p.legs && p.legs.some(l => !l.dh && ((l.from && !/^Z|^X/.test(l.from)) || (l.to && !/^Z|^X/.test(l.to)))));
-  const repMinOf = (p, st) => { const S = (st && st.settings) || {}; return isIntlPairing(p) ? (S.reportMinIntl || 115) : (S.reportMin || 60); };
+  // 结果按 legs 数组缓存（report() 是热路径；legs 被整体替换时缓存自动失效）
+  const LEGKIND = new WeakMap();
+  const legKind = p => { const L = p && p.legs; if (!L) return { intl: false, allDh: false }; let k = LEGKIND.get(L);
+    if (!k || k.n !== L.length) { k = { n: L.length, intl: L.some(l => !l.dh && ((l.from && l.from[0] !== 'Z' && l.from[0] !== 'X') || (l.to && l.to[0] !== 'Z' && l.to[0] !== 'X'))), allDh: L.length > 0 && L.every(l => l.dh) }; LEGKIND.set(L, k); } return k; };
+  const isIntlPairing = p => legKind(p).intl;
+  // 仅有置位的任务：休息期止于置位开始前 70 分钟（航前车程 25 + 登机 45，《飞行部手册》Re10-08 2.2.3 5)(1)）→ 「报到」取登机时间 dhBoardMin
+  const isAllDh = p => legKind(p).allDh;
+  const repMinOf = (p, st) => { const S = (st && st.settings) || {}; if (isAllDh(p)) return S.dhBoardMin == null ? 45 : S.dhBoardMin; return isIntlPairing(p) ? (S.reportMinIntl || 125) : (S.reportMin || 60); };
   function dutyIvs(p, st) {
     // 休息期占用区间：[报到 − restBeforeReportMin, 关车 + releaseMin]（手册：休息期自关车后 40 分钟起，至下次报到前 25 分钟止）
     const rep = repMinOf(p, st) + ((st && st.settings.restBeforeReportMin) || 0), rel = (st && st.settings.releaseMin) || 30;
@@ -1565,6 +1572,26 @@
   }
   // 硬规则：144h 内连续 48h 休息（法规底线不变）
   function has48hRestBefore(intervals, t0) { return hasContinuousRestBefore(intervals, t0, 48 * 60); }
+  // 《飞行部手册》Re10-08 2.2.4 2)(2)：疲劳管理要求，连续 48h 休息须包含两个完整的 00:00–06:00 时段（北京时间）
+  // 一次遍历：0 = 无连续 48h；1 = 有 48h 但均不含两个完整 0–6 点；2 = 合规（needNights=false 时有 48h 即 2）
+  function rest48Status(intervals, t0, needNights) {
+    const W = 144 * 60, ws = t0 - W, need = 48 * 60; const cl = [];
+    for (const [a, b] of intervals) { const x = a > ws ? a : ws, y = b < t0 ? b : t0; if (y > x) cl.push([x, y]); }
+    cl.sort((a, b) => a[0] - b[0]); let cur = ws, any = false;
+    const ok = (a, b) => { if (b - a < need) return false; any = true; if (!needNights) return true; let n = 0;
+      for (let d = Math.ceil(a / DAY); d * DAY + 360 <= b; d++) n++; return n >= 2; };
+    for (const [a, b] of cl) { if (a > cur && ok(cur, a)) return 2; if (b > cur) cur = b; }
+    if (t0 > cur && ok(cur, t0)) return 2;
+    return any ? 1 : 0;
+  }
+  function has48hWithTwoNights(intervals, t0) {
+    const W = 144 * 60, ws = t0 - W; const cl = [];
+    intervals.forEach(([a, b]) => { const x = Math.max(a, ws), y = Math.min(b, t0); if (y > x) cl.push([x, y]); });
+    cl.sort((a, b) => a[0] - b[0]); const gaps = []; let cur = ws;
+    for (const [a, b] of cl) { if (a > cur) gaps.push([cur, a]); cur = Math.max(cur, b); } if (t0 > cur) gaps.push([cur, t0]);
+    return gaps.some(([a, b]) => { if (b - a < 48 * 60) return false; let n = 0;
+      for (let d = Math.floor(a / DAY); d * DAY <= b; d++) { const n0 = d * DAY, n1 = n0 + 360; if (n0 >= a && n1 <= b) n++; } return n >= 2; });
+  }
   function ftlCheckPerson(p, pr, st, idx, opt) {
     opt = opt || {}; const rs = []; const det = []; // opt.detail：按人汇总时返回 [{r, pr}]，违规记到实际出问题的任务上
     const already = (idx.sched[p.id] || []).includes(pr);
@@ -1581,7 +1608,9 @@
       const iv = [];
       for (let xi = 0; xi < allPr.length; xi++) if (xi !== oi && allPr[xi] !== allPr[oi]) ivD[xi].forEach(v => iv.push(v));
       for (const v of ivS) iv.push(v);
-      if (!has48hRestBefore(iv, ivP[oi][0])) { rs.push('144h内无连续48h休息(121.495/3.6.10)'); if (opt.detail) det.push({ r: '144h内无连续48h休息(121.495/3.6.10)', pr: allPr[oi] }); }
+      const r48 = rest48Status(iv, ivP[oi][0], st.settings.night48Required !== false && !allPr[oi].legs.every(l => l.dh));
+      if (r48 === 0) { rs.push('144h内无连续48h休息(121.495/3.6.10)'); if (opt.detail) det.push({ r: '144h内无连续48h休息(121.495/3.6.10)', pr: allPr[oi] }); }
+      else if (r48 === 1) { const rn = '144h内48h休息未含两个完整0-6点(飞行部手册2.2.4)'; rs.push(rn); if (opt.detail) det.push({ r: rn, pr: allPr[oi] }); }
     }
     // 1b) 每一主备份日开始前 144h 内同样须有连续 48h 休息（新增任务不得破坏已排备份）
     if (extra) for (let si = 0; si < ivS.length; si++) {
@@ -3489,7 +3518,7 @@
         rs.forEach(r => {
           if (/第5日/.test(r)) return; // 第5日执飞/置位仅走下方 soft
           const t = r.startsWith('请假') ? '请假冲突' : r.startsWith('时间') ? '时间重叠' : r.startsWith('休息') ? '休息不足'
-            : (r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : (r.includes('月飞行小时') || r.includes('个人月飞行上限')) ? '月小时超法规上限' : null);
+            : (r.includes('两个完整0-6点') ? '48h未含两个夜间' : r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : (r.includes('月飞行小时') || r.includes('个人月飞行上限')) ? '月小时超法规上限' : null);
           if (t) add(t, 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
           else if (r.includes('帮扶')) add('帮扶对象', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
           else if (r.includes('不适飞') || r.includes('体检已过期') || r.includes('不能作为唯一机长')) add('健康限制', 'hard', `${plabel} ${p.name}：${r}`, pr, p.id);
@@ -3565,7 +3594,7 @@
         // 按人汇总 FTL（第5日执飞已降为软提示，见上方 day5Operatings；此处不再硬报）
         ftlCheckPerson(p, sched[0], st, idx, { detail: true }).forEach(({ r, pr: at }) => {
           if (/第5日/.test(r)) return; // soft only
-          const type = r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : '飞行时间限制';
+          const type = r.includes('两个完整0-6点') ? '48h未含两个夜间' : r.includes('144h') ? '144h内48h休息' : r.includes('连续7日') ? '连续7日值勤超限' : r.includes('月飞行值勤') ? '月值勤超限' : r.includes('年飞行') ? '年飞行超限' : '飞行时间限制';
           const plabel = pairingLabel(at, st);
           addFtl(type, `${plabel} ${p.name}：${r}`, at, p.id);
         });
