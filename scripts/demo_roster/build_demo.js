@@ -30,7 +30,7 @@ const tk = {}; Y.pilots.forEach(p => { const k = (Y.trainingKind || {})[p.id] ||
 const [fm, fd] = fromMD.split('-').map(Number);
 const D = { grid: { days, start: { m: fm, d: fd } }, range: [fromMD, toMD], pilots, pairings, authAirports: Y.authAirports || null, airports: Y.airports || {},
   leave: clip(Y.leave), training: clip(Y.training), trainingKind: tk, sim: clip(Y.sim), control: clip(Y.control), standby: clip(Y.standby) };
-const js = `/* 比赛演示数据（由 scripts/demo_roster/build_demo.js 生成，勿手改）
+let js = `/* 比赛演示数据（由 scripts/demo_roster/build_demo.js 生成，勿手改）
  * 航班：全年真实班表 ${Y.year}-${fromMD}..${toMD} 开始的任务（航线/航班号/时刻取自源表；中间航段时刻按航距推算）。机组已清空，由「一键排班」按规则填入。
  * 人员：化名（项目库 lite-roster.js），职级与特殊机场资质取自公司资质表；备份/培训/模拟机/控班/请假取自真实班表。 */
 (function (root) {
@@ -63,8 +63,11 @@ if (!process.env.NO_SOLVE) {
   const C = require(path.join(R, 'js', 'core.js')); const Dm = require(path.join(R, 'js', 'demo-roster.js'));
   const st = Dm.build(C); const t = Date.now();
   C.autoFillByMonth(st, { seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
+  // 排不满的任务（演示不需要）从数据里删掉：删任务不会给其余人员带来新违规
+  const keep = st.pairings.map(p => C.pairingFull(p)); const dropped = st.pairings.filter((p, i) => !keep[i]).map(p => p.id);
+  if (dropped.length) { st.pairings = st.pairings.filter((p, i) => keep[i]); D.pairings = D.pairings.filter((p, i) => keep[i]); js = js.replace(/const DEMO_ROSTER = .*;\n/, () => `const DEMO_ROSTER = ${JSON.stringify(D)};\n`); }
   const solved = st.pairings.map(p => [p.crew.C || 0, p.crew.F || 0, p.crew.T || 0]);
-  const s = C.summarize(st);
+  const s = C.summarize(st); console.log('dropped unfilled', dropped.join(',') || '无');
   fs.writeFileSync(path.join(R, 'js', 'demo-roster.js'), js.replace('const api = { DEMO_ROSTER, build,', `const SOLVED = ${JSON.stringify({ crews: solved, full: s.full, total: s.total, hard: s.hard, ms: Date.now() - t })};\n  const api = { DEMO_ROSTER, SOLVED, build,`));
   console.log('solved', s.full + '/' + s.total, 'hard', s.hard, (Date.now() - t) + 'ms');
 }

@@ -1870,6 +1870,15 @@
   function crewDiff(a, b) { let n = 0, d = 0; a.forEach((c, i) => { const o = b[i] || {}; ['C', 'F', 'T'].forEach(k => { if (!c[k] && !o[k]) return; n++; if (c[k] !== o[k]) d++; }); }); return n ? d / n : 0; }
   // 每次点击：新种子 → 不同但合法的方案；lite 内部跑 2–3 个种子取 KPI 最优且与历史方案差异 ≥ minDiff
   // 演示版「一键排班」：按自然月依次求解（每月独立均衡，前月已排任务作为休息/FTL 衔接历史），比整段一次求解快且缺口少
+  // 意向休息日修复：把排在本人意向休息日上的任务换给合规、无意向冲突、工时最少的同席位人员（找不到则保留）
+  function prefSwap(st) {
+    let fixed = 0, left = 0; const idx = buildIndex(st);
+    st.pilots.forEach(p => { const pf = p.prefs || []; if (!pf.length) return;
+      (idx.sched[p.id] || []).slice().forEach(pr => { if (!daysTouched(pr, st).some(d => pf.includes(d))) return; const slot = ['C', 'F', 'T'].find(k => pr.crew[k] === p.id); if (!slot) return;
+        pr.crew[slot] = null; const c = candidates(st, pr, slot).filter(x => x.ok && !x.warn && x.p.id !== p.id).sort((a, b) => a.hours - b.hours)[0];
+        if (c) { pr.crew[slot] = c.p.id; fixed++; } else { pr.crew[slot] = p.id; left++; } }); });
+    return { fixed, left };
+  }
   function autoFillByMonth(st, opts) {
     opts = opts || {}; const all = st.pairings.slice(); const mb = monthMeta(); const onS = opts.onStatus;
     const groups = mb.map(() => []); all.forEach(pr => { const k = pairingMonthKey(pr, st); let i = mb.findIndex(b => b.key === k); if (i < 0) i = 0; groups[i].push(pr); });
@@ -5250,7 +5259,7 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
-    autoFillByMonth, realVsAuto, rosterQuality, crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    autoFillByMonth, prefSwap, realVsAuto, rosterQuality, crewIssue, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });
     api.setPeriod = setPeriod;

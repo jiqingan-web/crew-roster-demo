@@ -156,7 +156,7 @@
     $('#pfill').style.width = '100%';
     setTimeout(() => { $('#progress').classList.add('hidden'); refresh();
       const unf = s.total - s.full;
-      toast(`✔ ${st.demo ? '按规则排班' : '自动填人'}完成（${info && info.builtin ? '载入内置预计算结果' : (lastSolveMs / 1000).toFixed(1) + ' 秒'}）：满员 ${s.full}/${s.total}` + (unf ? (st.demo ? `（未满员 ${unf}）` : `（预留空洞 ${unf}）`) : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
+      toast(`✔ ${st.demo ? '按规则排班' : '自动填人'}完成（${info && info.builtin ? '载入内置预计算结果' : (lastSolveMs / 1000).toFixed(1) + ' 秒'}）：满员 ${s.full}/${s.total}` + (unf ? (st.demo ? `（未满员 ${unf}）` : `（预留空洞 ${unf}）`) : '') + `，硬性违规 ${s.hard}，工时 ${s.all.min.toFixed(1)}–${s.all.max.toFixed(1)}h，意向休息满足 ${(s.prefRate * 100).toFixed(1)}%` + (info && info.prefs && (info.prefs.fixed || info.prefs.left) ? ` · 意向休息：换下 ${info.prefs.fixed} 个任务${info.prefs.left ? `，${info.prefs.left} 个找不到合规替换人` : ''}` : '') + (holeN ? ` · 已留 ${holeN} 个易补空洞` : '') + (demoN ? ` · 已植入 ${demoN} 项【演示异常】` : ''), 6500); if (cb) cb(); }, 200);
   }
   // 演示版预计算：页面载入后即在后台线程按规则求解（同一输入同一结果）；点「一键排班」时直接接上进度/结果。输入改动则作废重算
   let preJob = null;
@@ -181,7 +181,7 @@
     const t0 = performance.now(); autoJob = { builtin: true }; $('#progress').classList.remove('hidden');
     const steps = ['载入航班与人员', '校验资质与搭配', '逐月填入机组', '复核休息与值勤期'];
     steps.forEach((x, i) => setTimeout(() => showAutoStatus({ pct: (i + 1) / (steps.length + 1), stage: x, detail: '内置预计算', elapsed: (performance.now() - t0) / 1000 }), i * 220));
-    setTimeout(() => { st.pairings.forEach((pr, i) => { const c = SV.crews[i]; pr.crew = { C: c[0] || null, F: c[1] || null, T: c[2] || null }; }); autoJob = null; finishAuto(t0, cb, { builtin: true }); }, steps.length * 220 + 150);
+    setTimeout(() => { st.pairings.forEach((pr, i) => { const c = SV.crews[i]; pr.crew = { C: c[0] || null, F: c[1] || null, T: c[2] || null }; }); const rp = C.prefSwap ? C.prefSwap(st) : null; autoJob = null; finishAuto(t0, cb, { builtin: true, prefs: rp }); }, steps.length * 220 + 150);
     return true;
   }
   function runAuto(cb) {
