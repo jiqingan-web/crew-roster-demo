@@ -866,3 +866,4 @@ body.pa-on .story{display:none}
 .fc-t{position:relative;height:8px;border-radius:4px;background:rgba(140,170,220,.15)}
 .fc-t i{position:absolute;top:0;bottom:0;border-radius:4px;background:var(--fc);opacity:.55}
 .fc-t em{position:absolute;top:-3px;width:2px;height:14px;margin-left:-1px;background:currentColor}
+.fcard{--fc:#4f8cff;border-top-color:rgba(140,170,220,.35)}.fcard .fc-h small{font-size:11px}

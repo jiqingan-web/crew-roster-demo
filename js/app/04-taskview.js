@@ -209,10 +209,10 @@
     const wg = worst && worst.groups.slice().sort((x, y) => (y.max - y.min) - (x.max - x.min))[0];
     const lvl = s => s >= 80 ? 'ok' : s >= 60 ? 'warn' : 'bad';
     const card = dm => { const mx = Math.max(0.1, ...dm.groups.map(g => g.max)); const X = v => (v / mx * 100).toFixed(1);
-      const tip = `每 30 个可上班日折算 · 偏高：${dm.hi.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}；偏低：${dm.lo.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}`;
-      return `<div class="fcard ${lvl(dm.score)}" title="${esc(tip)}"><div class="fc-h"><span>${esc(dm.name)}</span><b>${dm.score}</b></div>${dm.groups.map(g => `<div class="fc-r"><span class="fc-g">${esc(g.g)}</span><span class="fc-t"><i style="left:${X(g.min)}%;width:${Math.max(1, X(g.max) - X(g.min))}%"></i><em style="left:${X(g.med)}%"></em></span><span class="fc-v">${fmt(g.min, dm.unit)}–${fmt(g.max, dm.unit)}${dm.unit}</span></div>`).join('')}</div>`; };
-    return `<div class="fairb"><div class="fb-h"><b>公平性</b><span class="fb-s ${lvl(overall)}">公平指数 ${overall}</span><span class="mut">同职级比较 · 按可上班天数折算到每 30 天 · 参与 ${rows.length} 人（可上班不足区间 30% 的不计）${worst && wg ? ` · 最需关注：${esc(worst.name)}（${esc(wg.g)}组 ${fmt(wg.min, worst.unit)}–${fmt(wg.max, worst.unit)}${worst.unit}）` : ''}</span></div>
-      <div class="fcards">${dims.map(card).join('')}</div><div class="mut sm">每行一个职级组：横条为最低到最高，竖线为中位数；条越短越公平。分数 = 100 ×（1 − 组内变异系数），鼠标停留看偏高/偏低人员。</div></div>`;
+      const tip = `每 30 个可上班日折算 · 最高：${dm.hi.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}；最低：${dm.lo.map(r => r.p.name + ' ' + fmt(r.v[dm.key], dm.unit)).join('、')}`;
+      return `<div class="fcard" title="${esc(tip)}"><div class="fc-h"><span>${esc(dm.name)}</span><small class="mut">每 30 天 · ${dm.unit}</small></div>${dm.groups.map(g => `<div class="fc-r"><span class="fc-g">${esc(g.g)}</span><span class="fc-t"><i style="left:${X(g.min)}%;width:${Math.max(1, X(g.max) - X(g.min))}%"></i><em style="left:${X(g.med)}%"></em></span><span class="fc-v">${fmt(g.min, dm.unit)}–${fmt(g.max, dm.unit)}${dm.unit}</span></div>`).join('')}</div>`; };
+    return `<div class="fairb"><div class="fb-h"><b>公平性</b><span class="mut">同职级比较 · 按可上班天数折算到每 30 天 · 参与 ${rows.length} 人（可上班不足区间 30% 的不计）</span></div>
+      <div class="fcards">${dims.map(card).join('')}</div><div class="mut sm">每行一个职级组：横条为最低到最高，竖线为中位数；鼠标停留看最高/最低人员。</div></div>`;
   }
   function rOverview() {
     const t0 = performance.now(); const m = pm(); const idx = C.buildIndex(st); const om = C.opsMetrics(st); const ds = C.dayStatus(st, idx);
