@@ -12,3 +12,5 @@ ref/*.tgz
 
 # 全年真实班表回测的生成数据（真实运行数据，化名后也只留本地）
 ref/year/
+dist/
+tools/launcher/app/
