@@ -2,7 +2,7 @@
   const C = window.RosterCore, CH = window.Charts;
   const LITE = !!window.ROSTER_LITE; // lite/：单中队轻量版，独立存储
   const DEMO = !!(window.ROSTER_DEMO && window.RosterDemo); // show/：比赛演示版（近三个月真实航班，一键排班按规则填人）
-  const DEMO_VER = 8;
+  const DEMO_VER = 9;
   const KEY = DEMO ? 'crewRoster.demo.v1' : LITE ? 'crewRoster.lite.v1' : 'crewRoster.v2';
   const $ = s => document.querySelector(s);
   const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));

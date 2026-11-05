@@ -71,13 +71,14 @@ if (!process.env.NO_SOLVE) {
   delete require.cache[require.resolve(path.join(R, 'js', 'demo-roster.js'))];
   const C = require(path.join(R, 'js', 'core.js')); const Dm = require(path.join(R, 'js', 'demo-roster.js'));
   const st = Dm.build(C); const t = Date.now();
-  C.autoFillByMonth(st, { seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
+  const info = C.autoFillByMonth(st, { seed: 20260801, tries: 1, minDiff: 0, attempts: 1, passes: 2, byMonth: true });
     // 只移除用户明确要求删除的任务（DM138，用户 2026-11-04 指定）；其余排不满的保留，让系统如实报出、再由人工处理
   const EXCLUDE = new Set(['DM138']); const keep = st.pairings.map(p => !EXCLUDE.has(p.id)); const dropped = st.pairings.filter((p, i) => !keep[i]).map(p => p.id);
   if (dropped.length) { st.pairings = st.pairings.filter((p, i) => keep[i]); D.pairings = D.pairings.filter((p, i) => keep[i]); js = js.replace(/const DEMO_ROSTER = .*;\n/, () => `const DEMO_ROSTER = ${JSON.stringify(D)};\n`); }
+  info.autoResolved = (info.autoResolved || []).concat(C.autoResolveHoles(st)); // 移除指定任务后的最终状态再判一次零代价补位（与页面一致）
   const solved = st.pairings.map(p => [p.crew.C || 0, p.crew.F || 0, p.crew.T || 0]);
   const s = C.summarize(st); console.log('dropped unfilled', dropped.join(',') || '无');
-  fs.writeFileSync(path.join(R, 'js', 'demo-roster.js'), js.replace('const api = { DEMO_ROSTER, build,', `const SOLVED = ${JSON.stringify({ crews: solved, full: s.full, total: s.total, hard: s.hard, ms: Date.now() - t })};\n  const api = { DEMO_ROSTER, SOLVED, build,`));
+  fs.writeFileSync(path.join(R, 'js', 'demo-roster.js'), js.replace('const api = { DEMO_ROSTER, build,', `const SOLVED = ${JSON.stringify({ crews: solved, full: s.full, total: s.total, hard: s.hard, ms: Date.now() - t, autoResolved: (info.autoResolved || []).filter(x => keep[st.pairings.findIndex(p => p.id === x.pairing)] !== false) })};\n  const api = { DEMO_ROSTER, SOLVED, build,`));
   console.log('solved', s.full + '/' + s.total, 'hard', s.hard, (Date.now() - t) + 'ms');
 }
 console.log('pilots', pilots.length, 'pairings', pairings.length, 'days', days, 'bytes', js.length);

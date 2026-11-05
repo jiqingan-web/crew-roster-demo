@@ -1899,7 +1899,8 @@
       });
     } finally { st.pairings = all; delete st._hist; }
     const rs = reseatHoles(st, { ms: 6000 }); // 全周期再做一次成对重选兜底（跨月任务在整段上下文里更好补）
-    return Object.assign({}, info || {}, { byMonth: groups.length, reseat: rs.length });
+    const ar = autoResolveHoles(st); // 零代价的补位直接应用，其余留给人工
+    return Object.assign({}, info || {}, { byMonth: groups.length, reseat: rs.length, autoResolved: ar });
   }
   // 人工班表 vs 一键排班：同一批任务，分别用真实机组(srcCrew) 与当前机组校验，按本中队口径对比
   function rosterQuality(st) {
@@ -4482,6 +4483,14 @@
     out.push(man); const ok = out.filter(x => !x.unresolved); if (ok.length) ok[0].recommended = true;
     return { pairing: pr0, open: open0, solutions: out, ms: Date.now() - t0 };
   }
+  // 零代价自动补位：补位方案里只动 1 人、无链式调换、不占意向休息、不扰动节奏、不超月上限、不增硬违规的，直接应用；其余留给人工比较
+  function autoResolveHoles(st, opt) { opt = opt || {}; const t0 = Date.now(), budget = opt.ms || 20000; const done = [];
+    for (const pr of st.pairings.filter(p => !pairingFull(p))) { if (Date.now() - t0 > budget) break;
+      const o = holeOptions(st, pr.id, { max: 3 }); const sol = o && o.solutions.find(x => x.recommended); if (!sol || !sol.state) continue;
+      const zero = !sol.unresolved && sol.people.length === 1 && !sol.steps.some(x => x.type === 'chain') && !sol.prefN && !(sol.rhy > 0) && !sol.people.some(x => x.overHard) && sol.hard <= summarize(st).hard - 1;
+      if (!zero) continue; const q = sol.state.pairings.find(p => p.id === pr.id); if (!q) continue; pr.crew = Object.assign({}, q.crew);
+      done.push({ pairing: pr.id, to: sol.people[0].id, name: sol.name }); }
+    return done; }
   function leaveOptions(st, pilotId, days, opt) {
     opt = opt || {}; const t0 = Date.now();
     const base = clone(st); const p = base.pilots.find(x => x.id === pilotId); if (!p) return null;
@@ -5311,7 +5320,7 @@
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
     isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
-    autoFillByMonth, reseatHoles, holeOptions, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
+    autoFillByMonth, reseatHoles, holeOptions, autoResolveHoles, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
     Object.defineProperty(api, 'GRID_START', { get: () => GRID_START, enumerable: true });
     api.setPeriod = setPeriod;
