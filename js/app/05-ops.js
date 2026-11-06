@@ -35,7 +35,7 @@
       ? `<span class="seg repMonthSeg" style="margin-left:8px">${repBuckets.map(b => `<button type="button" data-repm="${esc(b.key)}" class="${b.key === repMk ? 'on' : ''}">${esc(b.label)}</button>`).join('')}</span>`
       : '';
     const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 规章回测摘要 <small>R8 · 公司运行手册 · ${COM.re12 || 'RE12'}</small></h3>
-      <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、4连续值勤日(执飞/主备份)后第5日不执飞，第5日置位=软提示、7日飞行执勤期≤${R.sevenDayFdpH}h、月飞行执勤期≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编）<br>
+      <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、RE12 起飞/着陆上座表、拉萨双机长、未识别机场转人工、7日飞行执勤期≤${R.sevenDayFdpH}h、月飞行执勤期≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编） · <b>暂作提示（手册原文为禁止，待书面依据）</b>：4 连续值勤日后第 5 日执飞 · <b>已实现暂停</b>：58 周岁带队<br>
       <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/121回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
     let h = demoFillBanner() + exportBarHtml() + ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${pairHtml(p)}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
       + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
@@ -817,9 +817,9 @@
     return await file.text();
   }
   // ---- 校验报告 · 问题明细：按类型分组、可折叠（硬违规在前并默认展开）----
-  const ISSUE_DESC = { '未满员': '任务还有空座位，需要补人。', '休息不足': '两次值勤之间休息期不足 10 小时。', '144h内48h休息': '报到前 144 小时内没有连续 48 小时休息。', '48h未含两个夜间': '48 小时休息里没有两个完整的 0–6 点。',
+  const ISSUE_DESC = { '需人工确认': '任务里有机场库没有的机场，系统无法判断是否特殊/高原机场和轮挡时间，不按普通机场放行，须人工核对后再发布。', '座位搭配规则': '起飞、着陆上座的两人不符合 RE12 起落表（或巡航表）。', '未满员': '任务还有空座位，需要补人。', '休息不足': '两次值勤之间休息期不足 10 小时。', '144h内48h休息': '报到前 144 小时内没有连续 48 小时休息。', '48h未含两个夜间': '48 小时休息里没有两个完整的 0–6 点。',
     '执勤期超限': '飞行执勤期超过限制（超出 2 小时以上）。', '执勤期延长(实际)': '实际执行超出执勤期限制 2 小时以内，按延长处理。', '日飞行时间超限': '单日飞行时间超过表 A 限制。', '请假冲突': '请假当天安排了起飞。',
-    '备份冲突': '备份日安排了飞行任务。', '第5日执飞': '连续 4 个值勤日后第 5 天仍执飞：合规，尽量避免。', '第5日置位': '连续 4 个值勤日后第 5 天只有置位：合规，尽量避免。', '大过站休息待确认': '大过站中间是否下酒店休息，需排班员确认。',
+    '备份冲突': '备份日安排了飞行任务。', '第5日执飞': '连续 4 个值勤日后第 5 天仍执飞。手册原文为不得安排，目前暂按提示处理，需书面依据。', '第5日置位': '连续 4 个值勤日后第 5 天只有置位：合规，尽量避免。', '大过站休息待确认': '大过站中间是否下酒店休息，需排班员确认。',
     '特殊机场授权/搭配': '凑不出左右座都持该机场资质的组合。', '个人特殊机场授权': '机长座人员在该特殊机场没有机长资质（硬规则）。', 'F1/F2无教员': 'F1/F2 未与教员同组（非必须）。', '新机长无教员': '新机长执飞时机组里没有 J3 及以上。',
     '需血压测试仪': '该始发站须配备血压测试仪。', '过夜休息偏短': '任务内部外站过夜休息不足 10 小时（任务编排数据，需航线部门确认）。', '高强度': '工时偏高。' };
   let issueOpen = null;

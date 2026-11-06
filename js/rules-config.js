@@ -95,6 +95,82 @@
    }
   }
  },
+ "takeoff_landing_matrix": {
+  "source": "RE12 二（起飞）、四（着陆）2026-09-11",
+  "allowed_fo": {
+   "US": [
+    "F6",
+    "F7"
+   ],
+   "J0": [
+    "F6",
+    "F7"
+   ],
+   "J1": [
+    "F6",
+    "F7"
+   ],
+   "J2": [
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ],
+   "J3": [
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ],
+   "TL": [
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ],
+   "TB": [
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ],
+   "TC": [
+    "F2",
+    "F3",
+    "F4",
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ]
+  },
+  "pm_only": {
+   "J1": [
+    "F6",
+    "F7"
+   ],
+   "J2": [
+    "F5",
+    "F6",
+    "F7",
+    "F8"
+   ],
+   "J3": [
+    "F4"
+   ]
+  },
+  "unlisted_levels": [
+   "US",
+   "J0"
+  ]
+ },
  "fo_combination_matrix": {
   "allow": {
    "low_low": false,
@@ -223,6 +299,17 @@
   "KMG": {
    "name": "昆明(一般高原机场)",
    "category": "general_plateau",
+   "group_members": [
+    "昆明",
+    "兰州",
+    "昭通",
+    "嘉峪关",
+    "昭苏",
+    "巴里坤",
+    "迪庆",
+    "稻城亚丁",
+    "九寨"
+   ],
    "captain_levels": [
     "J2",
     "J3",
@@ -344,7 +431,7 @@
   "deadhead_extends_window": false,
   "release_for_rest": "last_leg_including_dh_plus_releaseMin"
  },
- "_sha1": "bd09ce7647"
+ "_sha1": "b17f7c5fa1"
 };
   if (typeof module === "object" && module.exports) module.exports = { RULES_CONFIG };
   else root.RosterRulesConfig = { RULES_CONFIG };

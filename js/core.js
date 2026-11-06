@@ -79,7 +79,7 @@
   const isCaptClass = r => RANK_VAL[r] >= 10;
   const isInstr = r => INSTR.includes(r);
   const isNew = r => NEW_CAPT.includes(r);
-  const isJ2plus = r => ['J2', 'J3'].includes(r) || isInstr(r);
+  const isJ2plus = r => ['J2', 'J3', '机长A', '机长B'].includes(r) || isInstr(r); // 机长A/B 即 J2
   const isJ3plus = r => r === 'J3' || isInstr(r);
   // CR-20 陪飞口径：新机长须有 J3+（含教员）同组；机长B 只需 F6 及以上副驾驶（用户 2026-11-04）
   const newCaptCompanionOK = (newRank, r) => isJ3plus(r) || (newRank === '机长B' && isFO(r) && (RANK_VAL[r] || 0) >= 6);
@@ -97,7 +97,7 @@
   const RC = (RulesConfig && (RulesConfig.RULES_CONFIG || (RulesConfig.default && RulesConfig.default.RULES_CONFIG))) || null;
   const EO = (RC && RC.engine_options) || {};
   const CAPT_ORDER = (RC && RC.captain_levels && RC.captain_levels.order) || ['US', 'J0', 'J1', 'J2', 'J3', 'TL', 'TB', 'TC'];
-  const RANK_ALIAS = { '机长A': 'J0', '机长B': 'J0' }; // 公司机长A/B 巡航矩阵仍按 J0；仅机长B 等计入 NEW_CAPT/CR-20
+  const RANK_ALIAS = { '机长A': 'J2', '机长B': 'J2' }; // 用户 2026-11-06：机长A=普通 J2、机长B=部门管控 J2；右座下限另见 CAPT_AB_MIN_FO（A≥F5、B≥F6）
   const capKey = r => RANK_ALIAS[r] || r;
   const capLv = r => CAPT_ORDER.indexOf(capKey(r));
   const fNum = s => +String(s || 'F0').replace(/\D/g, '');
@@ -128,6 +128,17 @@
     return false;
   }
 
+  // RE12 二/四 起飞·着陆上座表（取两表交集）：起落阶段左座机长 × 右座副驾驶。比巡航表严。
+  // 右座为机长类（双机长）总是可以；表中未列的 US/J0 按 J1 列处理（见 crew_rules.yaml takeoff_landing_matrix）。
+  function tlSeatOK(L, R) {
+    if (!isCaptClass(L) || L === 'SPIC') return false;
+    if (isCaptClass(R) && R !== 'SPIC') return true;
+    if (!isFO(R)) return false;
+    const T = RC && RC.takeoff_landing_matrix && RC.takeoff_landing_matrix.allowed_fo; if (!T) return true;
+    const al = T[capKey(L)]; if (!al) return false;
+    if (CAPT_AB_MIN_FO[L] && RANK_VAL[R] < CAPT_AB_MIN_FO[L]) return false;
+    return al.includes(R);
+  }
   // ---------- 机场 ----------
   // cat: LHASA / HIGH / PLATEAU / ZBCF / J1 / US / NONE ; auth=需授权
   // 基础表 + sample-data 扩展（天府/疆内/东北等）；勿把真实 xlsx 提交仓库
@@ -167,6 +178,7 @@
   const AUTH_CATS = ['LHASA', 'HIGH', 'PLATEAU', 'ZBCF'];
   function apName(c, st) { const a = (st && st.airports && st.airports[c]) || AIRPORTS[c]; return a ? a[0] : c; }
   function apCat(c, st) { const a = (st && st.airports && st.airports[c]) || AIRPORTS[c]; return (a && a[3]) || 'NONE'; }
+  function apUnknown(c, st) { const a = (st && st.airports && st.airports[c]) || AIRPORTS[c]; return !a || /未确认/.test(String(a[0] || '')) || a[1] == null; }
   const needsAuth = (c, st) => AUTH_CATS.includes(apCat(c, st));
   const isSpecial = (c, st) => apCat(c, st) !== 'NONE';
 
@@ -418,7 +430,8 @@
   // 按级别分配特殊机场授权（用户 2026-10-20）
   function assignAuthForRank(rk, r, specialAll, byCat) {
     if (isInstr(rk) || rk === 'J3') return specialAll.slice();
-    if (['J2', 'J1', 'SPIC', 'US', 'J0', '机长A', '机长B'].includes(rk)) return [];
+    if (['J2', '机长A', '机长B'].includes(rk)) return specialAll.filter(c => r() < 0.7); // J2 按 RE12 六可飞丽江组/一般高原/赤峰（演示数据：多数持有）
+    if (['J1', 'SPIC', 'US', 'J0'].includes(rk)) return [];
     const v = RANK_VAL[rk];
     if (v >= 6) { // F7/F6：一般全特殊；少数留洞
       if (r() < 0.12) {
@@ -1357,7 +1370,7 @@
   // 返回 null 表示合法，否则返回原因字符串
   function legSeatedOK(L, R, leg, st) {
     if (leg.dh) return true; // (随)置位：乘客身份，不需座位/特殊机场资质
-    if (!seatOK(L.rank, R.rank)) return false;
+    if (!seatOK(L.rank, R.rank) || !tlSeatOK(L.rank, R.rank)) return false; // 巡航表 + RE12 起飞/着陆表
     for (const c of [leg.from, leg.to]) { const cat = apCat(c, st);
       if (cat === 'NONE') continue;
       const ru = sarOf(cat); const needQ = ru ? ru.crew_qualification_required !== false : AUTH_CATS.includes(cat);
@@ -2023,7 +2036,7 @@
     return log; }
   // 收尾：任何违反人员/机组硬规则的座位一律清空 → 残余只表现为「空座」。
   // 任务自身（估算时刻）的日飞行/执勤期超限与人员无关，保留为数据警告；强制指派的座位不动。
-  const INTRINSIC_TYPES = new Set(['未满员', '日飞行时间超限', '执勤期超限', '强制指派']);
+  const INTRINSIC_TYPES = new Set(['未满员', '日飞行时间超限', '执勤期超限', '强制指派', '需人工确认'] );
   function clearHardSeats(st) { let cleared = 0;
     for (let it = 0; it < 30; it++) {
       const vs = validate(st).filter(v => v.level === 'hard' && !INTRINSIC_TYPES.has(v.type) && v.pairing); if (!vs.length) break; let ch = 0;
@@ -3644,6 +3657,9 @@
     const add = (type, level, msg, pr, pid) => out.push({ type, level, msg, pairing: pr && pr.id, pilot: pid });
     for (const pr of st.pairings) {
       const plabel = pairingLabel(pr, st);
+      // 未识别机场：不在机场库或为源表简称未确认 → 特殊机场/高原/轮挡都无法判定，不能默认按普通机场放行，转人工
+      { const unk = [...new Set(pr.legs.flatMap(l => [l.from, l.to]).filter(c => apUnknown(c, st)))];
+        if (unk.length) add('需人工确认', 'hard', `${plabel} 机场未识别：${unk.map(c => apName(c, st) + '(' + c + ')').join('、')}——无法判定是否特殊/高原机场及轮挡时间，请人工确认`, pr); }
       const crew = ['C', 'F', 'T'].map(s => pr.crew[s] && idx.pm[pr.crew[s]]);
       if (crew.some(x => !x)) {
         // 正式班表只含本中队：源表(srcCrew)里本来就没有的座位 = 外中队搭档未入表 → 信息级，不是可纠错空洞。
@@ -5318,7 +5334,7 @@
     const api = { CCAR121, COM, flightLimitMin, migrateDelays, fdpDays, fdpLimit, fdpRiskSummary, pairingRisk, dutyMonitor, fdpOptions, simFaultPick, splitPairing, legKey, fmtH, LEG_COLS, defaultFdpTable, leaveOptions, migrateSettings, ensureAircraftRegs, assignAircraftRegs, aircraftDay, FLEET, defaultHealth, authAirports, levelAirports, healthFlags, hasHealthRestriction, healthBlocks, migratePilots, pilotHardCap, medRestrictionSeed, isPlateauAirport, YEAR, MONTH, DAY, RANKS, RANK_VAL, NEW_CAPT, INSTR, GROUPS, AIRPORTS, CAT_DESC, AUTH_CATS, ALL_SQUADS, SQUADS_AIRBUS, SQUADS_C909, SAMPLE_META,
     RULES_CONFIG: RC, autoFillDiverse, crewDiff, solutionScore, rulesCatalog, parseRestrictions, foComboKey, foComboAllowed, foComboScore, apClass, extraCrewIssue, legSeatedOK, ageOf,
     transferCandidates, applyTransfer, delayRobustness, swapPreview, applySwap, swapFillHoles, swapBalance, lhasaRankOK, stripLhasaBelowJ3, day5Deadheads, day5Operatings, opDays, clearHardSeats, pairingIntrinsic, holeDiagnosis, forceAssign, reasonClass,
-    isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, catOK, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
+    isFO, isCaptClass, isInstr, isJ3plus, isNew, rankGroup, seatOK, tlSeatOK, catOK, apUnknown, apName, apCat, needsAuth, isSpecial, pinyinInitialsOf: PY.pinyinInitialsOf, nameMatchesQuery: PY.nameMatchesQuery,
     generateSample, generateLiteSample, ensurePairingContinuity, liteRankMix, defaultSettings, pilotMatches, filterByPilot, monthRosterRows, personalMonthRows, personalMonthPack, personalDayKind, assignTraining, assignControl, TRAIN_KINDS, pickTrainingKind, assignSimulator, reserveHold, holdWithBackfill, mergeSimHolds, simSoftGapOK, pairingHours, isOuterSlot, slotTaken, pairingFull, openSlots, markOuterSlots, enforceOuterSlots, addReservePilots, isOuterPilot, outerRoleOf, LITE_RESERVES, fltLabel, slotLabel, stickTrainingPairs, report, release, daysTouched, dutyIvs, spanDays, offAwayDays, isNightLeg, fmtT, specialAirportsOf, isChengduBase, pairingHotelNote, apAbbrSimple, fmtOffFromLegs, fmtOffRaw, pairingLabel, pairingLabelOf, shouldSplitFdpBetween, fdpLongGroundSplitMin,
     autoFillByMonth, reseatHoles, holeOptions, autoResolveHoles, prefSwap, realVsAuto, rosterQuality, crewIssue, capSeatMiss, personCheck, ftlCheckPerson, hasContinuousRestBefore, has48hRestBefore, softRest48Tight, pilotDutyIntervals, dutyDayFlags, pilotFdpByDay, buildIndex, autoFill, assignStandby, dayStatus, restGaps, freeRuns, validate, summarize, stats, candidates, applyLeave, leaveRegister, holeRecommend, holeScan, holeImpact, leaveDemoHoles, autoCorrectPlan, applyAutoCorrect, undoAutoCorrect, injectDemoAnomalies, opsMetrics, opsZone, shareFor, SLOT_NAME, slotRankOK, blockMin, applyStressLeave, applyStressDensity, applyStressAuthScarce, runStressBacktest, countSpecialAuthHolders };
     Object.defineProperty(api, 'DAYS', { get: () => DAYS, enumerable: true });
