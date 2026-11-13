@@ -27,7 +27,7 @@ const issues = { singleStation: 0, overflowSeats: 0, noTime: 0 };
 
 // ---- 人员 ----
 const pilots = Object.entries(D.people).map(([id, x]) => ({
-  id, name: id, rank: x.rank, squad: '七中队(化名)', fleet: 'A320',
+  id, name: id, rank: x.rank, squad: '演示中队(化名)', fleet: 'A320',
   // 资质：有资质表时，表中覆盖的机场按表授予，表未覆盖的机场仍全部授予；无资质表或此人不在表中 → 全部授予（资质类规则不可判定）
   ...(() => { const all = Object.keys(C.AIRPORTS).concat(Object.keys(airports)); const q = Q && Q.quals[id];
     if (!q) return { auth: all, rnpAuth: Object.keys(C.AIRPORTS), qualSource: Q ? 'missing' : 'none' };
@@ -134,7 +134,7 @@ for (const ch of chains) {
 pairings.sort((a, b) => a.legs[0].dep - b.legs[0].dep);
 pairings.forEach((p, i) => { p.id = 'YR' + String(i + 1).padStart(4, '0'); p.legs.forEach(l => l.reg = 'REG-' + p.id); });
 const out = { authAirports: Q ? Q.covered : undefined, schema: 'year-roster/1', grid: { days: NDAYS, start: { m: +fromMd.slice(0, 2), d: +fromMd.slice(3) } }, year: D.year,
-  source: `七中队全年班表 ${D.year}-${fromMd}..${toMd}（实际执行；化名 P###）`, airports, pilots, pairings, leave, training, trainingKind, sim, control, standby, notes,
+  source: `演示中队全年班表 ${D.year}-${fromMd}..${toMd}（实际执行；化名 P###）`, airports, pilots, pairings, leave, training, trainingKind, sim, control, standby, notes,
   build: { issues, unknownAp, chains: chains.length } };
 fs.writeFileSync(outPath, JSON.stringify(out));
 console.log('days', NDAYS, 'pilots', pilots.length, 'pairings', pairings.length, 'chains', chains.length, 'issues', JSON.stringify(issues), 'unknownAp', JSON.stringify(unknownAp));

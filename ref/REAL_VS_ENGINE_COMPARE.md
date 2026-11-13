@@ -9,7 +9,7 @@
 ## 1. 导入一致性
 
 - 用户 xlsx（`ref/real-roster-user-2026-11-01.xlsx`）与当前 `official-roster.js`：**飞行日格占用对 97 名有飞人员完全一致**（0 missing / 0 extra）。
-- xlsx「全季」表名 `王鹏1(重)` = name_map `王鹏1`（E76878 / 化名邱海涛）；已写入 name_map 别名。
+- xlsx「全季」表中有一条带重复后缀的表名，已在离线对照表中合并；本报告不收录姓名或员工号。
 - 3 名全期「假」人员（化名：田海涛 / 郭帅 / 郝建国）此前因源表简称「假」未进 leave，已补 leave 1..51（leave 日槽 343→496，与 xlsx「假*」约 494 对齐）。
 - 构建脚本目录 `scripts/official_roster/` 仍残留 30 日 `dayOf` 旧码；**现行产物已是 51 日版**（v666 起），本次未全量重跑 parse（时刻仍依赖 `roster_raw.xls` 全文，xlsx「明细」有日级时刻但无逐段）。
 

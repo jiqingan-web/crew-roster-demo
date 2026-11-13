@@ -94,7 +94,7 @@ airports:
   unknown_policy: block                  # 未知简称 → 阻断导入（旧代码 fallback 90 分钟是错的）
   confirmed_abbr:                        # 已按"航班号+坐标反算"双重确认，禁止再回退成占位码
     曲: {code: ZSJG, name: 济宁曲阜, evidence: "EU2723 ZUTF-JNG / EU2724 大连-济宁 13:30-15:15"}
-    桃: {code: ZGCD, name: 常德桃花源, evidence: "成都航空 TFU-CGD 记录；轮挡按坐标 90min = 表内 1h29"}
+    桃: {code: ZGCD, name: 常德桃花源, evidence: "演示航司 TFU-CGD 记录；轮挡按坐标 90min = 表内 1h29"}
     内: {code: VVNB, name: 河内内排, evidence: "EU2863 成都天府-河内"}
 
 time:
