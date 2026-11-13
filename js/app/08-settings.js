@@ -1,12 +1,65 @@
 /* 机组排班助手 - 界面 · settings.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 设置 ----------------
+
+  function currentFlightMap() {
+    if (st.flightMap) return st.flightMap;
+    if (window.FlightMap) return FlightMap.readStored(localStorage) || FlightMap.defaultTable();
+    return { version: 1, rows: [] };
+  }
+  function flightMapPanelHtml() {
+    const FM = window.FlightMap, TV = window.TimetableVersion;
+    const tab = currentFlightMap();
+    const tv = st.timetableVersion || {};
+    const rows = (tab.rows || []).map((r, i) => `<tr>
+      <td><input data-fm="newNo" data-i="${i}" value="${esc(r.newNo || '')}" style="width:110px"></td>
+      <td><input data-fm="oldNo" data-i="${i}" value="${esc(r.oldNo || '')}" style="width:90px"></td>
+      <td><input data-fm="oldNote" data-i="${i}" value="${esc(r.oldNote || '')}" style="width:80px"></td>
+      <td><input data-fm="route" data-i="${i}" value="${esc(r.route || '')}" style="width:110px"></td>
+      <td><label><input type="checkbox" data-fm="auto" data-i="${i}" ${r.auto ? 'checked' : ''}> 自动</label></td>
+      <td>${r.auto ? 'mapped' : '存疑'}</td>
+      <td><input data-fm="reason" data-i="${i}" value="${esc(r.reason || '')}" style="width:160px"></td>
+      <td><button type="button" class="btn sm" data-fm-del="${i}">删</button></td>
+    </tr>`).join('');
+    return `<div class="panel" style="margin-top:14px"><h3>航班号映射表 <small>C-04 · 新号 → 换季计划原号；解析时自动对应并保留两个号。存疑项不自动映射。</small></h3>
+      <div class="note">可在此增删改行，保存到本机。1845/1808 及填入表有、计划没有的 2715/2716 等默认标存疑。</div>
+      <div class="scroll"><table><tr><th>新号</th><th>原号</th><th>原号备注</th><th>航线</th><th>自动映射</th><th>状态</th><th>说明</th><th></th></tr>${rows}</table></div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <button type="button" class="btn sm" id="fmAdd">新增一行</button>
+        <button type="button" class="btn sm primary" id="fmSave">保存映射表</button>
+        <button type="button" class="btn sm" id="fmReset">恢复首批默认</button>
+      </div></div>
+      <div class="panel" style="margin-top:14px"><h3>时刻表版本 <small>C-03 · 排班结果记录所用版本号</small></h3>
+        <div class="note">${tv.版本号 || tv.version ? `当前版本 <b>${esc(tv.版本号 || tv.version)}</b> · 生效 ${esc(tv.生效日期 || tv.effectiveDate || '—')} · 来源 ${esc(tv.来源文件名 || tv.sourceFile || '—')} · 导入 ${esc(tv.导入时间 || tv.importedAt || '—')}` : '尚未导入时刻版本。在「导入导出」中导入换季计划或时刻表时填写版本号。'}</div>
+      </div>`;
+  }
+  function bindFlightMapEditor() {
+    const FM = window.FlightMap; if (!FM) return;
+    const collect = () => {
+      const tab = currentFlightMap();
+      const rows = (tab.rows || []).map((r, i) => {
+        const get = k => { const el = document.querySelector(`[data-fm="${k}"][data-i="${i}"]`); return el ? (el.type === 'checkbox' ? el.checked : el.value) : r[k]; };
+        const auto = !!get('auto');
+        return FM.loadTable([{ newNo: get('newNo'), oldNo: get('oldNo'), oldNote: get('oldNote'), route: get('route'), auto, status: auto ? 'mapped' : '存疑', reason: get('reason'), id: r.id }]).rows[0];
+      });
+      return { version: 1, rows };
+    };
+    const $add = document.getElementById('fmAdd'), $save = document.getElementById('fmSave'), $rst = document.getElementById('fmReset');
+    if ($add) $add.onclick = () => { const tab = collect(); tab.rows.push({ newNo: '', oldNo: '', route: '', auto: true, status: 'mapped', reason: '' }); st.flightMap = FM.loadTable(tab); rSettings(); };
+    if ($save) $save.onclick = () => { st.flightMap = collect(); FM.writeStored(st.flightMap, localStorage); toast('航班号映射表已保存到本机'); rSettings(); };
+    if ($rst) $rst.onclick = () => { st.flightMap = FM.defaultTable(); FM.writeStored(st.flightMap, localStorage); toast('已恢复首批默认映射'); rSettings(); };
+    document.querySelectorAll('[data-fm-del]').forEach(b => b.onclick = () => {
+      const tab = collect(); tab.rows.splice(+b.getAttribute('data-fm-del'), 1); st.flightMap = tab; rSettings();
+    });
+  }
+
   function rSettings() {
     const S = st.settings; const aps = Object.assign({}, C.AIRPORTS, st.airports || {});
     const num = (k, lab, unit) => `<div class="slotbox" style="grid-template-columns:200px 120px 60px"><span>${lab}</span><input type="number" step="any" data-k="${k}" value="${S[k]}"><span class="mut">${unit}</span></div>`;
     const cats = ['NONE', 'LHASA', 'HIGH', 'PLATEAU', 'ZBCF', 'J1', 'US'];
     $('#main').innerHTML = `<div class="grid g2"><div class="panel"><h3>排班参数</h3>
-      ${num('minRestH', '两任务间最短休息期（手册：关车后40分钟起、至报到前25分钟止，≥10h）', '小时')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
-      ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('softRest48H', '144h内连续休息软目标', '小时')}${num('reportMin', '首段起飞前报到（公司国内飞行组105=1h45）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
+      <div class="slotbox" style="grid-template-columns:200px 180px 60px"><span>本机操作人（确认/发布记录用）</span><input id="setOperator" value="${esc(st.operator || S.operator || 'local')}"><span class="mut">姓名</span></div>
+      ${num('minRestH', '两任务间最短休息期（飞行部手册：关车+离场15+车程起、至报到前车程止，≥10h）', '小时')}${num('carMinDefault', '外站车程 Y（未单独配置时）', '分钟')}${num('hardMaxHours', '月飞行小时硬上限（默认100h=公司/法规）', '小时')}${num('opsDayWindowH', '运营看板·飞机日可用窗口', '小时（利用率分母）')}
+      ${num('maxOffCapt', '同日最多休息/请假（机长类，999=不限制）', '人')}${num('maxOffFO', '同日最多休息/请假（副驾驶）', '人')}${num('standbyPerDay', '每日备份人数（≥2 套：双流/天府各 1 套，06:00–20:00 酒店备份）', '人')}${num('maxStandbyPerPilot', '每人每月最多备份', '天')}${num('gapWeight', '休息 2–3 天偏好权重（软）', '0–1')}${num('softRest48H', '144h内连续休息软目标', '小时')}${num('reportMin', '首段起飞前报到（公司国内飞行组105=1h45）', '分钟')}${num('releaseMin', '末段落地后退场（公司休息起算用关车+40，本项为近似）', '分钟')}
       <label class="flex"><input type="checkbox" id="hp" ${S.honorPrefs ? 'checked' : ''}> 自动排班优先保障意向休息日（无法满员时才放宽）</label>
       <h3 style="margin-top:14px">高强度模式</h3>
       <label class="flex"><input type="checkbox" id="hiMode" ${S.highIntensity ? 'checked' : ''}> 高强度模式：允许把工时集中到机长线（J3+/教员），普通模式软目标 ≤70–75h</label>
@@ -26,25 +79,38 @@
         <button class="btn sm" id="stressAuth" type="button">仅·资质稀缺</button>
       </div>
       <div id="stressOut" class="note" style="margin-top:6px">尚未跑过压力回测。</div>
-      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司运行手册与 CCAR-121.487，可改）。另强制：<strong>144h内连续48h休息</strong>（硬底不变）、连续4个值勤日（执飞或主备份；仅置位的日子不计）后第5日不得执飞（第5日置位合规，软提示尽量避免）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。软目标：144h内连续休息默认偏好<strong>≥60h</strong>（可调），自动排班避免卡死在硬底边缘，未达标仅软提示「48h休息偏紧」。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
+      <div class="note" style="margin-top:8px">月飞行小时硬上限默认<strong>100h</strong>（对齐公司运行手册与 CCAR-121.487，可改）。另强制：<strong>144h内连续48h休息</strong>（硬底不变）、连续4个值勤日后第5日执飞为软提示（备降后直飞目的地除外；第5日置位亦为软提示）、任意连续7日飞行值勤≤60h、月飞行值勤≤210h、年飞行≤900h（YTD+本月）。软目标：144h内连续休息默认偏好<strong>≥60h</strong>（可调），自动排班避免卡死在硬底边缘，未达标仅软提示「48h休息偏紧」。两任务间最短休息默认12h（严于公司/法规10h）。自动排班按公平均衡（基尼），不设目标上下限。本系统仅<strong>三人制</strong>，不启用扩编表C。</div>
       <h3 style="margin-top:16px">血压测试仪机场 <small>勾选的机场作为始发站（出港）时须配备血压测试仪，相关任务将被标记提醒（机场清单待确认，可随时调整）</small></h3>
       <div style="column-count:3;font-size:12px">${Object.keys(aps).map(c => `<label style="display:block"><input type="checkbox" data-bpt="${c}" ${(S.bpTesterAirports || []).includes(c) ? 'checked' : ''}> ${c} ${aps[c][0]}</label>`).join('')}</div>
       <h3 style="margin-top:16px">飞行执勤期限制 <small class="warnc">默认值，参考 CCAR-121 部非扩编机组表，可按公司规定修改</small></h3>
       <table class="fdpt"><tr><th>报到时间（本地）</th>${C.LEG_COLS.map(c => `<th>${c}</th>`).join('')}</tr>${S.fdpTable.map((r, ri) => `<tr><td>${r.label}</td>${r.lim.map((v, ci) => `<td><input type="number" step="0.5" class="fdpin" data-r="${ri}" data-c="${ci}" value="${v}"> h</td>`).join('')}</tr>`).join('')}</table>
-      <div class="note">飞行执勤期 = 当日<strong>首个执飞段</strong>起飞前报到（${S.reportMin} 分钟）至<strong>末个执飞段</strong>落地；两端置位(随)不拉长窗口（置位仍占休息/占用，不计飞行小时与执勤期长度）。按报到时刻与当日<strong>执飞</strong>段数查表。</div>
+      <div class="note">飞行执勤期 = 当日首段（<strong>含航前置位</strong>，com.txt:8980）起飞前报到（国内 ${S.reportMin} 分钟＝公司缓冲，手册 95；国际/地区 115）至<strong>末个执飞段</strong>落地；置位不计航段；航后置位不算值勤也不算休息。按报到时刻与当日<strong>执飞</strong>段数查表。</div>
       <div class="note" style="margin-top:6px">三人制运行：不启用扩编机组 / 表C（公司手册 3.6.3 表C留白；用户拍板关闭）。</div>
-      <label class="flex" style="margin-top:8px"><input type="checkbox" id="fdpSplitLG" ${S.fdpSplitLongGround !== false ? 'checked' : ''}> 长过站拆分飞行值勤期（过站≥阈值默认休息；合肥式早出晚归；短过站不拆）</label>
-      ${num('fdpSplitLongGroundH', '拆分阈值：同站过站 ≥', '小时（默认5；外站与基地均拆）')}
-      <div class="note" style="margin-top:4px">拆分后次段按 reportMin 重新报到，不与前段并成一个连续 FDP。含成都双流/天府基地长过站（如湘府湘）。</div>
+      <div class="note" style="margin-top:4px">v693：同一机场地面 ≥5 小时自动标记「大过站」并提示「需安排住宿」（无住宿参数时追加「需确认住宿」）。未确认住宿时不拆段、不扣中间时间；确认适宜住宿后按手册 2.2.3 2) 拆成两段值勤。</div>
       ${num('fdpRiskHigh', '高风险：延误余量 <', '分钟')}${num('fdpRiskMed', '中风险：延误余量 <', '分钟')}${num('minTurnMin', '延误推算最短过站', '分钟')}${num('minOvernightRestH', '任务内过夜最低休息', '小时')}
       <div style="margin-top:6px"><button class="btn sm" id="fdpReset">恢复默认 飞行执勤期表</button></div>
+      <h3 style="margin-top:16px">数据安全（本机）</h3>
+      <div class="note">本系统按本地/内网部署使用：人员与班表保存在本机浏览器（自动保存），不部署到 GitHub Pages。自动保存可在此导出备份；正式使用前建议改为服务端存储。</div>
+      <div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        <button class="btn sm" type="button" id="setLocalPin">设置本机访问口令</button>
+        <button class="btn sm" type="button" id="clearLocalPin">清除口令</button>
+        <button class="btn sm" type="button" id="bakExpSet">导出当前备份</button>
+      </div>
+      <div class="mut" id="pinState"></div>
       <div style="margin-top:12px"><button class="btn primary" id="saveS">保存设置并重新校验</button></div></div>
       <div class="panel"><h3>机场与特殊机场类别</h3><div class="note">类别：${cats.map(c => c + '=' + (C.CAT_DESC[c] || '')).join('；')}。需授权类别：${C.AUTH_CATS.join('/')}</div>
-      <div class="scroll"><table><tr><th>ICAO</th><th>名称</th><th>类别</th></tr>${Object.keys(aps).map(c => `<tr><td>${c}</td><td class="${aps[c][3] ? 'red' : ''}">${aps[c][0]}</td><td><select data-cat="${c}" ${c === 'ZUUU' ? 'disabled' : ''}>${cats.map(k => `<option value="${k}" ${(aps[c][3] || 'NONE') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></td></tr>`).join('')}</table></div></div></div>`;
+      <div class="scroll"><table><tr><th>ICAO</th><th>名称</th><th>类别</th></tr>${Object.keys(aps).map(c => `<tr><td>${c}</td><td class="${aps[c][3] ? 'red' : ''}">${aps[c][0]}</td><td><select data-cat="${c}" ${c === 'ZUUU' ? 'disabled' : ''}>${cats.map(k => `<option value="${k}" ${(aps[c][3] || 'NONE') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></td></tr>`).join('')}</table></div></div></div>
+      ${flightMapPanelHtml()}`;
+    { const el = $('#pinState'); if (el) el.textContent = gateCfg() && gateCfg().hash ? '已设置本机口令（打开正式班表时须在本会话输入）。' : '未设置口令。可在载入正式班表时加一层本机口令（口令只存在本机，不是云登录）。';
+      $('#setLocalPin').onclick = async () => { const a = prompt('设置本机访问口令（至少 4 位，仅保存在本机）：'); if (!a) return; if (a.length < 4) { toast('口令太短'); return; } const b = prompt('再输入一次：'); if (a !== b) { toast('两次不一致'); return; } localStorage.setItem(GATE_KEY, JSON.stringify({ hash: await hashPin(a), at: Date.now() })); sessionStorage.setItem('crewRoster.unlocked', '1'); rSettings(); toast('本机口令已保存'); };
+      $('#clearLocalPin').onclick = () => { localStorage.removeItem(GATE_KEY); sessionStorage.removeItem('crewRoster.unlocked'); rSettings(); toast('已清除本机口令'); };
+      $('#bakExpSet').onclick = () => exportStateBackup(); }
+    bindFlightMapEditor();
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);
+      { const op = (($('#setOperator') && $('#setOperator').value) || '').trim() || 'local'; S.operator = op; st.operator = op; }
       document.querySelectorAll('.fdpin').forEach(i => S.fdpTable[+i.dataset.r].lim[+i.dataset.c] = +i.value); S.fdpAugmented = false;
-      S.honorPrefs = $('#hp').checked; S.fdpSplitLongGround = $('#fdpSplitLG').checked; S.highIntensity = $('#hiMode').checked; S.hiTargetH = Math.min(+S.hiTargetH || 85, S.hardMaxHours || 100); S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
+      S.honorPrefs = $('#hp').checked; S.fdpSplitLongGround = false; S.highIntensity = $('#hiMode').checked; S.hiTargetH = Math.min(+S.hiTargetH || 85, S.hardMaxHours || 100); S.demoAnomalies = $('#demoAnom').checked; S.bpTesterAirports = [...document.querySelectorAll('[data-bpt]:checked')].map(i => i.dataset.bpt);
       st.airports = {}; document.querySelectorAll('[data-cat]').forEach(s => { const a = C.AIRPORTS[s.dataset.cat].slice(0, 3); if (s.value !== 'NONE') a[3] = s.value; st.airports[s.dataset.cat] = a; });
       refresh(); toast('设置已保存，校验结果已更新');
     };

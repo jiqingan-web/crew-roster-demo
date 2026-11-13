@@ -10,7 +10,7 @@
   const WK = ['日', '一', '二', '三', '四', '五', '六'];
   const dow = d => { const L = C.dayLabel ? C.dayLabel(d) : { m: C.MONTH, d }; return new Date(C.YEAR, L.m - 1, L.d).getDay(); };
   let st, sum, tab = 'overview', lastSolveMs = null, leaveResult = null;
-  const ui = { gq: '', gg: '全部', gsq: '演示中队', gMonth: 'all', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditMonth: null, auditQ: '', auditSq: '演示中队', ovMonth: null };
+  const ui = { gq: '', gg: '全部', gsq: '演示中队', gMonth: 'all', tf: '全部', tq: '', cw: 150, fit: false, rq: '', rg: '全部', rs: '演示中队', ra: '全部', rh: '全部', lvq: '', auditPid: null, auditDay: null, auditMonth: null, auditQ: '', auditSq: '演示中队', ovMonth: null, fairMode: 'all' };
   // IME 友好搜索：composition 期间不重渲染；支持拼音首字母
   function bindSearchInput(el, onCommit, opt) {
     if (!el) return;
@@ -109,6 +109,9 @@
     if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
   // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
   function loadOfficial() {
+    // v693 C-11：每次载入正式班表都清掉此前已开启的千问标志，默认关闭，须再次确认才开
+    try { localStorage.removeItem('crewRoster.qwen.enabled'); } catch (e) {}
+    try { if (typeof clearQwenOnOfficialLoad === 'function') clearQwenOnOfficialLoad(); } catch (e) {}
     // 正式班表：外中队候补池按 23 机长 + 19 副驾（三人制 + 高高原双机长）
     st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample(20261101, { reserves: [23, 19] }) : st); st.solHist = []; st.solN = 0;
     pushSolution(C.summarize(st), { seed: '正式', name: window.RosterOfficial.NAME }); return st;
@@ -205,10 +208,17 @@
       return;
     }
     let h = `<div class="ihd"><span>⚠ 需处理 <b>${count}</b> 个任务</span><span class="mut">${focus.length} 条硬性/缺人</span></div>`;
+    const whyOf = v => {
+      if (v.kind !== 'unfilled' || !C.unfilledReasons) return v.msg;
+      const pr = st.pairings.find(p => p.id === v.pairing);
+      if (!pr) return v.msg;
+      const rs = C.unfilledReasons(st, pr);
+      return rs.length ? (v.msg + '：' + rs.join('；')) : v.msg;
+    };
     h += focus.map((v, i) => `<button type="button" class="issue-row" data-pr="${esc(v.pairing)}" data-i="${i}">
       <span class="itag ${v.kind}">${v.kind === 'unfilled' ? '缺人' : '硬性'}</span>
       <span class="ipid">${escPairOf(v.pairing)}</span>
-      <span class="imsg">${esc(v.type)} · ${esc(v.msg)}</span>${v.kind === 'unfilled' ? `<span class="ihole" data-hole="${esc(v.pairing)}" role="button" tabindex="0">补位方案 →</span>` : ''}
+      <span class="imsg">${esc(v.type)} · ${esc(whyOf(v))}</span>${v.kind === 'unfilled' ? `<span class="ihole" data-hole="${esc(v.pairing)}" role="button" tabindex="0">补位方案 →</span>` : ''}
     </button>`).join('');
     pan.innerHTML = h;
     pan.classList.remove('hidden');
@@ -403,7 +413,9 @@
     const H0 = st.solHist || [];
     const diff = H0.length ? C.crewDiff(crews, H0[H0.length - 1].crews) : null;
     const entry = { n: st.solN, name: info.name || null, seed: info.seed != null ? info.seed : null, crews, control: st.control || null, trainingKind: st.trainingKind || null, standby: st.standby || null, training: st.training || null, sim: st.sim || null, simHold: st.simHold || null,
-      demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now() };
+      demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now(),
+      timetableVersion: st.timetableVersion || null, 时刻版本号: (st.timetableVersion && (st.timetableVersion.版本号 || st.timetableVersion.version)) || st.时刻版本号 || null };
+    if (C.stampRosterResult) C.stampRosterResult(entry, st);
     // 真实导入固定保留；自动填人只保留最新一套（不再堆到 5 套）
     if (info.name) st.solHist = [entry];
     else {
@@ -429,12 +441,36 @@
     if (H.length < 2) return `<span class="solsw"><b>${label}</b><small>${sub}</small></span>`;
     return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="模拟表格1（真实导入）">◀ 真实表</button><b>${label}</b><small>${sub}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="最新自动填人结果">生成结果 ▶</button></span>`;
   }
+  function stateFromSolution(h) {
+    if (!h) return null;
+    return {
+      settings: st.settings, pilots: st.pilots, restrictions: st.restrictions || [], official: st.official,
+      pairings: st.pairings.map((p, i) => Object.assign({}, p, { crew: Object.assign({}, (h.crews && h.crews[i]) || p.crew) })),
+      standby: h.standby || {}
+    };
+  }
+  function classifiedCompareHtml() {
+    if (!C.classifyRosterDiffs) return '';
+    const H = st.solHist || [];
+    const handSt = st.handRoster || stateFromSolution(H.find(x => x.name));
+    const engH = H.filter(x => !x.name).slice(-1)[0];
+    const engSt = stateFromSolution(engH) || { settings: st.settings, pilots: st.pilots, restrictions: st.restrictions || [], pairings: st.pairings, standby: st.standby || {} };
+    if (!handSt) return `<div class="panel"><h3>系统 vs 手工排班</h3><div class="note">暂无手工排班结果。加载「模拟表格1」或放入对照班表后，将在此并排显示差异，并标注分类：系统错 / 手工违规 / 偏好不同 / 一侧缺任务。</div></div>`;
+    const diff = C.classifyRosterDiffs(engSt, handSt);
+    const nameOf = id => { const p = (st.pilots || []).find(x => x.id === id); return p ? p.name : (id || '空'); };
+    const crewTxt = c => ['C', 'F', 'T'].map(s => (C.SLOT_NAME && C.SLOT_NAME[s] || s) + ' ' + nameOf(c && c[s])).join(' / ');
+    const catCls = c => /系统错/.test(c) && /手工/.test(c) ? 'warnc' : /系统错|手工/.test(c) ? 'red' : 'mut';
+    return `<div class="panel"><h3>系统 vs 手工排班 <small>并排对比，差异分类：系统错 / 手工违规 / 偏好不同 / 一侧缺任务</small></h3>
+      <div class="note">差异 ${diff.n} 条 · 系统错 ${diff.counts['系统错']} · 手工违规 ${diff.counts['手工违规']} · 偏好不同 ${diff.counts['偏好不同']} · 系统缺任务 ${diff.counts['系统缺任务'] || 0} · 手工缺任务 ${diff.counts['手工缺任务'] || 0}</div>
+      <div class="scroll"><table><tr><th>任务</th><th>系统结果</th><th>手工排班</th><th>分类</th></tr>${diff.rows.map(r => `<tr><td>${esc(r.pairing)}</td><td>${esc(crewTxt(r.engineCrew))}</td><td>${esc(crewTxt(r.handCrew))}</td><td class="${catCls(r.category)}">${esc(r.category)}</td></tr>`).join('') || '<tr><td colspan=4 class="okc">两侧机组一致</td></tr>'}</table></div></div>`;
+  }
   function solCompareHtml() {
-    const H = st.solHist || []; if (!H.length) return '';
+    const H = st.solHist || [];
     const cur = st.solIdx != null ? st.solIdx : H.length - 1; const pc = x => (x * 100).toFixed(1) + '%';
-    return `<div class="panel"><h3>方案对比 <small>「模拟表格1」= 真实导入；「自动填人」= 引擎最新结果（只保留一套，再次填人会覆盖）</small></h3>
+    const kpi = H.length ? `<div class="panel"><h3>方案对比 <small>「模拟表格1」= 真实导入；「自动填人」= 引擎最新结果（只保留一套，再次填人会覆盖）</small></h3>
       <table><tr><th>方案</th><th>seed</th><th>满员率</th><th>空洞</th><th>硬违规(非空洞)</th><th>工时区间</th><th>标准差</th><th>基尼</th><th>休3–4天占比</th><th>意向满足</th><th>与上一套差异</th><th></th></tr>${H.map((h, i) => { const k = h.kpi;
-        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>${h.name ? esc(h.name) : '自动填人'}</b></td><td class="mut">${h.seed == null ? '—' : h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>`;
+        return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>${h.name ? esc(h.name) : '自动填人'}</b></td><td class="mut">${h.seed == null ? '—' : h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>` : '';
+    return kpi + classifiedCompareHtml();
   }
   document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('[data-sol]'); if (b && !b.disabled) useSolution(+b.dataset.sol); });
   function renderKpis() {

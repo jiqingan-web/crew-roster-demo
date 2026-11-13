@@ -11,7 +11,7 @@
     const orig = { C: draft.C, F: draft.F, T: draft.T };
     let h = `<div class="flex"><a href="#" id="mClose" class="drw-back">← 返回详情</a><span class="mut" style="margin-left:auto">任务 ${pairHtml(pr)}${fillBadge(pr.id)}${demoTag(pr)} · ${dateOf(pr.start)} 起 ${pr.ndays} 天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h</span></div>
       <div class="flex" style="margin-top:6px;flex-wrap:wrap"><span class="mut">临时请假（本任务日期 ${pr.start}–${pr.start + pr.ndays - 1} 日）：</span>${['C', 'F', 'T'].filter(x => pr.crew[x] && m[pr.crew[x]]).map(x => `<button class="btn sm mLeave" data-pid="${pr.crew[x]}">${C.SLOT_NAME[x]} ${esc(m[pr.crew[x]].name)} 请假 → 生成方案</button>`).join('')}</div>
-      <table class="legtbl"><thead><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr></thead><tbody>${pr.legs.map(l => { const dd = Math.floor(l.dep / C.DAY) + 1; const md = String(C.MONTH).padStart(2,'0') + '/' + String(dd).padStart(2,'0'); const notes = [l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${esc((C.CAT_DESC[C.apCat(c, st)] || '').split('：')[0].split('(')[0])}</span>`).join(' '); return `<tr><td class="nowrap">${md} D${l.d}</td><td>${esc(C.fltLabel(l))}${l.pos ? '<sup class="mut">调</sup>' : ''}</td><td class="legair"><span class="${C.isSpecial(l.from,st)?'red':''}">${esc(C.apName(l.from,st))}</span><span class="mut">→</span><span class="${C.isSpecial(l.to,st)?'red':''}">${esc(C.apName(l.to,st))}</span></td><td class="nowrap reg">${esc(l.reg || '—')}</td><td class="nowrap">${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td class="legnote">${notes}${(st.settings.bpTesterAirports || []).includes(l.from) ? ' <span class="warnc">血压仪</span>' : ''}${C.isNightLeg(l) ? ' <span class="warnc">夜</span>' : ''}${l.ac === 'A321' ? ' A321' : ''}</td></tr>`; }).join('')}</tbody></table>
+      <table class="legtbl"><thead><tr><th>日</th><th>航班</th><th>航段</th><th>机号</th><th>时刻</th><th>备注</th></tr></thead><tbody>${pr.legs.map(l => { const dd = Math.floor(l.dep / C.DAY) + 1; const md = String(C.MONTH).padStart(2,'0') + '/' + String(dd).padStart(2,'0'); const notes = [l.from, l.to].filter(c => C.isSpecial(c, st)).map(c => `<span class="red">${esc((C.CAT_DESC[C.apCat(c, st)] || '').split('：')[0].split('(')[0])}</span>`).join(' '); return `<tr><td class="nowrap">${md} D${l.d}</td><td>${esc(C.fltLabel(l))}${l.pos ? '<sup class="mut">调</sup>' : ''}</td><td class="legair"><span class="${C.isSpecial(l.from,st)?'red':''}">${esc(C.apName(l.from,st))}</span><span class="mut">→</span><span class="${C.isSpecial(l.to,st)?'red':''}">${esc(C.apName(l.to,st))}</span></td><td class="nowrap reg">${esc(C.regLabel(l.reg) || '—')}</td><td class="nowrap">${C.fmtT(l.dep)}-${C.fmtT(l.arr)}</td><td class="legnote">${notes}${(st.settings.bpTesterAirports || []).includes(l.from) ? ' <span class="warnc">血压仪</span>' : ''}${C.isNightLeg(l) ? ' <span class="warnc">夜</span>' : ''}${l.ac === 'A321' ? ' A321' : ''}${C.isExtDh && C.isExtDh(l) ? ' <span class="warnc">外航置位 / 买票' + (l.carrier ? ' · ' + esc(l.carrier) : '') + '</span>' : (l.dh ? ' <span class="mut">置位</span>' : '')}</td></tr>`; }).join('')}</tbody></table>
       ${sp.length ? `<div class="note red">本任务涉及特殊机场：${sp.map(c => C.apName(c, st) + '(' + c + ')').join('、')}，执行左右座均需持有该机场授权</div>` : ''}
       ${bpt.length ? `<div class="note warnc">提醒：自 ${[...new Set(bpt.map(l => C.apName(l.from, st)))].join('、')} 出港，始发站须配备血压测试仪</div>` : ''}
       <h3 style="margin-top:14px">机组 <small class="mut">点选候选人后须点「确定」才写入；关闭不保存</small></h3><div id="slots"></div><div id="crewChk" class="note"></div>
@@ -148,19 +148,47 @@
     if (ui.tq) ps = ps.filter(p => JSON.stringify(p.legs).includes(ui.tq) || p.id.includes(ui.tq) || p.legs.some(l => C.apName(l.to, st).includes(ui.tq)));
     const unf = st.pairings.filter(p => !C.pairingFull(p)).length;
     let h = `<div class="toolbar"><select id="tf">${['全部', '未满员', '已满员', '有违规', '特殊机场', '执勤高/中风险'].map(g => `<option ${g === ui.tf ? 'selected' : ''}>${g}</option>`).join('')}</select><input id="tq" placeholder="航班号/机场/任务号" value="${esc(ui.tq)}">
-      <span class="mut">共 ${st.pairings.length} 个任务，已满员 ${st.pairings.length - unf}，未满员 <b class="${unf ? 'red' : 'okc'}">${unf}</b>；显示 ${ps.length}</span></div>
+      <span class="mut">共 ${st.pairings.length} 个任务，已满员 ${st.pairings.length - unf}，未满员 <b class="${unf ? 'red' : 'okc'}">${unf}</b>；显示 ${ps.length}</span>
+      <details class="extdh-add" style="margin-left:auto"><summary>添加外航置位 / 买票</summary>
+        <div class="flex" style="gap:6px;flex-wrap:wrap;margin-top:6px">
+          <input id="exCarrier" placeholder="承运人 如 3U/CA" style="width:110px">
+          <input id="exFlt" placeholder="航班号 如 8791" style="width:110px">
+          <input id="exFrom" placeholder="起飞站 ZUUU" style="width:100px">
+          <input id="exTo" placeholder="降落站 ZBAA" style="width:100px">
+          <input id="exDay" type="number" min="1" max="${C.DAYS}" value="1" title="日期(日)" style="width:64px">
+          <input id="exDep" placeholder="起飞 08:00" style="width:90px">
+          <input id="exArr" placeholder="落地 11:20" style="width:90px">
+          <button class="btn sm primary" id="exAdd">加入任务</button>
+        </div></details></div>
       <div class="panel scroll" style="max-height:calc(100vh - 200px)"><table><tr><th>任务号</th><th>日期</th><th>天数</th><th>机型</th><th>小时</th><th>行程（D1..Dn）</th><th>机组</th><th>执勤风险（每日 飞行执勤期 / 限制 · 余量）</th><th>状态</th><th></th></tr>`;
     for (const pr of ps) {
       const full = C.pairingFull(pr); const bpt = pr.legs.some(l => (st.settings.bpTesterAirports || []).includes(l.from));
       h += `<tr><td><b>${pairHtml(pr)}</b>${fillBadge(pr.id)}${demoTag(pr)}</td><td>${dateOf(pr.start)}${pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''}</td><td>${pr.ndays}</td><td>${pr.ac}</td><td>${C.pairingHours(pr).toFixed(1)}</td>
         <td>${dayChains(pr).map(c => c.html).join('<br>')}</td><td>${crewTxt(pr, m)}</td>
         <td class="fdpc">${C.fdpDays(pr, st).map(dy => `<div><span class="rdot r-${dy.planRisk}"></span>D${dy.d} ${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)} · <span class="${{ over: 'red', high: 'red', med: 'warnc', low: 'mut' }[dy.planRisk]}">余 ${dy.planBuffer} 分</span>${dy.planRestShort ? ` <span class="mut" title="计划过夜休息偏短">夜休 ${C.fmtH(dy.planRest)}</span>` : ''}</div>`).join('')}</td>
-        <td>${V[pr.id] ? `<span class="red" title="${esc(V[pr.id].join('\n'))}">✖ ${V[pr.id].length}项违规</span>` : full ? '<span class="okc">✔ 合规</span>' : '<span class="warnc">待填</span>'}${bpt ? '<br><span class="warnc">需血压测试仪</span>' : ''}</td>
+        <td>${V[pr.id] ? `<span class="red" title="${esc(V[pr.id].join('\n'))}">✖ ${V[pr.id].length}项违规</span>` : full ? '<span class="okc">✔ 合规</span>' : (function(){ const rs = C.unfilledReasons ? C.unfilledReasons(st, pr) : []; const t = rs.join('；') || '待填'; return `<span class="warnc" title="${esc(t)}">待填</span>${rs.length ? `<div class="mut sm">${esc(rs.join('；'))}</div>` : ''}`; })()}${bpt ? '<br><span class="warnc">需血压测试仪</span>' : ''}</td>
         <td><button class="btn sm" data-ed="${pr.id}">调整</button></td></tr>`;
     }
     $('#main').innerHTML = h + '</table></div>';
     $('#tf').onchange = e => { ui.tf = e.target.value; rTaskList(); };
     $('#tq').onchange = e => { ui.tq = e.target.value.trim(); rTaskList(); };
     document.querySelectorAll('[data-ed]').forEach(b => b.onclick = () => openEdit(b.dataset.ed));
+    const exBtn = $('#exAdd');
+    if (exBtn) exBtn.onclick = () => {
+      const carrier = ($('#exCarrier') && $('#exCarrier').value || '').trim();
+      const flt = ($('#exFlt') && $('#exFlt').value || '').trim().toUpperCase();
+      const from = ($('#exFrom') && $('#exFrom').value || '').trim().toUpperCase();
+      const to = ($('#exTo') && $('#exTo').value || '').trim().toUpperCase();
+      const d = Math.max(1, Math.min(C.DAYS, +($('#exDay') && $('#exDay').value) || 1));
+      const parseHM = v => { const m = String(v || '').trim().replace(/：/g, ':').match(/^(\d{1,2}):(\d{2})$/); return m ? (+m[1]) * 60 + (+m[2]) : null; };
+      const depHM = parseHM($('#exDep') && $('#exDep').value), arrHM = parseHM($('#exArr') && $('#exArr').value);
+      if (!carrier || !flt || !from || !to || depHM == null || arrHM == null) { toast('请填写承运人、航班号、起降站和时刻'); return; }
+      const leg = C.makeExtDhLeg({ d, flt, from, to, depHM, arrHM, carrier });
+      if (arrHM <= depHM) leg.arr += C.DAY;
+      const n = st.pairings.filter(x => /^XD/.test(x.id)).length + 1;
+      const id = 'XD' + String(n).padStart(3, '0');
+      const pr = { id, start: d, ndays: 1, ac: 'A320', legs: [leg], crew: { C: null, F: null, T: null }, taskType: '外航置位 / 买票' };
+      st.pairings.push(pr); save(); rTaskList(); toast('已加入外航置位 / 买票 ' + id + ' ' + carrier + flt); 
+    };
   }
 

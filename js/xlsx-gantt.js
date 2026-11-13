@@ -12,7 +12,7 @@
       const fx = /双流/.test(n) ? '蓉' : /天府/.test(n) ? '府' : null; const cand = [fx, ...n.replace(/^成都/, '')].filter(Boolean).concat([...n]);
       const ch = cand.find(x => !used.has(x)) || n[0] || code[0]; used.add(ch); AB[code] = ch; }); return AB; }
   function build(ExcelJS, C, st, opt) {
-    opt = opt || {}; const S = st.settings || {}; const rep = S.reportMin || 60, rel = S.releaseMin || 30;
+    opt = opt || {}; const S = st.settings || {}; const rep = (C && C.repMin) ? C.repMin(st, []) : (S.reportMin || 95), rel = S.releaseMin || 30;
     const idx = C.buildIndex(st); const pm = {}; st.pilots.forEach(p => pm[p.id] = p); const AB = abbrMap(C, st);
     const D = C.DAYS, Y = C.YEAR, M = C.MONTH; const DL = d => (C.dayLabel ? C.dayLabel(d) : { m: M, d, text: M + '/' + String(d).padStart(2, '0') }); const dow = d => { const L = DL(d); return new Date(Y, L.m - 1, L.d).getDay(); };
     const pilots = opt.pilotIds ? opt.pilotIds.map(id => pm[id]).filter(Boolean) : st.pilots;
@@ -21,7 +21,7 @@
     const crewFull = pr => ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, pm)} ${pr.crew[s] && pm[pr.crew[s]] ? pm[pr.crew[s]].name + '(' + pm[pr.crew[s]].rank + ')' : '空缺'}`).join(' / ');
     const fdpTxt = pr => C.fdpDays(pr, st).map(dy => `D${dy.d} 飞行执勤期 ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余量 ${dy.planBuffer} 分`).join('\n');
     const plabel = pr => (C.pairingLabel ? C.pairingLabel(pr, st) : String(pr.id || ''));
-    const noteOf = pr => `${plabel(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${l.reg || ''}`).join('\n') + '\n' + fdpTxt(pr);
+    const noteOf = pr => `${plabel(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h\n${crewFull(pr)}\n` + pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${C.apName(l.from, st)}${C.isSpecial(l.from, st) ? '★' : ''}→${C.apName(l.to, st)}${C.isSpecial(l.to, st) ? '★' : ''} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} ${C.regLabel(l.reg) || ''}`).join('\n') + '\n' + fdpTxt(pr);
     const rich = (head, codes, tail) => { const r = [{ text: head + ' ', font: { color: { argb: 'FFFFFFFF' }, bold: true, size: 9 } }];
       codes.forEach((c, i) => { if (i) r.push({ text: '-', font: { color: { argb: 'FFFFFFFF' }, size: 9 } }); const sp = C.isSpecial(c, st); r.push({ text: AB[c] + (sp ? '★' : ''), font: { color: { argb: sp ? 'FFFFC2C2' : 'FFFFFFFF' }, bold: sp, size: 9 } }); });
       if (tail) r.push({ text: ' ' + tail, font: { color: { argb: 'FFE0E8F5' }, size: 8 } }); return { richText: r }; };

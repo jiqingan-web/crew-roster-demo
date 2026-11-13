@@ -127,7 +127,7 @@
       <button class="btn" id="exRoster">排班表（按航段，含机组）</button><button class="btn" id="exHours">人员工时统计</button><button class="btn" id="exViol">校验问题清单</button><br>
       <button class="btn" id="exPil">人员数据</button><button class="btn" id="exPr">任务数据</button><button class="btn" id="exJson">完整备份(JSON)</button></div>`}</div>
       <div class="panel"><h3>导入</h3><div class="note">导入将替换对应数据并清空现有排班。可先下载模板。</div><div style="margin-top:10px;line-height:3">
-      <button class="btn primary" id="tpXlsx">下载导入模板</button><label class="btn primary">导入航段 Excel<input type="file" id="imXlsx" accept=".xlsx,.xls,.csv" hidden></label><br>
+      <button class="btn primary" id="tpXlsx">下载导入模板</button><label class="btn primary">导入航段 / 换季计划 Excel<input type="file" id="imXlsx" accept=".xlsx,.xls,.csv" hidden></label><label class="btn">导入换季计划<input type="file" id="imSeason" accept=".xlsx,.xls,.csv" hidden></label><br>
       <button class="btn" id="tpPil">下载人员模板</button><button class="btn" id="tpPr">下载任务模板(CSV)</button><br>
       <label class="btn">导入人员 CSV<input type="file" id="imPil" accept=".csv" hidden></label><label class="btn">导入任务 CSV<input type="file" id="imPr" accept=".csv" hidden></label><label class="btn">恢复备份 JSON<input type="file" id="imJson" accept=".json" hidden></label></div><div id="imMsg" class="note"></div></div></div>
       <div class="panel"><h3>格式说明</h3><div class="note" style="line-height:1.9">人员 CSV 列：${PIL_H.join('，')}；级别取值：${C.RANKS.join(' / ')}<br>任务 CSV 列：${PR_H.join('，')}；同一任务号的多行即该任务的各航段（按日序、时间排列），任务须从 ZUUU 出发并回到 ZUUU。机场使用 ICAO 四字码，须在“设置”机场表内。</div></div>`;
@@ -159,6 +159,7 @@
     read($('#imJson'), t => { const s = JSON.parse(t); if (!s.pilots || !s.pairings) throw new Error('不是有效备份'); st = s; if (C.setPeriod) C.setPeriod(st.grid || { days: 30, start: { m: 11, d: 1 } }); st.settings = C.migrateSettings(Object.assign(C.defaultSettings(), st.settings)); try { leaveOpts = null; leaveHoles = null; dutyOpts = null; } catch (e) {} refresh(); toast('备份已恢复'); });
     $('#tpXlsx').onclick = () => downloadLegTemplate();
     $('#imXlsx').onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importLegFile(f); };
+    const imS = $('#imSeason'); if (imS) imS.onchange = e => { const f = e.target.files[0]; e.target.value = ''; if (f) importLegFile(f, { preferSeason: true }); };
     bindExportButtons();
   }
   // ---------------- 航段 Excel 导入（标准模板，离线） ----------------
@@ -167,16 +168,121 @@
     const wb = LegImport.buildTemplate(ExcelJS, C, st, {}); const buf = await wb.xlsx.writeBuffer();
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })); a.download = '航段导入模板.xlsx'; a.click();
   }
-  function importLegFile(f) {
+  function importLegFile(f, opt) {
+    opt = opt || {};
     const name = f.name || ''; const msg = h => { const m = $('#imMsg'); if (m) m.innerHTML = h; };
-    if (/\.xls$/i.test(name)) { msg('<span class="red">暂不支持旧版 .xls：请在 Excel / WPS 中“另存为 .xlsx”后再导入（或点“下载导入模板”按模板填写）。</span>'); return; }
+    if (/\.xls$/i.test(name) && !/\.xlsx$/i.test(name)) { msg('<span class="red">暂不支持旧版 .xls：请在 Excel / WPS 中“另存为 .xlsx”后再导入（或点“下载导入模板”按模板填写）。</span>'); return; }
     const r = new FileReader();
     r.onload = async () => { try {
-        const rows = /\.csv$/i.test(name) ? LegImport.parseCSV(new TextDecoder('utf-8').decode(r.result)) : (await LegImport.readXlsx(ExcelJS, r.result)).rows;
-        showLegImport(name, rows);
+        if (/\.csv$/i.test(name)) {
+          const rows = (window.LegImport ? LegImport.parseCSV(new TextDecoder('utf-8').decode(r.result)) : []);
+          if (window.SeasonPlan && SeasonPlan.isSeasonPlanGrid(rows)) showSeasonPlanImport(name, [{ name: name, rows }]);
+          else showLegImport(name, rows);
+          return;
+        }
+        if (!window.ExcelJS) { msg('<span class="red">Excel 组件未加载</span>'); return; }
+        const wb = new ExcelJS.Workbook(); await wb.xlsx.load(r.result);
+        const sheets = (window.SeasonPlan && SeasonPlan.sheetsFromExcelJS) ? SeasonPlan.sheetsFromExcelJS(wb) : [{ name: '航段', rows: (await LegImport.readXlsx(ExcelJS, r.result)).rows }];
+        const isSeason = (window.SeasonPlan && SeasonPlan.isSeasonWorkbook(sheets)) || opt.preferSeason;
+        if (isSeason) showSeasonPlanImport(name, sheets);
+        else {
+          const hit = sheets.find(s => { try { LegImport.rowsToRecords(s.rows); return true; } catch (e) { return false; } }) || sheets[0];
+          showLegImport(name, hit ? hit.rows : []);
+        }
       } catch (e) { msg('<span class="red">导入失败：' + esc(e.message) + '</span>'); } };
     r.readAsArrayBuffer(f);
   }
+
+  function showSeasonPlanImport(name, sheets) {
+    if (!window.SeasonPlan) { toast('换季计划解析未加载'); return; }
+    const FM = window.FlightMap, TV = window.TimetableVersion;
+    const flightMap = (st.flightMap) || (FM && (FM.readStored(localStorage) || FM.defaultTable()));
+    const parsed = SeasonPlan.parseWorkbook(sheets, { flightMap });
+    const recs = SeasonPlan.dutiesToTimetableRecords(parsed.duties || []);
+    const prev = st.timetableVersion;
+    let choices = {};
+    let verMeta = { 版本号: '', 生效日期: '', 来源文件名: name, 导入时间: TV ? TV.nowStamp() : new Date().toISOString() };
+    const pairingsNow = st.pairings || [];
+    const draw = () => {
+      if (TV) {
+        const draft = TV.importVersion(recs, verMeta, prev, { choices, pairings: pairingsNow });
+        var conflicts = draft.conflicts || [], unresolved = draft.unresolved || [], diff = draft.diff || [], complete = draft.complete, draftObj = draft;
+      } else {
+        var conflicts = [], unresolved = [], diff = [], complete = true, draftObj = null;
+      }
+      const prs = SeasonPlan.dutiesToPairings(parsed.duties || []);
+      const R = parsed.report || { ok: 0, doubt: 0, fail: 0, total: 0 };
+      const skipped = parsed.skipped || [];
+      const labels = [];
+      (parsed.duties || []).forEach(d => (d.labels || []).forEach(l => { if (labels.indexOf(l) < 0) labels.push(l); }));
+      const doubts = (parsed.items || []).filter(x => x.status === 'doubt');
+      const fails = (parsed.items || []).filter(x => x.status === 'fail');
+      const deduped = parsed.airportDeduped || [];
+      const list = (arr, fmt, n) => arr.length ? `<ul class="imlist">${arr.slice(0, n || 8).map(x => '<li>' + fmt(x) + '</li>').join('')}${arr.length > (n || 8) ? `<li class="mut">… 另 ${arr.length - (n || 8)} 条</li>` : ''}</ul>` : '';
+      const confHtml = conflicts.length ? `<div class="imsec"><b class="red">时刻冲突（同一版本内须人工选择一套）：${conflicts.length}</b>${conflicts.map(c => {
+        const sel = choices[c.flt];
+        return `<div style="margin:6px 0"><b>${esc(c.flt)}</b> ${esc(c.message)}<div>${c.times.map(tm => `<label style="display:block"><input type="radio" name="tv-${esc(c.flt)}" data-flt="${esc(c.flt)}" data-key="${esc(tm.key)}" ${sel === tm.key || (sel && sel.dep === tm.dep) ? 'checked' : ''}> ${esc(tm.dep)}${tm.arr ? '–' + esc(tm.arr) : ''} ${tm.dow ? '班期 ' + esc(tm.dow) : ''}（行 ${esc((tm.rows || []).join(','))}）</label>`).join('')}</div></div>`;
+      }).join('')}</div>` : '<div class="imsec"><b class="okc">时刻冲突：0</b></div>';
+      const diffHtml = diff.length ? `<div class="imsec"><b>与上一版差异：${diff.length}</b><table class="imlist"><tr><th>航班</th><th>旧时刻</th><th>新时刻</th><th>差值</th><th>受影响的任务</th></tr>${diff.map(d => `<tr class="${d.red ? 'red' : ''}"><td>${esc(d.航班)}</td><td>${esc(d.旧时刻)}</td><td>${esc(d.新时刻)}</td><td class="${d.red ? 'red' : ''}">${esc(d.差值)}${d.red ? ' · ≥45分钟' : ''}</td><td>${esc((d.受影响的任务 || []).join('、') || '—')}</td></tr>`).join('')}</table></div>` : '<div class="note">无上一版或无时刻差异。</div>';
+      $('#modalBox').innerHTML = `<h3>导入换季计划 · ${esc(name)}</h3>
+        <div class="note">经 C-12 容错解析 + C-02 值勤期拆分：成功 ${R.ok} / 存疑 ${R.doubt} / 失败 ${R.fail}（共 ${R.total} 条）→ 可导入任务 ${prs.length} 个。失败条不交给排班。${skipped.length ? '已过滤非数据行 ' + skipped.length + '（方向标题/备注/独立标签）。' : ''}</div>
+        <div class="slotbox" style="grid-template-columns:auto 1fr auto 1fr;margin:8px 0;gap:8px">
+          <span>时刻版本号</span><input id="tvVer" value="${esc(verMeta.版本号)}">
+          <span>生效日期</span><input id="tvEff" value="${esc(verMeta.生效日期)}" placeholder="YYYY-MM-DD">
+        </div>
+        ${labels.length ? `<div class="note">环标签（已保留为元数据）：${labels.map(esc).join('、')}</div>` : ''}
+        ${confHtml}
+        ${diffHtml}
+        ${list(fails, x => esc((x.sheet || '') + ' 第' + x.row + '行 ' + (x.flights || []).join('/') + '：' + (x.reasons || []).join('；')), 8)}
+        ${doubts.length ? `<div class="imsec"><b class="warnc">存疑 ${doubts.length}</b>${list(doubts, x => esc((x.sheet || '') + ' 第' + x.row + '行 ' + (x.flights || []).join('/') + (x.reasons || []).join('；')), 8)}</div>` : ''}
+        ${deduped.length ? `<div class="note">机场属性去重 ${deduped.length} 条（汉堡/图卢兹/莫斯科等重复项只保留一条）。住宿参数未从该表自动填入，大过站仍提示「需确认住宿」。</div>` : ''}
+        <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn primary" id="imSPRep" ${complete && prs.length ? '' : 'disabled'}>替换现有任务（${(st.pairings || []).length}→${prs.length}）</button>
+          <button class="btn" id="imSPMerge" ${complete && prs.length ? '' : 'disabled'}>合并到现有任务（+${prs.length}）</button>
+          <button class="btn" id="imCancel">取消</button></div>
+        ${!complete ? '<div class="note red">请先为每个时刻冲突选择一套时刻，才能导入。排班结果将记录所用时刻版本号。</div>' : ''}`;
+      $('#modal').classList.remove('hidden');
+      const v1 = $('#tvVer'), v2 = $('#tvEff');
+      if (v1) v1.onchange = v1.oninput = () => { verMeta.版本号 = v1.value; };
+      if (v2) v2.onchange = v2.oninput = () => { verMeta.生效日期 = v2.value; };
+      document.querySelectorAll('#modalBox input[type=radio][data-flt]').forEach(inp => {
+        inp.onchange = () => { choices[inp.dataset.flt] = inp.dataset.key; draw(); };
+      });
+      $('#imCancel').onclick = () => $('#modal').classList.add('hidden');
+      const go = (mode) => {
+        if (TV && !complete) return;
+        const stamp = TV ? TV.stampRoster({}, verMeta).timetableVersion : verMeta;
+        if (!stamp.版本号) stamp.版本号 = 'SP-' + (stamp.导入时间 || '').slice(0, 10);
+        const add = prs.map(p => {
+          const q = JSON.parse(JSON.stringify(p));
+          q.meta = Object.assign({}, q.meta || {}, { timetableVersion: stamp });
+          return q;
+        });
+        if (mode === 'merge') {
+          const ids = new Set(st.pairings.map(x => x.id));
+          add.forEach(p => { let id = p.id, k = 2; while (ids.has(id)) id = p.id + '-' + k++; ids.add(id); p.id = id; });
+          st.pairings = st.pairings.concat(add);
+        } else {
+          st.pairings = add; st.fills = []; st.training = null; st.trainingKind = null; st.control = null; st.sim = null;
+        }
+        st.standby = null; st.sample = false; st.solHist = []; st.solIdx = null;
+        st.timetableVersion = stamp; st.时刻版本号 = stamp.版本号;
+        if (FM && flightMap) st.flightMap = flightMap;
+        if (parsed.knownRoutes) st.knownRoutes = parsed.knownRoutes;
+        if (parsed.airportParams) st.airportParams = parsed.airportParams;
+        if (C.ingestSeasonPlanReport) C.ingestSeasonPlanReport(st, parsed, { mode: mode });
+        else { st.seasonPlanReport = parsed.report; st.importReport = parsed.report; }
+        // 不把机场属性写入 airportLodging，以免吞掉「需确认住宿」
+        $('#modal').classList.add('hidden'); refresh();
+        toast('已' + (mode === 'merge' ? '合并' : '导入') + ' ' + add.length + ' 个换季计划任务 · 时刻版本 ' + stamp.版本号);
+      };
+      const b1 = $('#imSPRep'), b2 = $('#imSPMerge');
+      if (b1) b1.onclick = () => go('replace');
+      if (b2) b2.onclick = () => go('merge');
+    };
+    draw();
+  }
+
   function showLegImport(name, rows) {
     let allow = false, skipBlock = true, skipFtl = false, res, intr;
     const list = (arr, fmt, n) => arr.length ? `<ul class="imlist">${arr.slice(0, n || 8).map(x => '<li>' + esc(fmt(x)) + '</li>').join('')}${arr.length > (n || 8) ? `<li class="mut">… 另 ${arr.length - (n || 8)} 条</li>` : ''}</ul>` : '';

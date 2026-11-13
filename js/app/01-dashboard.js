@@ -216,10 +216,23 @@
     const dailySb = Array.from({ length: C.DAYS }, (_, i) => st.pilots.filter(p => ((st.standby || {})[p.id] || []).includes(i + 1)).length);
     const dailyHoles = Array.from({ length: C.DAYS }, (_, i) => st.pairings.filter(pr => C.daysTouched(pr, st).includes(i + 1) && !C.pairingFull(pr)).length);
 
-    h += `<div class="panel"><h3>公平性日常监控 <small>工时基尼/标准差 · 值勤日分布 · 周末/夜航/早班占比</small></h3>
+    const fairMode = ui.fairMode === 'grade' ? 'grade' : 'all';
+    const fg = sum.fairGroups || {};
+    const fairToggle = `<span class="seg fairSeg" style="margin-left:8px"><button type="button" data-fair="all" class="${fairMode === 'all' ? 'on' : ''}">全员</button><button type="button" data-fair="grade" class="${fairMode === 'grade' ? 'on' : ''}">按级别</button></span>`;
+    const gradeRows = (C.FAIR_GROUPS || []).map(g => {
+      const h0 = (fg[g] && fg[g].hours) || { n: 0, median: 0, min: 0, max: 0, mean: 0 };
+      return { label: g, n: h0.n || 0, median: h0.median || 0, min: h0.min || 0, max: h0.max || 0, mean: h0.mean || 0 };
+    });
+    const fairLeft = fairMode === 'grade'
+      ? `${CH.bars(gradeRows.map(x => ({ label: x.label, value: +x.median.toFixed(1), color: '#3ea6ff' })), { w: 560, h: 200, values: true })}
+          <div class="note">按级别中位数（h）；全员基尼 ${sum.all.gini.toFixed(3)} · 均值 ${sum.all.mean.toFixed(1)}h</div>
+          <table class="solt" style="margin-top:8px"><tr><th>组别</th><th>人数</th><th>中位数</th><th>最低</th><th>最高</th></tr>
+          ${gradeRows.map(x => `<tr><td>${esc(x.label)}</td><td>${x.n}</td><td>${x.median.toFixed(1)}</td><td>${x.min.toFixed(1)}</td><td>${x.max.toFixed(1)}</td></tr>`).join('')}</table>`
+      : `${CH.bars(rankFair.slice(0, 14).map(x => ({ label: x.label, value: x.value, color: '#3ea6ff' })), { w: 560, h: 200, values: true })}
+          <div class="note">各组工时 σ；全员基尼 ${sum.all.gini.toFixed(3)} · 均值 ${sum.all.mean.toFixed(1)}h · 中位数 ${(sum.all.median || 0).toFixed(1)}h · ${sum.all.min.toFixed(1)}–${sum.all.max.toFixed(1)}h</div>`;
+    h += `<div class="panel"><h3>公平性日常监控 <small>工时基尼/标准差 · 值勤日分布 · 周末/夜航/早班占比</small>${fairToggle}</h3>
       <div class="grid g2">
-        <div>${CH.bars(rankFair.slice(0, 14).map(x => ({ label: x.label, value: x.value, color: '#3ea6ff' })), { w: 560, h: 200, values: true })}
-          <div class="note">各组工时 σ；全员基尼 ${sum.all.gini.toFixed(3)} · 均值 ${sum.all.mean.toFixed(1)}h</div></div>
+        <div>${fairLeft}</div>
         <div>${CH.bars(Object.keys(dutyDist).map(Number).sort((a,b)=>a-b).map(k => ({ label: k + '天', value: dutyDist[k], color: '#2ecc8f' })), { w: 560, h: 200, values: true })}
           <div class="note">值勤天数分布 · 周末值勤日占比 ${totalDuty ? (100 * we / totalDuty).toFixed(0) : 0}% · 含夜航 ${totalDuty ? (100 * night / totalDuty).toFixed(0) : 0}% · 早班(&lt;06:00) ${totalDuty ? (100 * early / totalDuty).toFixed(0) : 0}%</div></div>
       </div></div>`;
@@ -265,6 +278,9 @@
     h = demoFillBanner() + exportBarHtml('<span class="mut">班表 / 个人月历</span>') + h;
     $('#main').innerHTML = h;
     bindExportButtons();
+    document.querySelectorAll('.fairSeg button').forEach(b => {
+      b.onclick = () => { ui.fairMode = b.dataset.fair === 'grade' ? 'grade' : 'all'; rOps(); };
+    });
     const bc = $('#btnBriefCopy'), be = $('#btnBriefExport');
     if (bc) bc.onclick = copyOpsBrief;
     if (be) be.onclick = exportOpsBrief;

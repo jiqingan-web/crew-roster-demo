@@ -3,13 +3,14 @@
 # -----------------------------------------------------------------------------
 # 依据：
 #   1. 《飞行部空客机型操作及搭配上座规定(RE12)》（飞行部 2026-09-11）
-#   2. 《公司运行手册》第 17 章「高原机场和特殊机场运行」（Re07-00）
+#   2. 成都航空《公司运行手册》（Re07-10，/workspace/audit/com.txt）第 17 章「高原机场和特殊机场运行」
 # 说明：所有规则均可配置；修订手册时只需修改本文件，无需改代码。
 # =============================================================================
 
 meta:
   source: "公司机型搭配规定 + 运行手册高原/特殊机场章节（CCAR-121 R8）"
-  source_date: "RE12 2026-09-11 / 手册17章 2025-09-01"
+  source_date: "RE12 2026-09-11 / 公司运行手册 Re07-10"
+  manual_revision: "Re07-10"
   version: "RE12+17章-1.0"
 
 # ------------------------------ 机组构成 ------------------------------------
@@ -58,33 +59,36 @@ cruise_pairing_matrix:
     TB: { min_fo: F1 }
     TC: { min_fo: F1 }
 
-# ------------------------------ 起飞/着陆上座表（RE12 二、四）-------------------
-# 起飞、着陆阶段左座机长 × 右座副驾驶。表中"—"= 该副驾驶不得在起落阶段上座（连 PM 也不行）；
-# PM / PF/PM = 可上座（PM 格表示机长须亲自操纵，系统不排 PF，只标注提示）。
-# 本表比巡航表严：三人制下巡航表只管巡航替换座位，起飞和着陆两人必须按本表。
-# 取起飞表与着陆表的交集（两张都不是"—"才可上座）：
-#   J1：起飞 F6/F7=PM，着陆 F6/F7=PM → F6、F7（F8 两表均为"—"）
-#   J2：起飞 F5–F8=PM，着陆 F5–F8=PM → F5–F8
-#   J3：起飞 F4–F8，着陆 F4=PM、F5–F8 → F4–F8
-#   TL/TB/TC：F2–F8（F1 仅实施转升检查时可作为 PM，常规排班不排）
-#   US/J0：RE12 起落表未列 → 暂按最严的 J1 列处理（待飞行部确认）
-#   机长A/B：按 J2 列，另有右座下限 A≥F5、B≥F6（部门口径）
+# ------------------------------ 起降上座矩阵（RE12 / 飞行部手册 3.15）----------
+# 表 3-15-1 起飞、表 3-15-3 着陆（普通机场）。左键为副驾等级，右键为机长等级。
+# 值：none 不可上座；pm 仅 PM；pf_pm 可 PF/PM；pf_pm_night 可 PF/PM（含夜航）；
+#     upgrade_pm 仅转升检查时可作为 PM 上座（F1+教员）。
+# 机长A/B 按 J2。表中没有的机长等级（如 US/SPIC/J0）与副驾的起降视为不可上座。
+# 双机长组合不查此表，起降可上座。
 takeoff_landing_matrix:
-  source: "RE12 二（起飞）、四（着陆）2026-09-11"
-  allowed_fo:
-    US: [F6, F7]
-    J0: [F6, F7]
-    J1: [F6, F7]
-    J2: [F5, F6, F7, F8]
-    J3: [F4, F5, F6, F7, F8]
-    TL: [F2, F3, F4, F5, F6, F7, F8]
-    TB: [F2, F3, F4, F5, F6, F7, F8]
-    TC: [F2, F3, F4, F5, F6, F7, F8]
-  pm_only:            # 可上座但机长须做 PF（仅提示）
-    J1: [F6, F7]
-    J2: [F5, F6, F7, F8]
-    J3: [F4]
-  unlisted_levels: [US, J0]   # 表中未列，按 J1 处理，待确认
+  source: "RE12 / 飞行部手册 3.15 表 3-15-1、3-15-3"
+  captains: [J1, J2, J3, TL, TB, TC]
+  alias:
+    机长A: J2
+    机长B: J2
+  takeoff:
+    F1: { J1: none, J2: none, J3: none, TL: upgrade_pm, TB: upgrade_pm, TC: upgrade_pm }
+    F2: { J1: none, J2: none, J3: none, TL: pf_pm, TB: pf_pm, TC: pf_pm }
+    F3: { J1: none, J2: none, J3: none, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F4: { J1: none, J2: none, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F5: { J1: none, J2: pm, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F6: { J1: pm, J2: pm, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F7: { J1: pm, J2: pm, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F8: { J1: none, J2: pm, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+  landing:
+    F1: { J1: none, J2: none, J3: none, TL: upgrade_pm, TB: upgrade_pm, TC: upgrade_pm }
+    F2: { J1: none, J2: none, J3: none, TL: pf_pm, TB: pf_pm, TC: pf_pm }
+    F3: { J1: none, J2: none, J3: none, TL: pf_pm, TB: pf_pm, TC: pf_pm }
+    F4: { J1: none, J2: none, J3: pm, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F5: { J1: none, J2: pm, J3: pf_pm, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F6: { J1: pm, J2: pm, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F7: { J1: pm, J2: pm, J3: pf_pm_night, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
+    F8: { J1: none, J2: pm, J3: pf_pm, TL: pf_pm_night, TB: pf_pm_night, TC: pf_pm_night }
 
 # ------------------------------ FO-FO 搭配矩阵 -------------------------------
 # allow: 硬约束；preference_score: 软约束优先级（越高越优先）
@@ -124,7 +128,7 @@ plateau_airport_rules:
 
   # ---- 17.1.3(2)(3) 年龄限制 ----------------------------------------------
   age_limits:
-    high_plateau_max_age: 55       # 55周岁(含)以上原则上不进高高原；局方特批可进但不任责任机长
+    high_plateau_max_age: 55       # v687 用户决定：>55 才拦（COM 3.8.1 "不超过55" com.txt:9017；注意 17.1 com.txt:37199 写"55（含）以上"，存在冲突待飞行部确认）
     captain_pair_age_sum_max: 110  # 17.1.3(4)a：机长+机长年龄相加 < 110 岁
     age_sum_strict_less: true      # 严格小于 110
 
@@ -175,6 +179,7 @@ special_airport_rules:
     category: "high_plateau"
     airport_class: 1
     captain_levels: [J3, TL, TB, TC]
+    group_members: ["拉萨", "迪庆", "稻城亚丁", "九寨"]   # v686：标高≥2438m 按高高原（com.txt:36686/9007/9016/9019/37166）
     second_pilot_min: J3                    # 手册 17.1.3：高高原双机长（2 机长 + 1 副驾驶）
     # 引擎当前为 1 机长 + 2 副驾驶结构，高高原双机长位尚未实现；
     # 现以上座副驾 F6(含)以上近似，待引擎支持双机长位后改用 second_pilot_min。
@@ -197,10 +202,7 @@ special_airport_rules:
   KMG:
     name: "昆明(一般高原机场)"
     category: "general_plateau"
-    # RE12 六「一般高原机场（标高 1524–2438 米）」同组。用户 2026-11-06：只有拉萨需双机长，其余机长+副驾驶。
-    # 迪庆/稻城亚丁/九寨标高 >2438 米（手册 17.1.1 属高高原），RE12 六未单列 → 座位按一般高原，年龄/体检等高高原条款待确认。
-    # 标高为公开数据，需与《运行规范》C0003/D0003 核对。
-    group_members: ["昆明", "兰州", "昭通", "嘉峪关", "昭苏", "巴里坤", "迪庆", "稻城亚丁", "九寨"]
+    group_members: ["昆明", "兰州", "张掖", "嘉峪关", "昭苏", "巴里坤"]   # v686：补全三类一般高原
     captain_levels: [J2, J3, TL, TB, TC]
     fo_min_by_captain:
       J2: F5
@@ -216,11 +218,12 @@ special_airport_rules:
 # =============================================================================
 airport_category_list:
   A320:
-    class_1_high_plateau: [拉萨]
+    class_1_high_plateau: [拉萨, 迪庆, 稻城亚丁, 九寨]
     class_2: [丽江, 西双版纳, 西宁, 大连, 西昌]
     class_3: [昆明, 兰州, 张掖, 嘉峪关, 昭苏, 巴里坤]
     class_4: [赤峰, 张家界]
     complex_airport: [延吉, 茅台]
+    left_seat_us_plus: [茅台, 吕梁, 忻州]   # v686：吕梁 ZBLL / 忻州 ZBXZ 左座 US 及以上（原仅代码硬编码）
   ARJ21:
     class_1_high_plateau: [塔什库尔干, 巴音布鲁克]
     class_2: [西昌]
@@ -231,7 +234,7 @@ airport_category_list:
 # ------------------------------ 操作级规则（知识展示，不进排班约束）-----------
 operating_rules_reference:
   - "F2 不能操作起落，除非机长本机型教员经历时间超过 100 小时"
-  - "F1 仅实施转升检查时可作为 PM 上座"
+  - "F1 可与教员（TL/TB/TC）组成巡航上座组合以建立经历；转升检查另作手册标注，并非唯一上座途径"
   - "副驾驶 A320 经历时间少于 50 小时，只能作为 PM 配合完成起飞/着陆"
   - "A321 机型运行需技术等级 J2 及以上的飞行员操作起落"
   - "F5(含)以下副驾驶禁止使用襟翼3着陆；所有副驾驶夜航禁止襟翼3着陆"
@@ -273,23 +276,33 @@ engine_options:
   restriction_table_hard: true        # 搭配限制表（不可同机）为硬约束
 
 # =============================================================================
-# 飞行值勤期 · 长过站拆分（排班助手；用户确认运控口径 2026-11-01）
+# 飞行值勤期 / 休息 / 备份（v686 用户决定 2026-11-04，依据 COM Re07-10）
 # =============================================================================
-# 例：蓉皖蓉 / 府皖府（合肥）— 早飞出、酒店休息、晚飞回；中间航段由另一套机组执行。
-# 过夜机组的早段与晚段不得并成一个连续 FDP；晚段按 reportMin 重新报到。
-# 用户补充：过站超过 5 小时默认下去休息 → 阈值 5h；基地（湘府湘天府长过站）同样按休息拆。
 fdp_long_ground_split:
-  enabled_default: true
-  threshold_hours: 5          # 同站过站地面时间 ≥ 此值才拆；短过站/短折返不拆
-  outstation_only: false      # 外站与成都双流(ZUUU)/天府(ZUTF)基地长过站均拆
-  hotel_note_override: true   # 保留：笔记含 酒店/过夜 时也可拆（现阈值已覆盖基地长过站）
-  restart_report: true        # 次段起飞前按 settings.reportMin 重新起算 FDP
-  remark: "对应设置 fdpSplitLongGround / fdpSplitLongGroundH（默认5h）；关闭则恢复整段连续计 FDP"
-# 飞行执勤期窗口口径（用户确认 2026-11-01）：仅执飞段拉窗——报到=首个非(随)起飞前 reportMin，结束=末个非(随)落地；
-# 两端置位(随)不延长 FDP；置位仍不计飞行小时、不拉长 FDP 窗；置位日可计入连续值勤软提示链。第5日执飞不硬禁（2026-11-02，时间满足即可）。休息/占用仍按含置位的实际首末段。
+  enabled_default: false      # v686：≥5h 过站不再拆 FDP、不再重新报到；报到时刻与航段数沿用首段
+  threshold_hours: 5
+  restart_report: false
+  over_limit_tip: "需安排下去休息（住宿扣除）"   # 仅当整段 FDP 超表B 时软提示（com.txt:7898-7901 住宿暂停扣除）
 fdp_window:
-  operating_legs_only: true
-  report: first_operating_dep_minus_reportMin
+  preflight_deadhead_counts: true        # com.txt:8980 航前置位算值勤期：报到前移至置位前；置位不计航段
+  postflight_deadhead_counts: false      # 航后置位不算值勤也不算休息
+  report: first_leg_incl_preflight_dh_dep_minus_report
   end: last_operating_arr
-  deadhead_extends_window: false
-  release_for_rest: last_leg_including_dh_plus_releaseMin
+report_time:
+  domestic_min: 105            # 公司缓冲（手册 95，com.txt:7885）
+  intl_regional_min: 115       # com.txt:7885
+  fallback_min: 95
+rest:
+  company_buffer_h: 12         # 公司缓冲：release(落地+30) → 下次报到
+  com_min_h: 10                # COM 3.6.1 4)：关车+40min 起算，至报到前25min 止（com.txt:7914-7918）
+  after_shutdown_min: 40
+  before_report_min: 25
+  overnight_min_h_hard: 10
+day5:
+  operating_hard: false        # v692 修改单：第5日执飞改为软提示；备降后直飞目的地例外仍保留
+  deadhead_only: soft_pending_flight_dept   # 待飞行部确认
+standby:
+  required_crews_per_day: 2    # com.txt:9069 至少 2 套（1 套 = 机长类 1 + 副驾驶 1）
+  max_single_hours: 8          # com.txt:9088
+  window_start_h: 8
+  no_rest_period: true         # com.txt:9089

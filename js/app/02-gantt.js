@@ -100,7 +100,7 @@
           const DAYM = 1440, segs = [], viewL = nw, viewR = nw + nDays * cw;
           for (let d = 1; d <= pr.ndays; d++) { const ls = pr.legs.filter(l => l.d === d); if (!ls.length) continue;
             const absDay = pr.start + d - 1; if (absDay < day0 || absDay > dayLast) continue;
-            const a = Math.min(...ls.map(l => l.dep)) - (S.reportMin || 105), b = Math.max(...ls.map(l => l.arr)) + (S.releaseMin || 30);
+            const a = Math.min(...ls.map(l => l.dep)) - (S.reportMin || 95), b = Math.max(...ls.map(l => l.arr)) + (S.releaseMin || 30);
             let x0 = nw + (a / DAYM - xOff) * cw, x1 = nw + (b / DAYM - xOff) * cw;
             if (x1 <= viewL || x0 >= viewR) continue;
             x0 = Math.max(x0, viewL); x1 = Math.min(x1, viewR);
@@ -195,7 +195,7 @@
   function tipHtml(pr) {
     const m = pm(); const V = violByPairing();
     const fl = fillsOf(pr.id); const flTxt = fl.length ? '<br><span class="fbadge">补位</span> ' + fl.map(f => esc((f.slotName || '') + ' ' + (f.toName || '') + ' ← ' + (f.fromName || '') + (f.leaveDays && f.leaveDays.length ? '（请假 ' + daysText(f.leaveDays) + '）' : ''))).join('；') : '';
-    return `<b>${pairHtml(pr)}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h${pr.offAway ? ` · 外站驻点（${C.apName(pr.outstationBase, st)}）休息日 ${esc(daysText(C.offAwayDays(pr, st)))}（不计值勤日）` : ''}${pr.legs.some(l => l.dh) ? ' · (随)=置位乘机，不计飞行小时' : ''}<br>${pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc(l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
+    return `<b>${pairHtml(pr)}</b>${fillBadge(pr.id)}${demoTag(pr)} · ${pr.ndays}天 · ${pr.ac} · ${C.pairingHours(pr).toFixed(1)}h${pr.offAway ? ` · 外站驻点（${C.apName(pr.outstationBase, st)}）休息日 ${esc(daysText(C.offAwayDays(pr, st)))}（不计值勤日）` : ''}${pr.legs.some(l => l.dh) ? ' · (随)=置位乘机，不计飞行小时' : ''}<br>${pr.legs.map(l => `D${l.d} ${C.fltLabel(l)} ${apHtml(l.from)}-${apHtml(l.to)} ${C.fmtT(l.dep)}-${C.fmtT(l.arr)} <span class="mut">${esc((C.regLabel && C.regLabel(l.reg)) || l.reg || '')}</span>${C.isNightLeg(l) ? ' <span class="warnc">夜航</span>' : ''}`).join('<br>')}
       <br>飞行执勤期：${C.fdpDays(pr, st).map(dy => `D${dy.d} ${C.fmtH(dy.planFdp)}/${C.fmtH(dy.limit)} 余${fmtBuf(dy.planBuffer)}`).join(' · ')}
       <br><b>${crewTxt(pr, m)}</b>${['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]] ? ' ' + pill(m[pr.crew[s]].rank) : '').join('')}${flTxt}${pr.demoAnomalyNote ? '<br><span class="red">' + esc(pr.demoAnomalyNote) + '</span>' : ''}${V[pr.id] ? '<br><span class="red">' + V[pr.id].map(esc).join('<br>') + '</span>' : ''}`;
   }

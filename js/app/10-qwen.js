@@ -21,6 +21,26 @@ const QUICK = [
 ];
 const SYS_PROMPT = '你是「机组智能排班助手」的 AI 顾问，由阿里通义千问驱动。你会收到一份当前排班的数据摘要（演示用示例数据，人员为化名）。要求：用中文回答，简洁、分点；只基于摘要中的数据作答，不要编造摘要中没有的数字、人员或任务；数据不足时请如实说明。';
 
+const LS_QWEN_ON = 'crewRoster.qwen.enabled';
+function officialNow() { return typeof isOfficialData === 'function' ? isOfficialData() : !!(typeof st !== 'undefined' && st && (st.official || st.officialNotes)); }
+function qwenAllowed() { if (!officialNow()) return true; return localStorage.getItem(LS_QWEN_ON) === '1'; }
+function clearQwenOnOfficialLoad() {
+  try { localStorage.removeItem(LS_QWEN_ON); } catch (e) {}
+  try {
+    const dw = document.getElementById('qwDrawer');
+    const el = dw && dw._q && dw._q('#qwOffBanner');
+    if (el) el.innerHTML = qwenStatusHtml();
+  } catch (e) {}
+  if (typeof showLocalBanner === 'function') try { showLocalBanner(); } catch (e) {}
+}
+function qwenStatusHtml() {
+  if (!officialNow()) return '<div class="mut">当前为演示数据。提问会把排班摘要发送到阿里云通义千问（DashScope）。</div>';
+  if (!qwenAllowed()) return '<div class="note" style="background:#8e5b00;color:#fff;padding:6px 8px;border-radius:6px">已载入正式班表：千问 AI <b>默认关闭</b>。此功能会将当前排班摘要发送到阿里云（<code>dashscope.aliyuncs.com</code>）。如需使用，请先在下方明确开启。</div><button class="btn sm" type="button" id="qwEnableOff">开启千问（将外发排班摘要）</button>';
+  return '<div class="note" style="background:#8e5b00;color:#fff;padding:6px 8px;border-radius:6px">已载入正式班表，且千问已手动开启：每次提问会把排班摘要发送到阿里云。</div><button class="btn sm" type="button" id="qwDisableOff">关闭千问</button>';
+}
+
+
+
 const getKey = () => (localStorage.getItem(LS_KEY) || '').trim();
 const getModel = () => localStorage.getItem(LS_MODEL) || 'qwen-plus';
 let hist = []; // [{role, content}] 内存中的多轮上下文（不持久化）
@@ -77,6 +97,7 @@ const dw = document.createElement('div');
 dw.id = 'qwDrawer'; dw.className = 'qw-drawer hidden';
 dw.innerHTML = `
 <div class="qw-hd"><div><b>🤖 千问 AI 排班助手</b><div class="mut">Powered by 通义千问 · 回答基于当前排班数据</div></div><button class="btn sm" id="qwX" type="button">✕</button></div>
+<div id="qwOffBanner"></div>
 <details class="qw-cfg" id="qwCfgWrap">
 <summary>⚙️ 千问 API 配置 <span class="mut" id="qwKeyState"></span></summary>
 <div class="qw-cfg-bd">
@@ -101,7 +122,14 @@ dw._q = q;
 
 q('#qwX').onclick = () => dw.classList.add('hidden');
 q('#qwModel').value = getModel();
-const refreshState = () => { q('#qwKeyState').textContent = getKey()? '（已配置 ✓）': '（未配置）';};
+const paintOff = () => {
+const el = q('#qwOffBanner'); if (!el) return;
+el.innerHTML = qwenStatusHtml();
+const en = q('#qwEnableOff'); const dis = q('#qwDisableOff');
+if (en) en.onclick = () => { if (confirm('开启后，每次提问会把当前排班摘要发送到阿里云通义千问。确定开启？')) { localStorage.setItem(LS_QWEN_ON, '1'); paintOff(); if (typeof showLocalBanner === 'function') showLocalBanner(); } };
+if (dis) dis.onclick = () => { localStorage.removeItem(LS_QWEN_ON); paintOff(); if (typeof showLocalBanner === 'function') showLocalBanner(); };
+};
+const refreshState = () => { q('#qwKeyState').textContent = getKey()? '（已配置 ✓）': '（未配置）'; paintOff();};
 const hasKey =!!getKey();
 q('#qwCfgWrap').open =!hasKey;
 if (hasKey) q('#qwKey').value = getKey();
@@ -142,6 +170,10 @@ ask(t);
 async function ask(userText, silent) {
 ensureUI();
 const dw = $('#qwDrawer'); if (dw.classList.contains('hidden')) dw.classList.remove('hidden');
+if (!qwenAllowed()) {
+addMsg('ai', '已载入正式班表，千问 AI 默认关闭（提问会把排班摘要发送到阿里云 <code>dashscope.aliyuncs.com</code>）。如需使用，请在上方横幅中明确开启。');
+return;
+}
 const key = getKey();
 if (!key) {
 addMsg('ai', '请先在上方 ⚙️ 配置中填写 <b>DashScope API Key</b>（sk-开头），保存后再提问。');
@@ -179,6 +211,7 @@ const _box = dw._q('#qwMsgs'); _box.scrollTop = _box.scrollHeight;
 }
 
 // 对外暴露（控制台可用）：QWEN.ask('...')
-window.QWEN = { ask, buildRosterContext};
+window.QWEN = { ask, buildRosterContext, clearOnOfficialLoad: clearQwenOnOfficialLoad, allowed: qwenAllowed };
+window.clearQwenOnOfficialLoad = clearQwenOnOfficialLoad;
 ensureUI();
 })();

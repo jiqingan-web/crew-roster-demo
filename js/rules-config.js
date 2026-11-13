@@ -4,7 +4,8 @@
   const RULES_CONFIG = {
  "meta": {
   "source": "公司机型搭配规定 + 运行手册高原/特殊机场章节（CCAR-121 R8）",
-  "source_date": "RE12 2026-09-11 / 手册17章 2025-09-01",
+  "source_date": "RE12 2026-09-11 / 公司运行手册 Re07-10",
+  "manual_revision": "Re07-10",
   "version": "RE12+17章-1.0"
  },
  "crew_composition": {
@@ -96,80 +97,151 @@
   }
  },
  "takeoff_landing_matrix": {
-  "source": "RE12 二（起飞）、四（着陆）2026-09-11",
-  "allowed_fo": {
-   "US": [
-    "F6",
-    "F7"
-   ],
-   "J0": [
-    "F6",
-    "F7"
-   ],
-   "J1": [
-    "F6",
-    "F7"
-   ],
-   "J2": [
-    "F5",
-    "F6",
-    "F7",
-    "F8"
-   ],
-   "J3": [
-    "F4",
-    "F5",
-    "F6",
-    "F7",
-    "F8"
-   ],
-   "TL": [
-    "F2",
-    "F3",
-    "F4",
-    "F5",
-    "F6",
-    "F7",
-    "F8"
-   ],
-   "TB": [
-    "F2",
-    "F3",
-    "F4",
-    "F5",
-    "F6",
-    "F7",
-    "F8"
-   ],
-   "TC": [
-    "F2",
-    "F3",
-    "F4",
-    "F5",
-    "F6",
-    "F7",
-    "F8"
-   ]
+  "source": "RE12 / 飞行部手册 3.15 表 3-15-1、3-15-3",
+  "captains": [
+   "J1",
+   "J2",
+   "J3",
+   "TL",
+   "TB",
+   "TC"
+  ],
+  "alias": {
+   "机长A": "J2",
+   "机长B": "J2"
   },
-  "pm_only": {
-   "J1": [
-    "F6",
-    "F7"
-   ],
-   "J2": [
-    "F5",
-    "F6",
-    "F7",
-    "F8"
-   ],
-   "J3": [
-    "F4"
-   ]
+  "takeoff": {
+   "F1": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "none",
+    "TL": "upgrade_pm",
+    "TB": "upgrade_pm",
+    "TC": "upgrade_pm"
+   },
+   "F2": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "none",
+    "TL": "pf_pm",
+    "TB": "pf_pm",
+    "TC": "pf_pm"
+   },
+   "F3": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "none",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F4": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F5": {
+    "J1": "none",
+    "J2": "pm",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F6": {
+    "J1": "pm",
+    "J2": "pm",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F7": {
+    "J1": "pm",
+    "J2": "pm",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F8": {
+    "J1": "none",
+    "J2": "pm",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   }
   },
-  "unlisted_levels": [
-   "US",
-   "J0"
-  ]
+  "landing": {
+   "F1": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "none",
+    "TL": "upgrade_pm",
+    "TB": "upgrade_pm",
+    "TC": "upgrade_pm"
+   },
+   "F2": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "none",
+    "TL": "pf_pm",
+    "TB": "pf_pm",
+    "TC": "pf_pm"
+   },
+   "F3": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "none",
+    "TL": "pf_pm",
+    "TB": "pf_pm",
+    "TC": "pf_pm"
+   },
+   "F4": {
+    "J1": "none",
+    "J2": "none",
+    "J3": "pm",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F5": {
+    "J1": "none",
+    "J2": "pm",
+    "J3": "pf_pm",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F6": {
+    "J1": "pm",
+    "J2": "pm",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F7": {
+    "J1": "pm",
+    "J2": "pm",
+    "J3": "pf_pm_night",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   },
+   "F8": {
+    "J1": "none",
+    "J2": "pm",
+    "J3": "pf_pm",
+    "TL": "pf_pm_night",
+    "TB": "pf_pm_night",
+    "TC": "pf_pm_night"
+   }
+  }
  },
  "fo_combination_matrix": {
   "allow": {
@@ -264,6 +336,12 @@
     "TB",
     "TC"
    ],
+   "group_members": [
+    "拉萨",
+    "迪庆",
+    "稻城亚丁",
+    "九寨"
+   ],
    "second_pilot_min": "J3",
    "fo_min": "F6",
    "crew_qualification_required": true,
@@ -302,13 +380,10 @@
    "group_members": [
     "昆明",
     "兰州",
-    "昭通",
+    "张掖",
     "嘉峪关",
     "昭苏",
-    "巴里坤",
-    "迪庆",
-    "稻城亚丁",
-    "九寨"
+    "巴里坤"
    ],
    "captain_levels": [
     "J2",
@@ -330,7 +405,10 @@
  "airport_category_list": {
   "A320": {
    "class_1_high_plateau": [
-    "拉萨"
+    "拉萨",
+    "迪庆",
+    "稻城亚丁",
+    "九寨"
    ],
    "class_2": [
     "丽江",
@@ -354,6 +432,11 @@
    "complex_airport": [
     "延吉",
     "茅台"
+   ],
+   "left_seat_us_plus": [
+    "茅台",
+    "吕梁",
+    "忻州"
    ]
   },
   "ARJ21": {
@@ -381,7 +464,7 @@
  },
  "operating_rules_reference": [
   "F2 不能操作起落，除非机长本机型教员经历时间超过 100 小时",
-  "F1 仅实施转升检查时可作为 PM 上座",
+  "F1 可与教员（TL/TB/TC）组成巡航上座组合以建立经历；转升检查另作手册标注，并非唯一上座途径",
   "副驾驶 A320 经历时间少于 50 小时，只能作为 PM 配合完成起飞/着陆",
   "A321 机型运行需技术等级 J2 及以上的飞行员操作起落",
   "F5(含)以下副驾驶禁止使用襟翼3着陆；所有副驾驶夜航禁止襟翼3着陆",
@@ -417,21 +500,40 @@
   "restriction_table_hard": true
  },
  "fdp_long_ground_split": {
-  "enabled_default": true,
+  "enabled_default": false,
   "threshold_hours": 5,
-  "outstation_only": false,
-  "hotel_note_override": true,
-  "restart_report": true,
-  "remark": "对应设置 fdpSplitLongGround / fdpSplitLongGroundH（默认5h）；关闭则恢复整段连续计 FDP"
+  "restart_report": false,
+  "over_limit_tip": "需安排下去休息（住宿扣除）"
  },
  "fdp_window": {
-  "operating_legs_only": true,
-  "report": "first_operating_dep_minus_reportMin",
-  "end": "last_operating_arr",
-  "deadhead_extends_window": false,
-  "release_for_rest": "last_leg_including_dh_plus_releaseMin"
+  "preflight_deadhead_counts": true,
+  "postflight_deadhead_counts": false,
+  "report": "first_leg_incl_preflight_dh_dep_minus_report",
+  "end": "last_operating_arr"
  },
- "_sha1": "b17f7c5fa1"
+ "report_time": {
+  "domestic_min": 105,
+  "intl_regional_min": 115,
+  "fallback_min": 95
+ },
+ "rest": {
+  "company_buffer_h": 12,
+  "com_min_h": 10,
+  "after_shutdown_min": 40,
+  "before_report_min": 25,
+  "overnight_min_h_hard": 10
+ },
+ "day5": {
+  "operating_hard": false,
+  "deadhead_only": "soft_pending_flight_dept"
+ },
+ "standby": {
+  "required_crews_per_day": 2,
+  "max_single_hours": 8,
+  "window_start_h": 8,
+  "no_rest_period": true
+ },
+ "_sha1": "cb592201d0"
 };
   if (typeof module === "object" && module.exports) module.exports = { RULES_CONFIG };
   else root.RosterRulesConfig = { RULES_CONFIG };

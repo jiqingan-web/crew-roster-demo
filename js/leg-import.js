@@ -3,13 +3,14 @@
 (function (root, factory) {
   if (typeof module === 'object' && module.exports) module.exports = factory(); else root.LegImport = factory();
 })(typeof self !== 'undefined' ? self : this, function () {
-  const HEAD = ['任务号', '日期', '航班号', '起飞机场', '到达机场', '计划起飞', '计划到达', '是否置位(随)', '机型', '机号', '备注', '机长', '副驾驶', '副驾驶(2)', '观察员'];
-  const KEY = ['id', 'date', 'flt', 'from', 'to', 'dep', 'arr', 'dh', 'ac', 'reg', 'note', 'cC', 'cF', 'cF2', 'cT'];
+  const HEAD = ['任务号', '日期', '航班号', '起飞机场', '到达机场', '计划起飞', '计划到达', '是否置位(随)', '机型', '机号', '备注', '机长', '副驾驶', '副驾驶(2)', '观察员', '任务类型', '承运人'];
+  const KEY = ['id', 'date', 'flt', 'from', 'to', 'dep', 'arr', 'dh', 'ac', 'reg', 'note', 'cC', 'cF', 'cF2', 'cT', 'typ', 'carrier'];
   // 表头别名（兼容旧“空白航段”表与常见写法）
   const ALIAS = { id: ['任务号', '任务编号', '任务', 'pairing', 'pairingid'], date: ['日期', '航班日期', 'date'], flt: ['航班号', '航班', 'flight'],
     from: ['起飞机场', '起飞', '出发机场', 'from'], to: ['到达机场', '落地机场', '到达', '落地', 'to'], dep: ['计划起飞', '起飞时间', 'std', 'dep'], arr: ['计划到达', '落地时间', '到达时间', 'sta', 'arr'],
     dh: ['是否置位(随)', '是否置位', '置位(随)', '置位', '随', 'dh'], ac: ['机型', 'ac', 'type'], reg: ['机号', '注册号', 'reg'], note: ['备注', 'note'],
-    cC: ['机长'], cF: ['副驾驶'], cF2: ['副驾驶(2)', '副驾驶2', '第二副驾驶'], cT: ['观察员'] };
+    cC: ['机长'], cF: ['副驾驶'], cF2: ['副驾驶(2)', '副驾驶2', '第二副驾驶'], cT: ['观察员'],
+    typ: ['任务类型', '类型', '置位类型', 'tasktype'], carrier: ['承运人', '航司', 'carrier', 'airline'] };
   const BASES = ['ZUUU', 'ZUTF'];
   // 单字简称（与回测/甘特一致；蓉=双流 府=天府）
   // 2026-11-04 按 js/sample-data.js 真实航班 ICAO 航路更正：河=石河子(EU1897/2739) 苏=阿克苏(EU2261/2831) 岩=台州(EU1929/2227) 阿=阿拉尔(EU2267) 密=哈密(EU1889) 京=北京大兴(EU6665)
@@ -40,6 +41,10 @@
     const s = String(v).trim(); const m = s.match(/^(\d{1,2})[:：]?(\d{2})(?::\d{2})?\s*(?:\(?\s*\+\s*(\d)\s*\)?)?$/); if (!m || +m[2] > 59 || +m[1] > 47) return null;
     return (+(m[3] || 0)) * 1440 + (+m[1]) * 60 + (+m[2]); }
   const isDH = v => /^(是|随|置位|y|yes|true|1|dh|√)$/i.test(String(cellVal(v) == null ? '' : cellVal(v)).trim());
+  const isExtType = v => /外航置位|买票|外航/.test(String(cellVal(v) == null ? '' : cellVal(v)));
+  const isCompanyDhType = v => { const s = String(cellVal(v) == null ? '' : cellVal(v)); return /置位/.test(s) && !/外航|买票/.test(s); };
+  const isCompanyCarrier = c => { const s = String(c == null ? '' : c).trim(); if (!s) return false; const u = s.toUpperCase().replace(/\s+/g, ''); return u === 'EU' || u === 'UE' || /成都航空/.test(s); };
+  const isForeignDh = (typ, note, carrier) => !!(isExtType(typ) || isExtType(note) || (carrier && !isCompanyCarrier(carrier) && !isCompanyDhType(typ)));
 
   // 二维行（首行或前 5 行中的表头）→ 记录
   function rowsToRecords(rows) {
@@ -81,7 +86,8 @@
       const crew = {}; [['C', r.cC], ['F', r.cF], ['T', r.cF2 || r.cT]].forEach(([s, v]) => { const k = String(v == null ? '' : v).trim(); if (!k) return; const pid = pm[k] || pm[norm(k)];
         if (pid) crew[s] = pid; else rep.crewUnknown.push({ row: r.row, id, slot: s, who: k }); });
       if (r.cF2 && r.cT && String(r.cF2).trim() && String(r.cT).trim()) rep.warnings.push(`第${r.row}行 副驾驶(2) 与 观察员 同时填写，仅取副驾驶(2)`);
-      good.push({ row: r.row, id, date, flt: flt.toUpperCase(), from: from || String(r.from).trim().toUpperCase(), to: to || String(r.to).trim().toUpperCase(), dep, arr, dh: isDH(r.dh), ac: String(r.ac || 'A320').trim().toUpperCase() || 'A320', reg: String(r.reg || '').trim(), note: String(r.note || '').trim(), crew }); });
+      const typ = String(r.typ == null ? '' : r.typ).trim(); const carrier = String(r.carrier == null ? '' : r.carrier).trim(); const ext = isForeignDh(typ, r.note, carrier); const typDh = isCompanyDhType(typ);
+      good.push({ row: r.row, id, date, flt: flt.toUpperCase(), from: from || String(r.from).trim().toUpperCase(), to: to || String(r.to).trim().toUpperCase(), dep, arr, dh: isDH(r.dh) || ext || typDh, ac: String(r.ac || 'A320').trim().toUpperCase() || 'A320', reg: String(r.reg || '').trim(), note: String(r.note || '').trim(), typ, carrier, ext, typDh, crew }); });
     if (!good.length) return { pairings: [], report: rep, unknownCodes: [] };
     // 排班月：opt 指定，否则取最早日期所在月；引擎固定 1..DAYS 日
     const d0 = new Date(Math.min(...good.map(g => g.date))); const Y = opt.year || d0.getUTCFullYear(), M = opt.month || (d0.getUTCMonth() + 1); const m0 = Date.UTC(Y, M - 1, 1);
@@ -97,7 +103,7 @@
         if (L[i].from !== L[i - 1].to) rep.broken.push({ id, row: L[i].row, msg: `${L[i - 1].to} → ${L[i].from} 不衔接` }); }
       if (!BASES.includes(L[0].from) || !BASES.includes(L[L.length - 1].to)) rep.notReturn.push({ id, msg: `${L[0].from} … ${L[L.length - 1].to}（应自 蓉/府 出发并回到 蓉/府）` });
       L.forEach(l => [l.from, l.to].forEach(c => { if (!T.A[c]) unknownCodes.add(c); }));
-      const legs = L.map(l => { const o = { d: l.di - sIdx + 1, flt: l.flt, from: l.from, to: l.to, dep: l.adep, arr: l.aarr, ac: l.ac === 'A321' ? 'A321' : 'A320', reg: l.reg }; if (l.dh) o.dh = true; if (l.note) o.note = l.note; return o; });
+      const legs = L.map(l => { const o = { d: l.di - sIdx + 1, flt: l.flt, from: l.from, to: l.to, dep: l.adep, arr: l.aarr, ac: l.ac === 'A321' ? 'A321' : 'A320', reg: l.reg }; if (l.dh) o.dh = true; if (l.note) o.note = l.note; if (l.ext || isForeignDh(l.typ, l.note, l.carrier)) { o.dh = true; o.dhType = 'foreign'; o.kind = '外航置位'; o.taskType = '外航置位 / 买票'; if (l.carrier) o.carrier = l.carrier; } else if (l.carrier) o.carrier = l.carrier; return o; });
       const nd = eIdx - sIdx + 1; const crew = { C: null, F: null, T: null }; L.forEach(l => Object.assign(crew, l.crew));
       const lastOfDay = {}; legs.forEach(l => lastOfDay[l.d] = l);
       prs.push({ id, start: sIdx + 1, ndays: nd, ac: legs.some(l => l.ac === 'A321') ? 'A321' : 'A320', legs, crew, offAway: new Set(legs.map(l => l.d)).size < nd,

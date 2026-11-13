@@ -1,3 +1,7 @@
-# demo
+# 机组智能排班助手 · 演示版
 
-Personal test page.
+这是一套可在浏览器中运行的机组排班演示：102 名化名人员、2026 年 8–10 月航班，点击「一键排班」按固定规则自动填入机组，并可查看校验结果。
+
+在线演示：https://jiqingan-web.github.io/crew-roster-demo/
+
+本地打开 `show/index.html`（仓库根目录会自动跳转到该页）。

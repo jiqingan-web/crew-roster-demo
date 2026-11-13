@@ -1,6 +1,7 @@
 /* 机组排班助手 - 界面 · main.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 启动 ----------------
   load();
+  Promise.resolve(ensureLocalGate()).then(() => showLocalBanner());
   $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; ui.auditPid = null; ui.auditDay = null; location.hash = t; closeIssuePanel(); closeMore(); render(); } };
   $('#btnMore').onclick = e => { e.stopPropagation(); toggleMore(); };
   document.addEventListener('mousedown', e => { const w = $('#moreWrap'); if (w && !w.contains(e.target)) closeMore(); });

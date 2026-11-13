@@ -12,8 +12,45 @@
       </table></div>${big ? '<div class="mut">仅显示前 60 个</div>' : ''}</div>`;
   }
   let holeOpt = null; // 空座补位方案（多套）
+
+  function publishPanelHtml() {
+    if (!C.publishCheck) return '';
+    const chk = C.publishCheck(st);
+    const op = (st.operator || (st.settings && st.settings.operator) || 'local');
+    const confs = st.confirmations || [];
+    const pub = st.published;
+    const fmtAt = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleString('zh-CN', { hour12: false }); };
+    const escId = x => esc(String(x == null ? '' : x));
+    return `<div class="panel" id="publishBox"><h3>发布前检查 <small>硬违规、解析存疑、时刻冲突须全部清零才能发布；人工确认记录操作人和时间</small></h3>
+      <div class="note">硬违规 <b class="${chk.hardN ? 'red' : 'okc'}">${chk.hardN}</b> · 解析存疑 <b class="${chk.doubtN ? 'red' : 'okc'}">${chk.doubtN}</b> · 时刻冲突 <b class="${chk.conflictN ? 'red' : 'okc'}">${chk.conflictN}</b> · 本机操作人 <input id="pubOp" value="${esc(op)}" style="width:120px" placeholder="操作人"> · 规则版本 <b>${esc((C.currentRuleVersion && C.currentRuleVersion(st)) || '')}</b></div>
+      ${chk.ok ? '<div class="okc">三类均已清零，可以发布。</div>' : '<div class="red">未清零，不能发布。</div>'}
+      ${chk.doubts.length ? `<div class="imsec">存疑：${chk.doubts.map(d => esc(d.msg || d.id || '') + ` <button type="button" class="btn sm" data-res-doubt="${escId(d.id)}">确认并清除</button>`).join('；')}</div>` : ''}
+      ${chk.conflicts.length ? `<div class="imsec">冲突：${chk.conflicts.map(c => esc(c.flt || c.key || c.id || '') + ` <button type="button" class="btn sm" data-res-conf="${escId(c.flt || c.key || c.id)}">确认并清除</button>`).join('；')}</div>` : ''}
+      <div style="margin-top:8px"><button class="btn primary" id="btnPublish" ${chk.ok ? '' : 'disabled'}>发布排班</button>
+        ${pub ? `<span class="okc">已发布 · ${esc(pub.operator || '')} · ${fmtAt(pub.at)} · 规则 ${esc(pub.ruleVersion || '')}</span>` : (st.publishedInvalidated ? `<span class="red">发布已作废 · 出现新的硬违规</span>` : '<span class="mut">尚未发布</span>')}</div>
+      ${confs.length ? `<h4 style="margin-top:10px">人工确认记录</h4><table><tr><th>时间</th><th>操作人</th><th>类型</th><th>对象</th><th>说明</th></tr>${confs.slice().reverse().map(c => `<tr><td>${fmtAt(c.at)}</td><td>${esc(c.operator || '')}</td><td>${esc(c.type || '')}</td><td>${esc(c.target || '')}</td><td>${esc(c.note || '')}</td></tr>`).join('')}</table>` : ''}</div>`;
+  }
+  function bindPublishPanel() {
+    const readOp = () => { const el = document.getElementById('pubOp'); const v = (el && el.value.trim()) || (st.operator || (st.settings && st.settings.operator) || 'local'); st.operator = v; if (st.settings) st.settings.operator = v; return v; };
+    document.querySelectorAll('[data-res-doubt]').forEach(b => { b.onclick = () => { if (!C.resolveParseDoubt) return; C.resolveParseDoubt(st, b.getAttribute('data-res-doubt'), { operator: readOp() }); refresh(); toast('已记录解析存疑确认'); }; });
+    document.querySelectorAll('[data-res-conf]').forEach(b => { b.onclick = () => { if (!C.resolveTimetableConflict) return; C.resolveTimetableConflict(st, b.getAttribute('data-res-conf'), { operator: readOp() }); refresh(); toast('已记录时刻冲突确认'); }; });
+    const btn = document.getElementById('btnPublish');
+    if (btn) btn.onclick = () => {
+      const r = C.publishRoster(st, { operator: readOp() });
+      if (!r.ok) { toast('不能发布：硬违规/解析存疑/时刻冲突未清零'); return; }
+      refresh(); toast('已发布 · 规则 ' + (r.published.ruleVersion || '') + ' · ' + r.published.operator);
+    };
+  }
+
   function rReport() {
     const s = sum, S = st.settings;
+    const vmsg = v => {
+      if (v.type !== '未满员' || !v.pairing || !C.unfilledReasons) return v.msg;
+      const pr = st.pairings.find(p => p.id === v.pairing);
+      if (!pr) return v.msg;
+      const rs = C.unfilledReasons(st, pr);
+      return rs.length ? v.msg + '：' + rs.join('；') : v.msg;
+    };
     const hardTypes = ['日飞行时间超限', '执勤期超限', '未满员', '时间重叠', '休息不足', '请假冲突', '岗位级别不符', '座位搭配规则', '特殊机场授权/搭配', '新机长无教员', '帮扶对象', '月小时超法规上限', '年飞行超限', '144h内48h休息', '连续4日后第5日飞行', '连续7日值勤超限', '月值勤超限', '飞行时间限制', '备份冲突', '搭配限制表', 'FO搭配矩阵', '高高原机组', '58岁带队'];
     const card = (lab, val, sub, cls) => `<div class="card"><div class="lab">${lab}</div><div class="val ${cls || ''}">${val}</div><div class="sub">${sub}</div></div>`;
     const ov = C.stats(s.per.map(x => x.overnights)), spx = C.stats(s.per.map(x => x.special)), nt = C.stats(s.per.map(x => x.night));
@@ -37,7 +74,9 @@
     const ccarPanel = `<div class="panel" id="ccarBox"><h3>CCAR-121-${R.rev} / 规章回测摘要 <small>R8 · 公司运行手册 · ${COM.re12 || 'RE12'}</small></h3>
       <div class="mut">表B/表A ✔ · 休息设置 ${S.minRestH}h（≥公司/法规 ${R.minRestBeforeFdpH}h）· 月飞行硬上限 <b>${S.hardMaxHours || 100}h</b>（对齐公司/法规 ${COM.monthFlightH || R.monthFlightH}h）· 报到 ${S.reportMin}min · <b>已启用硬规则</b>：144h内48h休息、RE12 起飞/着陆上座表、拉萨双机长、未识别机场转人工、7日飞行执勤期≤${R.sevenDayFdpH}h、月飞行执勤期≤${R.monthFdpH}h、年飞行≤${R.yearFlightH}h（含可选 ytdFlightH）· 三人制（无表C扩编） · <b>暂作提示（手册原文为禁止，待书面依据）</b>：4 连续值勤日后第 5 日执飞 · <b>已实现暂停</b>：58 周岁带队<br>
       <a href="回测/121回测报告.md" target="_blank" rel="noopener">121报告</a> · <a href="https://github.com/jiqingan-web/crew-roster-demo/blob/main/回测/121回测报告.md" target="_blank" rel="noopener">GitHub</a></div></div>`;
-    let h = demoFillBanner() + exportBarHtml() + ccarPanel + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${pairHtml(p)}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
+    const tv = st.timetableVersion || (st.时刻版本号 ? { 版本号: st.时刻版本号 } : null);
+    const tvNote = tv ? `<div class="note">排班所用时刻版本：<b>${esc(tv.版本号 || tv.version || '')}</b> · 生效 ${esc(tv.生效日期 || tv.effectiveDate || '—')} · 来源 ${esc(tv.来源文件名 || tv.sourceFile || '—')} · 导入 ${esc(tv.导入时间 || tv.importedAt || '—')}</div>` : '';
+    let h = demoFillBanner() + exportBarHtml() + ccarPanel + tvNote + (demos.length ? `<div class="demo-banner"><b>演示异常（路演用例）</b>：${demos.map(p => `<a href="#gantt" class="demoJump" data-pr="${p.id}">${pairHtml(p)}</a> ${esc(p.demoAnomalyNote || p.demoAnomaly)}`).join('　·　')}<div class="mut" style="margin-top:4px">校验报告中对应项带【演示异常】前缀；正式排班不会自动注入。</div></div>` : '')
       + `<div class="grid" style="grid-template-columns:repeat(5,1fr);margin-bottom:14px">
       ${card('任务覆盖率（满员）', (s.coverage * 100).toFixed(1) + '%', `${s.full}/${s.total} 个任务 · ${s.totalHours.toFixed(0)} 任务飞行小时`, s.coverage === 1 ? 'ok' : 'bad')}
       ${card('硬性规则违规', s.hard, s.hard ? '需处理，见下表' : '全部合规 ✔（座位搭配/特殊机场/休息/请假/≤${S.hardMaxHours || 100}h）', s.hard ? 'bad' : 'ok')}
@@ -62,7 +101,7 @@
       ${fdpReportPanel()}
       ${issueGroups(s.violations)}`;
     const needFix = (s.hard > 0) || st.pairings.some(pr => !C.pairingFull(pr));
-    h = `<div class="panel" id="autoFixBox"><h3>一键自动纠错 <small>空洞/硬违规 · 直接补位 + 换人链（深度≤4）· 可撤销</small></h3>
+    h = publishPanelHtml() + `<div class="panel" id="autoFixBox"><h3>一键自动纠错 <small>空洞/硬违规 · 直接补位 + 换人链（深度≤4）· 可撤销</small></h3>
       <div class="flex" style="gap:8px;flex-wrap:wrap;align-items:center">
         <button class="btn primary" id="btnAutoFix" ${needFix ? '' : 'disabled'}>🔧 生成纠错方案</button>
         <span class="mut" id="autoFixStatus">${needFix ? '检测到未满员或硬违规，可尝试自动纠错' : '当前无未满员/硬违规'}</span>
@@ -78,6 +117,7 @@
         cardCtx = { hover: i < 0 ? 0 : i, focus: Object.values(holeOpt.pairing.crew).filter(Boolean), days: C.daysTouched(holeOpt.pairing, st) }; rReport(); const el = $('#holeSol'); if (el) el.scrollIntoView(); toast(`已生成 ${holeOpt.solutions.length} 套补位方案（${holeOpt.ms} ms）`); }, 30); });
     if (holeOpt && $('#holeSol')) { $('#holeX').onclick = () => { holeOpt = null; rReport(); };
       bindCards(holeOpt.solutions, sol => `${pairLabel(holeOpt.pairing)} 补位 · 方案「${sol.name}」`, () => { holeOpt = null; }, {}); }
+    bindPublishPanel();
     document.querySelectorAll('.demoJump').forEach(a => a.onclick = e => { e.preventDefault(); jumpToIssue(a.dataset.pr); });
     document.querySelectorAll('.issueJump').forEach(tr => tr.onclick = () => jumpToIssue(tr.dataset.pr));
     document.querySelectorAll('details.ig').forEach(d => d.ontoggle = () => { if (!issueOpen) return; d.open ? issueOpen.add(d.dataset.igk) : issueOpen.delete(d.dataset.igk); });
@@ -251,7 +291,7 @@
     if (dutySel) {
       const leg = dutySel.leg; const k = C.legKey(leg); const a = A[k] || {};
       const pr = dutySel.pr; const dy = dutySel.dy;
-      h += `<div class="panel" id="acEdit"><div class="flex"><b>${esc(leg.reg || '')} · ${leg.flt}</b> ${apHtml(leg.from)}-${apHtml(leg.to)} · ${pairHtml(pr)}
+      h += `<div class="panel" id="acEdit"><div class="flex"><b>${esc((C.regLabel && C.regLabel(leg.reg)) || leg.reg || '')} · ${leg.flt}</b> ${apHtml(leg.from)}-${apHtml(leg.to)} · ${pairHtml(pr)}
         <span class="mut" style="margin-left:8px">${crewTxt(pr, m)}</span>
         ${dy ? `<span style="margin-left:auto" class="${{ over: 'red', high: 'red', med: 'warnc', low: 'okc' }[dy.risk]}">飞行执勤期 ${C.fmtH(dy.fdp)} / ${C.fmtH(dy.limit)} · ${dy.exceed ? '超 ' + dy.exceed + ' 分' : '余量 ' + dy.buffer + ' 分'}</span>` : ''}
         <button class="btn sm" id="acEditX">关闭</button></div>
@@ -863,7 +903,24 @@
         <label class="btn sm" style="margin-left:auto">导入 CSV / xlsx<input type="file" id="rsFile" accept=".csv,.txt,.xlsx" style="display:none"></label><button class="btn sm" id="rsClear">清空</button></div>
       <div class="note">列：${esc(((RC.restriction_table_schema || {}).columns || []).join(' / '))}；限制类型留空按「${esc((RC.restriction_table_schema || {}).default_type || '不可同机')}」。人员可填员工号或姓名。导入后作为硬约束参与自动排班与校验。</div>
       ${rs.length ? `<table><tr><th>人员A</th><th>人员B</th><th>类型</th></tr>${rs.map(r => `<tr><td>${esc((pm[r.a] || {}).name || r.a)} <span class="mut">${esc(r.a)}</span></td><td>${esc((pm[r.b] || {}).name || r.b)} <span class="mut">${esc(r.b)}</span></td><td>${esc(r.type)}</td></tr>`).join('')}</table>` : ''}</div>`;
+    const revs = (C.ensureRuleRevisions ? C.ensureRuleRevisions(st) : (st.ruleRevisions || []));
+    const curVer = (C.currentRuleVersion && C.currentRuleVersion(st)) || '';
+    h += `<div class="panel"><h3>规则版本记录 <small>当前 ${esc(curVer)} · 每次修改口径记录日期、修改人和依据；排班结果保存当时规则版本号</small></h3>
+      <table><tr><th>版本</th><th>日期</th><th>修改人</th><th>依据</th></tr>${revs.map(r => `<tr><td>${esc(r.version || '')}</td><td>${esc(r.date || '')}</td><td>${esc(r.author || '')}</td><td style="white-space:normal">${esc(r.basis || '')}</td></tr>`).join('')}</table>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="rvVer" placeholder="版本号" style="width:90px">
+        <input id="rvDate" placeholder="日期 YYYY-MM-DD" style="width:130px">
+        <input id="rvAuthor" placeholder="修改人" style="width:100px" value="${esc(st.operator || (st.settings && st.settings.operator) || 'local')}">
+        <input id="rvBasis" placeholder="依据" style="flex:1;min-width:180px">
+        <button type="button" class="btn sm" id="rvAdd">追加记录</button>
+      </div></div>`;
     $('#main').innerHTML = h;
+    const rvAdd = document.getElementById('rvAdd');
+    if (rvAdd) rvAdd.onclick = () => {
+      const rec = { version: (document.getElementById('rvVer') || {}).value, date: (document.getElementById('rvDate') || {}).value, author: (document.getElementById('rvAuthor') || {}).value, basis: (document.getElementById('rvBasis') || {}).value };
+      if (C.addRuleRevision) C.addRuleRevision(st, rec); else { st.ruleRevisions = st.ruleRevisions || []; st.ruleRevisions.push(rec); if (rec.version) st.ruleVersion = rec.version; }
+      refresh(); toast('已记录规则口径修改 ' + (rec.version || ''));
+    };
     $('#rsFile').onchange = async e => { const f = e.target.files[0]; if (!f) return; try { const res = C.parseRestrictions(await readTable(f), st.pilots);
       const key = r => [r.a, r.b].sort().join('|'); const have = new Set((st.restrictions || []).map(key));
       st.restrictions = (st.restrictions || []).concat(res.pairs.filter(r => !have.has(key(r)))); refresh();

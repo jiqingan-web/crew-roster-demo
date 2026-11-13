@@ -74,16 +74,31 @@
     const head = `<div class="drw-h"><div><h3>${pairHtml(pr)}${fillBadge(pr.id)}${demoTag(pr)}</h3><div class="mut">${cityChain}</div></div><button class="btn drw-x" id="drwX" title="关闭">✕</button></div>`;
     const tfBar = ['C', 'F', 'T'].filter(s => pr.crew[s] && m[pr.crew[s]]).map(s => `<button class="btn sm drwTf" data-tf="${pr.crew[s]}" title="转给同级空闲人员">同级换班 · ${C.SLOT_NAME[s] || s} ${esc(m[pr.crew[s]].name)}</button>`).join(' ');
     const view = `<div class="drw-b"><div class="drwtf" style="margin-bottom:8px">${tfBar}</div><div class="dtiles">${tile('日期', dateOf(pr.start) + (pr.ndays > 1 ? '–' + dateOf(pr.start + pr.ndays - 1) : ''))}${tile('天数', pr.ndays + ' 天')}${tile('飞行小时', C.pairingHours(pr).toFixed(1) + 'h')}${tile('机型', esc(pr.ac))}${tile('飞行执勤期余量', minBuf == null ? '—' : fmtBuf(minBuf), bufCls, '各值勤日 (限制 − 计划飞行执勤期) 的最小值')}${tile('规则', rule, sp.length ? 'red' : '', sp.map(c => C.apName(c, st)).join('、'))}</div>
-      <h4>机组</h4>${['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; return `<div class="drow ${p ? '' : 'vac'}"><span class="seat s-${s}">${({ C: '机长', F: '副驾驶', T: '观察员' })[s]}</span>${p ? `<b>${esc(p.name)}</b>${pill(p.rank)}<span class="hrs" title="该任务所在月份的当月飞行小时">${esc(dMonLab)} ${monthHoursFor(p.id, dMon, idx).toFixed(1)}h</span>` : '<b class="red">空缺</b><span class="mut">待补位 · 点「调整机组」选择候选人</span>'}</div>`; }).join('')}
-      <h4>航段</h4><table class="dtab"><tr><th>日</th><th>航班</th><th>航段</th><th>计划</th><th>机型/机号</th></tr>${pr.legs.map(l => `<tr><td>D${l.d}</td><td>${esc(C.fltLabel(l))}</td><td>${apHtml(l.from)} → ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}–${C.fmtT(l.arr)}</td><td>${esc(l.ac || pr.ac)}<span class="mut"> ${esc(l.reg || '')}</span></td></tr>`).join('')}</table>
+      ${!C.pairingFull(pr) && C.unfilledReasons ? `<div class="note warnc">未排原因：${esc(C.unfilledReasons(st, pr).join('；') || '缺员')}</div>` : ''}
+      <h4>机组</h4>${['C', 'F', 'T'].map(s => { const p = m[pr.crew[s]]; const obs = (pr.observers || []).some(o => o.id === (p && p.id)); return `<div class="drow ${p ? '' : 'vac'}"><span class="seat s-${s}">${({ C: '机长', F: '副驾驶', T: '观察员' })[s]}</span>${p ? `<b>${esc(p.name)}</b>${pill(p.rank)}${obs ? '<span class="mut">观察</span>' : ''}<span class="hrs" title="该任务所在月份的当月飞行小时">${esc(dMonLab)} ${monthHoursFor(p.id, dMon, idx).toFixed(1)}h</span>` : '<b class="red">空缺</b><span class="mut">待补位 · 点「调整机组」选择候选人</span>'}</div>`; }).join('')}
+      ${(() => { const crew = ['C', 'F', 'T'].map(s => pr.crew[s] && m[pr.crew[s]]); const sp = (C.legalSeatPairs && crew.every(Boolean)) ? C.legalSeatPairs(pr, crew, st) : null; const stops = C.longStopsOf ? C.longStopsOf(pr, st) : [];
+        let x = '';
+        if (sp && sp.summary) x += `<div class="note">${esc(sp.summary)}${sp.observers.length ? '；观察：' + sp.observers.map(o => esc(o.name) + '(' + esc(o.rank) + ')').join('、') : ''}</div>`;
+        else if (sp && !sp.ok && crew.every(Boolean)) x += `<div class="note red">无合规上座组合：${esc(sp.reason || '')}</div>`;
+        if (stops.length) x += stops.map(ls => `<div class="note">${esc(ls.label)}：需安排住宿${C.lodgingParamsOf && !C.lodgingParamsOf(ls.ap, st) ? ' · 需确认住宿' : ''}${C.lodgingConfirmed && C.lodgingConfirmed(pr, ls.d) ? ' · 已确认住宿，按两段值勤校验' : ` <button type="button" class="btn sm" data-lodge-confirm data-d="${ls.d}">确认住宿</button>`}</div>`).join('');
+        return x; })()}
+      <h4>航段</h4><table class="dtab"><tr><th>日</th><th>航班</th><th>航段</th><th>计划</th><th>机型/机号</th><th>类型</th></tr>${pr.legs.map(l => `<tr><td>D${l.d}</td><td>${esc(C.fltLabel(l))}</td><td>${apHtml(l.from)} → ${apHtml(l.to)}</td><td>${C.fmtT(l.dep)}–${C.fmtT(l.arr)}</td><td>${esc(l.ac || pr.ac)}<span class="mut"> ${esc((C.regLabel && C.regLabel(l.reg)) || l.reg || '')}</span></td><td>${C.isExtDh && C.isExtDh(l) ? esc('外航置位 / 买票' + (l.carrier ? ' · 承运人 ' + l.carrier : '')) : (C.isDhLeg && C.isDhLeg(l) ? '本公司置位' : '执飞')}</td></tr>`).join('')}</table>
       ${spNotes.length ? `<div class="note red">特殊机场：${spNotes.join('；')}，执行左右座均需持有该机场授权</div>` : ''}
       <h4>飞行执勤期</h4><table class="dtab"><tr><th>值勤日</th><th>飞行执勤期 / 限制</th><th>余量</th><th>风险</th></tr>${fd.map(dy => `<tr><td>D${dy.d} · ${dateOf(dy.date)}</td><td>${C.fmtH(dy.planFdp)} / ${C.fmtH(dy.limit)}</td><td>${fmtBuf(dy.planBuffer)}</td><td><span class="rbadge rb-${RK[dy.planRisk][1]}">${RK[dy.planRisk][0]}</span></td></tr>`).join('')}</table>
-      <div class="mut sm">飞行执勤期 = 首段前报到 ${st.settings.reportMin || 60} 分 → 末段落地（计划时刻）；限制按规则表（报到时刻 × 航段数）。</div></div>
+      <div class="mut sm">飞行执勤期 = 首段（含航前置位）前报到 ${st.settings.reportMin || 95} 分（国内，含公司缓冲；国际/地区 115） → 末段落地（计划时刻）；限制按规则表（报到时刻 × 航段数）。</div>
+      ${(C.dutyCalcTrail ? C.dutyCalcTrail(pr, st) : []).map(day => `<h4>值勤计算过程 · D${day.d}${day.part > 1 ? '（段' + day.part + '）' : ''}${day.dhOnly ? ' · 纯置位' : ''}</h4>
+        <table class="dtab"><tr><th>步骤</th><th>时刻</th><th>机场</th><th>所用机场参数</th></tr>${day.steps.map(sp => `<tr><td>${esc(sp.label)}</td><td>${sp.time != null ? C.fmtT(sp.time) : '—'}</td><td>${esc(sp.airportName || '')}${sp.airport ? ` <span class="mut">${esc(sp.airport)}</span>` : ''}</td><td class="mut">${esc(sp.paramsText || '')}</td></tr>`).join('')}</table>`).join('')}</div>
       <div class="drw-f"><button class="btn" id="drwC">关闭</button><button class="btn primary" id="drwE">⚙ 调整机组</button></div>`;
     let dw = $('#drawer'); if (!dw) { dw = document.createElement('div'); dw.id = 'drawer'; document.body.appendChild(dw); }
     dw.innerHTML = `<div class="drw-mask"></div><aside class="drw">${head}${view}</aside>`; dw.classList.remove('hidden');
     dw.querySelectorAll('.drwTf').forEach(b => b.onclick = () => { closeDrawer(); openTransfer(b.dataset.tf, id); });
     $('#drwX').onclick = closeDrawer; $('#drwC').onclick = closeDrawer; dw.querySelector('.drw-mask').onclick = closeDrawer;
+    dw.querySelectorAll('[data-lodge-confirm]').forEach(b => { b.onclick = ev => { ev.preventDefault(); ev.stopPropagation(); const pr0 = st.pairings.find(p => p.id === id); if (!pr0 || !C.confirmLodging) return;
+      const inp = (st.operator || (st.settings && st.settings.operator) || '').trim();
+      const op = inp || window.prompt('请输入确认人（本机操作名）', 'local') || 'local';
+      st.operator = op; if (st.settings) st.settings.operator = op;
+      C.confirmLodging(st, pr0, { d: b.dataset.d ? +b.dataset.d : null, operator: op });
+      toast('已记录确认住宿：' + op); refresh(); openDrawer(id); }; });
     $('#drwE').onclick = () => { const b = dw.querySelector('.drw-b'); const aside = dw.querySelector('.drw'); dw.querySelector('.drw-f').remove(); b.classList.add('edit'); if (aside) aside.classList.add('wide'); editInto(id, b); };
     if (mode === 'edit') $('#drwE').click();
   }
@@ -284,6 +299,7 @@
     const hardN = sum ? sum.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length + (sum.total - sum.full) : 0;
     s.innerHTML = `<div class="sb-brand"><span class="sb-logo">✈</span><div><b>CrewOps</b><small>${LITE ? 'A320 · 演示中队(化名)' : 'A320/C909 · 成都基地'}</small></div><span class="sb-tag">${LITE ? 'LITE' : 'PROTO'}</span></div>`
       + SIDE.map(([g, items]) => `<div class="sb-g">${g}</div>` + items.map(([k, ic, n]) => `<button class="sb-i ${tab === k ? 'cur' : ''}" data-go="${k}"><span class="sb-ic">${ic}</span>${n}${k === 'report' && hardN ? `<span class="sb-n">${hardN}</span>` : ''}</button>`).join('')).join('')
-      + `<div class="sb-foot"><span class="okc">●</span> 已自动保存 · ${new Date().toTimeString().slice(0, 5)}</div>`;
+      + `<div class="sb-foot"><span class="okc">●</span> 已自动保存 · ${new Date().toTimeString().slice(0, 5)} <button class="btn sm" type="button" id="btnBakExp" title="导出当前自动保存为 JSON 备份">导出备份</button></div>`;
+    const bak = s.querySelector('#btnBakExp'); if (bak) bak.onclick = e => { e.preventDefault(); e.stopPropagation(); exportStateBackup(); };
   }
 
