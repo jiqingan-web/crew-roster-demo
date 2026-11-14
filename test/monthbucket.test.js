@@ -133,9 +133,13 @@ const monthReasons = rs => rs.filter(r => /月飞行小时|个人月飞行上限
   ok('T4 st.official + srcCrew 亦按外中队缺位（官方班表实际接线）', C.validate(st2).some(x => x.pairing === prD.id && x.type === '外中队缺位' && x.level === 'info'));
 }
 
-// ================= 5) 真实官方班表（51 天）端到端 =================
+// ================= 5) 官方对照班表（51 天）端到端（仅当仓库仍含该数据文件时） =================
 {
-  const O = require('../js/official-roster.js');
+  const fs = require('fs');
+  const offPath = require('path').join(__dirname, '../js/official-roster.js');
+  if (!fs.existsSync(offPath)) { console.log('T5 SKIP (no official-roster.js)'); }
+  else {
+  const O = require(offPath);
   const st = O.build(C);
   try {
     const v = C.validate(st), s = C.summarize(st);
@@ -158,6 +162,7 @@ const monthReasons = rs => rs.filter(r => /月飞行小时|个人月飞行上限
     ok('T5 全期小时仍保留（最大 >100h 说明是两月合计）', Math.max(...s.per.map(x => x.hours)) > 100, Math.max(...s.per.map(x => x.hours)).toFixed(1) + 'h');
     ok('T5 per[].hours = 各桶之和', s.per.every(x => near(Object.keys(x.monthHours).reduce((a, k) => a + x.monthHours[k], 0), x.hours)), J(s.per.slice(0, 2).map(x => [x.hours, x.monthHours])));
   } finally { C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); }
+  }
 }
 
 console.log(bad ? 'FAIL ' + bad : 'monthbucket OK');

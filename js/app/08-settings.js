@@ -92,19 +92,13 @@
       <h3 style="margin-top:16px">数据安全（本机）</h3>
       <div class="note">本系统按本地/内网部署使用：人员与班表保存在本机浏览器（自动保存），不部署到 GitHub Pages。自动保存可在此导出备份；正式使用前建议改为服务端存储。</div>
       <div style="margin:8px 0;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
-        <button class="btn sm" type="button" id="setLocalPin">设置本机访问口令</button>
-        <button class="btn sm" type="button" id="clearLocalPin">清除口令</button>
         <button class="btn sm" type="button" id="bakExpSet">导出当前备份</button>
       </div>
-      <div class="mut" id="pinState"></div>
       <div style="margin-top:12px"><button class="btn primary" id="saveS">保存设置并重新校验</button></div></div>
       <div class="panel"><h3>机场与特殊机场类别</h3><div class="note">类别：${cats.map(c => c + '=' + (C.CAT_DESC[c] || '')).join('；')}。需授权类别：${C.AUTH_CATS.join('/')}</div>
       <div class="scroll"><table><tr><th>ICAO</th><th>名称</th><th>类别</th></tr>${Object.keys(aps).map(c => `<tr><td>${c}</td><td class="${aps[c][3] ? 'red' : ''}">${aps[c][0]}</td><td><select data-cat="${c}" ${c === 'ZUUU' ? 'disabled' : ''}>${cats.map(k => `<option value="${k}" ${(aps[c][3] || 'NONE') === k ? 'selected' : ''}>${k}</option>`).join('')}</select></td></tr>`).join('')}</table></div></div></div>
       ${flightMapPanelHtml()}`;
-    { const el = $('#pinState'); if (el) el.textContent = gateCfg() && gateCfg().hash ? '已设置本机口令（打开正式班表时须在本会话输入）。' : '未设置口令。可在载入正式班表时加一层本机口令（口令只存在本机，不是云登录）。';
-      $('#setLocalPin').onclick = async () => { const a = prompt('设置本机访问口令（至少 4 位，仅保存在本机）：'); if (!a) return; if (a.length < 4) { toast('口令太短'); return; } const b = prompt('再输入一次：'); if (a !== b) { toast('两次不一致'); return; } localStorage.setItem(GATE_KEY, JSON.stringify({ hash: await hashPin(a), at: Date.now() })); sessionStorage.setItem('crewRoster.unlocked', '1'); rSettings(); toast('本机口令已保存'); };
-      $('#clearLocalPin').onclick = () => { localStorage.removeItem(GATE_KEY); sessionStorage.removeItem('crewRoster.unlocked'); rSettings(); toast('已清除本机口令'); };
-      $('#bakExpSet').onclick = () => exportStateBackup(); }
+    { $('#bakExpSet').onclick = () => exportStateBackup(); }
     bindFlightMapEditor();
     $('#saveS').onclick = () => {
       document.querySelectorAll('[data-k]').forEach(i => S[i.dataset.k] = +i.value);

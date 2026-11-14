@@ -1,15 +1,13 @@
 /* 机组排班助手 - 界面 · main.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   // ---------------- 启动 ----------------
   load();
-  Promise.resolve(ensureLocalGate()).then(() => showLocalBanner());
   $('#tabs').onclick = e => { const t = e.target.dataset && e.target.dataset.tab; if (t) { tab = t; ui.hl = null; ui.auditPid = null; ui.auditDay = null; location.hash = t; closeIssuePanel(); closeMore(); render(); } };
   $('#btnMore').onclick = e => { e.stopPropagation(); toggleMore(); };
   document.addEventListener('mousedown', e => { const w = $('#moreWrap'); if (w && !w.contains(e.target)) closeMore(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeMore(); });
   $('#btnAuto').onclick = () => runAuto();
-  if ($('#btnOfficial')) $('#btnOfficial').onclick = () => { if (!confirm('载入「模拟表格1」？将按正式班表逐格恢复航段与机组（当前修改与自动填人方案将清空）。')) return; leaveOpts = null; leaveHoles = null; holePrev = null; ui.hl = null; dutyOpts = null; closeIssuePanel(); loadOfficial(); lastSolveMs = null; save(); refresh(); toast('已载入「模拟表格1」（未经自动填人修改）'); };
   $('#btnClear').onclick = () => { if (confirm('清空全部机组分配？')) { st.pairings.forEach(p => { p.crew = { C: null, F: null, T: null }; delete p.demoHole; }); if (st.demo) { st.solHist = []; st.solIdx = null; refresh(); toast('已清空机组（备份/培训/模拟机/请假保留）'); return; } st.standby = null; st.training = null; st.trainingKind = null; st.control = null; st.sim = null; st.solHist = []; st.solIdx = null; refresh(); toast('已清空排班与方案历史'); } };
-  $('#btnReset').onclick = () => { if (confirm(DEMO ? '重置为演示数据（近三个月航班，机组清空）？当前修改将丢失。' : LITE ? '重置为轻量版示例数据（约100人 / 1中队）？当前修改将丢失。' : '重置为示例数据（约1100人 / 11中队）？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
+  $('#btnReset').onclick = () => { if (confirm(DEMO ? '重置为演示数据（近三个月航班，机组清空）？当前修改将丢失。' : LITE ? '重置为轻量版示例数据（约 100 人）？当前修改将丢失。' : '重置为示例数据？当前修改将丢失。')) { leaveOpts = null; leaveHist = []; leaveHoles = null; leaveOpts = null; holePrev = null; ui.hl = null; dutyOpts = null; dutyDate = null; closeIssuePanel(); reset(true); toast('已重置示例数据'); } };
   { const TH = [['', '深蓝（默认）'], ['light', '浅色'], ['black', '纯黑/高对比'], ['green', '墨绿'], ['warm', '暖灰']];
     const sel = document.createElement('select'); sel.id = 'themeSel'; sel.className = 'btn'; sel.title = '配色主题';
     sel.innerHTML = TH.map(t => `<option value="${t[0]}">🎨 ${t[1]}</option>`).join('');

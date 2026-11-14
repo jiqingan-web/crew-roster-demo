@@ -4,7 +4,7 @@ version: 2
 updated: 2026-10-31
 
 formats:
-  roster_grid:            # 月班表网格（人 × 日），如 7中队真实航班.xls
+  roster_grid:            # 月班表网格（人 × 日）
     detect:
       header_contains: [名称, 排班授权, 飞行小时]
     meta_columns: [部门名称, 名称, 排班授权, 飞行小时]
@@ -13,7 +13,7 @@ formats:
     cell_line_rules:      # 单元格按行解析，每行必须命中其一，否则 unresolved
       duty: '^(\S+?)(\(随\))?\s+((?:\(V\))?\d{3,4}(?:/(?:\(V\))?\d{3,4})*)\s*$'
       time: '^(\d\d):(\d\d)-(\d\d):(\d\d)$'
-  leg_list:               # 航段清单（模板 templates/航段导入模板.xlsx；执行端 scripts/official_roster/validate.py）
+  leg_list:               # 航段清单（模板 templates/航段导入模板.xlsx）
     detect:               # 表头含下列四列 = leg_list；不含则按 roster_grid 走（roster_grid 逻辑不变）
       header_contains: [任务号, 航班号, 起飞机场, 到达机场]
       header_search_rows: 6          # 前 6 行内找表头（允许上方有标题行）
@@ -79,7 +79,7 @@ semantics:
   flight_number_is_unique_key: false # 同一航班号可串飞多段/多方向
   flight_key: [date, from, to, flt]
   crew_text_key: [date, route, flight_numbers, time]  # 合车键：同机组同文本同窗口
-  name_mapping_required: true        # 真名 → 化名/ID 必须来自显式 map，缺失即阻断
+  name_mapping_required: true        # 人员标识必须能对应到已有 ID，缺失即阻断
 
 vocabulary:
   priority: [leave, training, sim, control, standby]   # 同格多标签时的优先级，其余记 shadowed

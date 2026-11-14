@@ -51,7 +51,7 @@
               <span class="outer-slot">外中队负责</span>
               <span class="mut">不计入本中队空洞 · 自动填人/候补不占用</span>
             </div>
-            <div class="mut" style="padding:6px 0">正式班表中该座位由外中队人员担任（本中队表留空）。</div>
+            <div class="mut" style="padding:6px 0">该座位由外中队人员担任（本中队表留空）。</div>
           </div>`;
           continue;
         }

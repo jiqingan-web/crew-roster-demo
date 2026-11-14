@@ -1,4 +1,4 @@
-/* 机组排班助手 - 界面 · qwen.js（千问 AI 排班助手；经典 <script> 共享全局词法作用域，按 lite/index.html 顺序加载）
+/* 机组排班助手 - 界面 · qwen.js（千问 AI 排班助手；经典 <script> 共享全局词法作用域，按页面 script 顺序加载）
 * 纯前端调用阿里通义千问 DashScope OpenAI 兼容接口：
 * POST https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions
 * API Key 由用户在面板中填写，仅保存在本机 localStorage，不随代码提交。
@@ -35,8 +35,8 @@ function clearQwenOnOfficialLoad() {
 }
 function qwenStatusHtml() {
   if (!officialNow()) return '<div class="mut">当前为演示数据。提问会把排班摘要发送到阿里云通义千问（DashScope）。</div>';
-  if (!qwenAllowed()) return '<div class="note" style="background:#8e5b00;color:#fff;padding:6px 8px;border-radius:6px">已载入正式班表：千问 AI <b>默认关闭</b>。此功能会将当前排班摘要发送到阿里云（<code>dashscope.aliyuncs.com</code>）。如需使用，请先在下方明确开启。</div><button class="btn sm" type="button" id="qwEnableOff">开启千问（将外发排班摘要）</button>';
-  return '<div class="note" style="background:#8e5b00;color:#fff;padding:6px 8px;border-radius:6px">已载入正式班表，且千问已手动开启：每次提问会把排班摘要发送到阿里云。</div><button class="btn sm" type="button" id="qwDisableOff">关闭千问</button>';
+  if (!qwenAllowed()) return '<div class="note" style="background:#8e5b00;color:#fff;padding:6px 8px;border-radius:6px">千问 AI <b>默认关闭</b>。此功能会将当前排班摘要发送到阿里云（<code>dashscope.aliyuncs.com</code>）。如需使用，请先在下方明确开启。</div><button class="btn sm" type="button" id="qwEnableOff">开启千问（将外发排班摘要）</button>';
+  return '<div class="note" style="background:#8e5b00;color:#fff;padding:6px 8px;border-radius:6px">千问已手动开启：每次提问会把排班摘要发送到阿里云。</div><button class="btn sm" type="button" id="qwDisableOff">关闭千问</button>';
 }
 
 
@@ -171,7 +171,7 @@ async function ask(userText, silent) {
 ensureUI();
 const dw = $('#qwDrawer'); if (dw.classList.contains('hidden')) dw.classList.remove('hidden');
 if (!qwenAllowed()) {
-addMsg('ai', '已载入正式班表，千问 AI 默认关闭（提问会把排班摘要发送到阿里云 <code>dashscope.aliyuncs.com</code>）。如需使用，请在上方横幅中明确开启。');
+addMsg('ai', '千问 AI 默认关闭（提问会把排班摘要发送到阿里云 <code>dashscope.aliyuncs.com</code>）。如需使用，请在上方横幅中明确开启。');
 return;
 }
 const key = getKey();

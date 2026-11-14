@@ -1,6 +1,6 @@
 /* 机组排班助手 - 界面 · base.js（由 app.js 拆分；经典 <script> 共享全局词法作用域，按 index.html 顺序加载） */
   const C = window.RosterCore, CH = window.Charts;
-  const LITE = !!window.ROSTER_LITE; // lite/：单中队轻量版，独立存储
+  const LITE = !!window.ROSTER_LITE; // 轻量数据路径：单中队约 100 人，独立存储
   const DEMO = !!(window.ROSTER_DEMO && window.RosterDemo); // show/：比赛演示版（近三个月真实航班，一键排班按规则填人）
   const DEMO_VER = 10;
   const KEY = DEMO ? 'crewRoster.demo.v1' : LITE ? 'crewRoster.lite.v1' : 'crewRoster.v2';
@@ -81,10 +81,9 @@
         const stale = (LITE ? (!s.lite || !s.sampleSchema || s.sampleSchema < 18 || (!edited && s.pilots.filter(p => !p.reserve).length !== 101)) : (!edited && s.pilots.length < 500 || s.lite))
           || s.pilots.some(p => LEGACY.has(p.squad))
           || !s.sampleSchema || s.sampleSchema < 18;
-        const offStale = LITE && isSampleish && window.RosterOfficial && (s.official !== 1 || (window.RosterOfficial.OFFICIAL_ROSTER.grid && !s.grid));
-        if (isSampleish && (stale || offStale)) {
+        if (isSampleish && stale) {
           reset(false);
-          toast(offStale && !stale ? '已载入「模拟表格1」为默认（真实导入；一键自动填人另生成一套）' : '示例数据已升级（整月演示补全 + 导出），已自动重置');
+          toast('示例数据已升级（整月演示补全 + 导出），已自动重置');
           return;
         }
         st = s;
@@ -106,16 +105,7 @@
   }
   function save() { try { localStorage.setItem(KEY, JSON.stringify(st)); } catch (e) {} }
   function reset(r) { if (DEMO) { st = window.RosterDemo.build(C); st.demo = DEMO_VER; try { st.demoSig0 = demoSig(); } catch (e) {} lastSolveMs = null; save(); if (r) refresh(); return; }
-    if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); if (LITE && window.RosterOfficial) loadOfficial(); lastSolveMs = null; save(); if (r) refresh(); }
-  // 模拟表格1：按用户提供的正式班表逐格载入（航段/机组/培训/模拟机/控班/备份/请假），不经自动填人；作为方案列表第一套
-  function loadOfficial() {
-    // v693 C-11：每次载入正式班表都清掉此前已开启的千问标志，默认关闭，须再次确认才开
-    try { localStorage.removeItem('crewRoster.qwen.enabled'); } catch (e) {}
-    try { if (typeof clearQwenOnOfficialLoad === 'function') clearQwenOnOfficialLoad(); } catch (e) {}
-    // 正式班表：外中队候补池按 23 机长 + 19 副驾（三人制 + 高高原双机长）
-    st = window.RosterOfficial.build(C, LITE ? C.generateLiteSample(20261101, { reserves: [23, 19] }) : st); st.solHist = []; st.solN = 0;
-    pushSolution(C.summarize(st), { seed: '正式', name: window.RosterOfficial.NAME }); return st;
-  }
+    if (C.setPeriod) C.setPeriod({ days: 30, start: { m: 11, d: 1 } }); st = LITE ? C.generateLiteSample() : C.generateSample(); lastSolveMs = null; save(); if (r) refresh(); }
   // ---------------- 人员变更：统一失效 + 全局重算（增/删/改 级别·授权·中队·健康） ----------------
   // 所有视图都在渲染时从 st.pilots 现算；这里清掉各页按旧人员算好的候选/方案缓存，重建派生数据并持久化
   function pilotsChanged(reason) {
@@ -404,7 +394,7 @@
   function crewTxt(pr, m) { m = m || pm(); return ['C', 'F', 'T'].map(s => `${C.slotLabel(pr, s, m)} ${seatTxt(pr, s, m)}`).join(' / '); }
   const violByPairing = () => { const v = {}; sum.violations.filter(x => x.level === 'hard' && x.pairing).forEach(x => (v[x.pairing] = v[x.pairing] || []).push(x.msg)); return v; };
 
-  // ---------------- 方案历史：模拟表格1（真实导入）+ 至多 1 套自动填人结果 ----------------
+  // ---------------- 方案历史：带名称的对照方案（如有）+ 至多 1 套自动填人结果 ----------------
   function solKpi(s) { return { coverage: s.coverage, holes: s.total - s.full, hard: s.violations.filter(v => v.level === 'hard' && v.type !== '未满员').length,
     min: s.all.min, max: s.all.max, std: s.all.std, gini: s.all.gini, g34: s.rhythm.gap34 != null ? s.rhythm.gap34 : s.rhythm.gap23, pref: s.prefRate }; }
   function pushSolution(s, info) {
@@ -416,7 +406,7 @@
       demoHoles: st.pairings.filter(p => p.demoHole).map(p => p.id), kpi: solKpi(s), diff, at: Date.now(),
       timetableVersion: st.timetableVersion || null, 时刻版本号: (st.timetableVersion && (st.timetableVersion.版本号 || st.timetableVersion.version)) || st.时刻版本号 || null };
     if (C.stampRosterResult) C.stampRosterResult(entry, st);
-    // 真实导入固定保留；自动填人只保留最新一套（不再堆到 5 套）
+    // 带名称的对照方案固定保留；自动填人只保留最新一套（不再堆到 5 套）
     if (info.name) st.solHist = [entry];
     else {
       const named = H0.filter(x => x.name).slice(0, 1);
@@ -432,14 +422,14 @@
     // 换班表后清掉基于旧班表算出的方案缓存（与 pilotsChanged 同口径）
     try { dutyOpts = null; dutySel = null; } catch (e) {}
     try { leaveOpts = null; leaveHoles = null; holePrev = null; leaveHover = null; } catch (e) {}
-    refresh(); toast(h.name ? `已切换到「${h.name}」（真实导入）` : `已切换到自动填人结果` + (h.seed != null ? `（seed ${h.seed}）` : ''));
+    refresh(); toast(h.name ? `已切换到「${h.name}」` : `已切换到自动填人结果` + (h.seed != null ? `（seed ${h.seed}）` : ''));
   }
   function solBadge() {
     const H = st.solHist || []; if (!H.length) return ''; const i = st.solIdx != null ? st.solIdx : H.length - 1; const h = H[i];
     const label = h.name ? esc(h.name) : st.demo ? '一键排班' : '自动填人';
-    const sub = h.name ? '真实导入' : st.demo ? '按规则填入' : ('生成结果' + (h.seed != null ? ' · seed ' + h.seed : ''));
+    const sub = h.name ? '对照方案' : st.demo ? '按规则填入' : ('生成结果' + (h.seed != null ? ' · seed ' + h.seed : ''));
     if (H.length < 2) return `<span class="solsw"><b>${label}</b><small>${sub}</small></span>`;
-    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="模拟表格1（真实导入）">◀ 真实表</button><b>${label}</b><small>${sub}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="最新自动填人结果">生成结果 ▶</button></span>`;
+    return `<span class="solsw"><button class="btn sm" data-sol="${i - 1}" ${i <= 0 ? 'disabled' : ''} title="上一套方案">◀ 上一套</button><b>${label}</b><small>${sub}</small><button class="btn sm" data-sol="${i + 1}" ${i >= H.length - 1 ? 'disabled' : ''} title="最新自动填人结果">生成结果 ▶</button></span>`;
   }
   function stateFromSolution(h) {
     if (!h) return null;
@@ -455,7 +445,7 @@
     const handSt = st.handRoster || stateFromSolution(H.find(x => x.name));
     const engH = H.filter(x => !x.name).slice(-1)[0];
     const engSt = stateFromSolution(engH) || { settings: st.settings, pilots: st.pilots, restrictions: st.restrictions || [], pairings: st.pairings, standby: st.standby || {} };
-    if (!handSt) return `<div class="panel"><h3>系统 vs 手工排班</h3><div class="note">暂无手工排班结果。加载「模拟表格1」或放入对照班表后，将在此并排显示差异，并标注分类：系统错 / 手工违规 / 偏好不同 / 一侧缺任务。</div></div>`;
+    if (!handSt) return `<div class="panel"><h3>系统 vs 手工排班</h3><div class="note">暂无手工排班结果。放入对照班表后，将在此并排显示差异，并标注分类：系统错 / 手工违规 / 偏好不同 / 一侧缺任务。</div></div>`;
     const diff = C.classifyRosterDiffs(engSt, handSt);
     const nameOf = id => { const p = (st.pilots || []).find(x => x.id === id); return p ? p.name : (id || '空'); };
     const crewTxt = c => ['C', 'F', 'T'].map(s => (C.SLOT_NAME && C.SLOT_NAME[s] || s) + ' ' + nameOf(c && c[s])).join(' / ');
@@ -467,7 +457,7 @@
   function solCompareHtml() {
     const H = st.solHist || [];
     const cur = st.solIdx != null ? st.solIdx : H.length - 1; const pc = x => (x * 100).toFixed(1) + '%';
-    const kpi = H.length ? `<div class="panel"><h3>方案对比 <small>「模拟表格1」= 真实导入；「自动填人」= 引擎最新结果（只保留一套，再次填人会覆盖）</small></h3>
+    const kpi = H.length ? `<div class="panel"><h3>方案对比 <small>自动填人只保留最新一套，再次填人会覆盖</small></h3>
       <table><tr><th>方案</th><th>seed</th><th>满员率</th><th>空洞</th><th>硬违规(非空洞)</th><th>工时区间</th><th>标准差</th><th>基尼</th><th>休3–4天占比</th><th>意向满足</th><th>与上一套差异</th><th></th></tr>${H.map((h, i) => { const k = h.kpi;
         return `<tr class="${i === cur ? 'solcur' : ''}"><td><b>${h.name ? esc(h.name) : '自动填人'}</b></td><td class="mut">${h.seed == null ? '—' : h.seed}</td><td>${pc(k.coverage)}</td><td>${k.holes}</td><td class="${k.hard ? 'red' : 'okc'}">${k.hard}</td><td>${k.min.toFixed(0)}–${k.max.toFixed(0)}h</td><td>${k.std.toFixed(1)}</td><td>${k.gini.toFixed(3)}</td><td>${pc(k.g34)}</td><td>${pc(k.pref)}</td><td>${h.diff == null ? '—' : pc(h.diff)}</td><td>${i === cur ? '<span class="okc">当前</span>' : `<button class="btn sm" data-sol="${i}">切换</button>`}</td></tr>`; }).join('')}</table></div>` : '';
     return kpi + classifiedCompareHtml();
